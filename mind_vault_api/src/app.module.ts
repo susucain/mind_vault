@@ -15,12 +15,13 @@ import { DatasetModule } from './dataset/dataset.module';
 import { DatasetEntity } from './dataset/entities/dataset.entity';
 import { DatasetDocumentEntity } from './dataset/entities/dataset-document.entity';
 import { DocumentIngestionJobEntity } from './document/entities/document-ingestion-job.entity';
+import { GraphModule } from './graph/graph.module';
 
 const standalone = buildConfiguration(process.env).runtime.standalone;
 
 @Module({
   imports: [
-    ...(standalone ? [] : [DatasetModule, DocumentModule]),
+    ...(standalone ? [] : [DatasetModule, GraphModule, DocumentModule]),
     AuthModule,
     HealthModule,
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),

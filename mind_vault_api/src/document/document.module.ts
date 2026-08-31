@@ -28,6 +28,7 @@ import {
 } from '../retrieval/es/elasticsearch-index.service';
 import { Client } from '@elastic/elasticsearch';
 import { ConfigService } from '@nestjs/config';
+import { GraphModule } from '../graph/graph.module';
 
 /**
  * 文档模块
@@ -38,6 +39,7 @@ import { ConfigService } from '@nestjs/config';
   imports: [
     AuthModule,
     DatasetModule,
+    GraphModule,
     TypeOrmModule.forFeature([
       DocumentEntity,
       DocumentIngestionJobEntity,

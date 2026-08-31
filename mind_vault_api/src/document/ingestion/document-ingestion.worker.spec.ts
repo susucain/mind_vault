@@ -64,6 +64,11 @@ describe('DocumentIngestionWorker', () => {
       { chunk: jest.fn().mockReturnValue([]) } as never,
       { embedDocuments: jest.fn().mockResolvedValue([]) } as never,
       { indexChunks: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        extract: jest.fn().mockResolvedValue({ entities: [], relations: [] }),
+      } as never,
+      { indexChunk: jest.fn().mockResolvedValue(undefined) } as never,
+      { find: jest.fn().mockResolvedValue([]) } as never,
     );
 
     await expect(

@@ -19,6 +19,9 @@ import { RustfsService } from '../../storage/rustfs.service';
 import { DocumentChunkingService } from '../chunking/document-chunking.service';
 import { EmbeddingService } from '../../embedding/embedding.service';
 import { ElasticsearchIndexService } from '../../retrieval/es/elasticsearch-index.service';
+import { GraphExtractionService } from '../../graph/graph-extraction.service';
+import { KnowledgeGraphService } from '../../graph/knowledge-graph.service';
+import { DatasetDocumentEntity } from '../../dataset/entities/dataset-document.entity';
 
 interface IndexMessage {
   jobId: string;
@@ -47,6 +50,10 @@ export class DocumentIngestionWorker {
     private readonly chunking: DocumentChunkingService,
     private readonly embedding: EmbeddingService,
     private readonly index: ElasticsearchIndexService,
+    private readonly graphExtraction: GraphExtractionService,
+    private readonly graph: KnowledgeGraphService,
+    @InjectRepository(DatasetDocumentEntity)
+    private readonly datasetDocuments: Repository<DatasetDocumentEntity>,
   ) {}
 
   async onModuleInit() {
@@ -187,6 +194,21 @@ export class DocumentIngestionWorker {
       stage = 'indexing';
       await this.updateJob(job, IngestionJobStatus.Indexing, 'indexing');
       await this.index.indexChunks(chunks);
+      const datasetRows = await this.datasetDocuments.find({
+        where: { ownerId: message.ownerId, documentId: document.id },
+      });
+      const datasetIds = datasetRows.map((row) => row.datasetId);
+      for (const chunk of chunks) {
+        const extraction = await this.graphExtraction.extract(chunk);
+        await this.graph.indexChunk({
+          ownerId: message.ownerId,
+          documentId: document.id,
+          documentVersion: message.documentVersion,
+          chunkId: chunk.chunkId,
+          datasetIds,
+          ...extraction,
+        });
+      }
       await this.updateJob(job, IngestionJobStatus.Ready, 'ready');
       return {
         jobId: job.id,
