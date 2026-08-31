@@ -21,6 +21,10 @@ import { ChatModule } from './chat/chat.module';
 import { ConversationEntity } from './chat/entities/conversation.entity';
 import { ChatMessageEntity } from './chat/entities/chat-message.entity';
 import { ChatCitationEntity } from './chat/entities/citation.entity';
+import { InterviewModule } from './interview/interview.module';
+import { InterviewSessionEntity } from './interview/entities/interview-session.entity';
+import { InterviewTurnEntity } from './interview/entities/interview-turn.entity';
+import { ReviewItemEntity } from './interview/entities/review-item.entity';
 
 const standalone = buildConfiguration(process.env).runtime.standalone;
 
@@ -34,6 +38,7 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
           DocumentModule,
           RetrievalModule,
           ChatModule,
+          InterviewModule,
         ]),
     AuthModule,
     HealthModule,
@@ -59,6 +64,9 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
                 ConversationEntity,
                 ChatMessageEntity,
                 ChatCitationEntity,
+                InterviewSessionEntity,
+                InterviewTurnEntity,
+                ReviewItemEntity,
               ],
               synchronize: false,
             }),

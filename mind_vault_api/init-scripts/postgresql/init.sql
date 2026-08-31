@@ -128,3 +128,45 @@ CREATE TABLE IF NOT EXISTS kh_chat_citation (
 );
 CREATE INDEX IF NOT EXISTS idx_kh_chat_citation_message
     ON kh_chat_citation(owner_id, message_id, rank);
+
+CREATE TABLE IF NOT EXISTS kh_interview_session (
+    id VARCHAR PRIMARY KEY,
+    owner_id BIGINT NOT NULL,
+    dataset_id BIGINT NOT NULL,
+    mode VARCHAR NOT NULL,
+    status VARCHAR NOT NULL DEFAULT 'IN_PROGRESS',
+    current_index INT NOT NULL DEFAULT 0,
+    total_questions INT NOT NULL DEFAULT 5,
+    current_question TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kh_interview_session_owner
+    ON kh_interview_session(owner_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS kh_interview_turn (
+    id VARCHAR PRIMARY KEY,
+    session_id VARCHAR NOT NULL,
+    owner_id BIGINT NOT NULL,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    evaluation_json JSONB NOT NULL,
+    citation_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kh_interview_turn_session
+    ON kh_interview_turn(owner_id, session_id, created_at);
+
+CREATE TABLE IF NOT EXISTS kh_review_item (
+    id VARCHAR PRIMARY KEY,
+    owner_id BIGINT NOT NULL,
+    source_turn_id VARCHAR NOT NULL,
+    title VARCHAR NOT NULL,
+    reason TEXT,
+    status VARCHAR NOT NULL DEFAULT 'PENDING',
+    due_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kh_review_item_owner
+    ON kh_review_item(owner_id, status, created_at DESC);
