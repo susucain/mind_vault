@@ -1,0 +1,70 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Channel, ChannelModel, connect } from 'amqplib';
+import { DocumentEntity } from '../document/entities/document.entity';
+
+@Injectable()
+export class DocumentPipelinePublisher {
+  private readonly logger = new Logger(DocumentPipelinePublisher.name);
+  private connection?: ChannelModel;
+  private channel?: Channel;
+
+  constructor(private readonly config: ConfigService) {}
+
+  async publishIndex(message: {
+    jobId: string;
+    ownerId: string;
+    documentId: string;
+    documentVersion: number;
+    operation: 'index' | 'delete' | 'reindex';
+  }): Promise<void> {
+    const channel = await this.getChannel();
+    channel.publish(
+      'mind-vault.ingestion',
+      `document.${message.operation}`,
+      Buffer.from(JSON.stringify(message)),
+      { persistent: true, contentType: 'application/json' },
+    );
+    this.logger.debug(
+      `Document pipeline message published: operation=${message.operation}, documentId=${message.documentId}`,
+    );
+  }
+
+  async afterPublish(document: DocumentEntity, content: string): Promise<void> {
+    await this.publishIndex({
+      jobId: `publish-${document.id}-${Date.now()}`,
+      ownerId: document.ownerId,
+      documentId: document.id,
+      documentVersion: 1,
+      operation: 'index',
+    });
+    this.logger.debug(
+      `Document publish queued: documentId=${document.id}, chars=${content.length}`,
+    );
+  }
+
+  async afterUnpublish(documentId: string): Promise<void> {
+    await this.publishIndex({
+      jobId: `delete-${documentId}-${Date.now()}`,
+      ownerId: 'unknown',
+      documentId,
+      documentVersion: 1,
+      operation: 'delete',
+    });
+  }
+
+  private async getChannel(): Promise<Channel> {
+    if (this.channel) return this.channel;
+    this.connection = await connect(
+      this.config.get<string>(
+        'RABBITMQ_URL',
+        'amqp://guest:guest@localhost:5672',
+      ),
+    );
+    this.channel = await this.connection.createChannel();
+    await this.channel.assertExchange('mind-vault.ingestion', 'topic', {
+      durable: true,
+    });
+    return this.channel;
+  }
+}
