@@ -25,6 +25,7 @@ import { InterviewModule } from './interview/interview.module';
 import { InterviewSessionEntity } from './interview/entities/interview-session.entity';
 import { InterviewTurnEntity } from './interview/entities/interview-turn.entity';
 import { ReviewItemEntity } from './interview/entities/review-item.entity';
+import { ModelModule } from './model/model.module';
 
 const standalone = buildConfiguration(process.env).runtime.standalone;
 
@@ -42,6 +43,7 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
         ]),
     AuthModule,
     HealthModule,
+    ModelModule,
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
     ...(standalone
       ? []
