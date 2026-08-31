@@ -87,3 +87,44 @@ CREATE TABLE IF NOT EXISTS kh_document_ingestion_job (
 );
 CREATE INDEX IF NOT EXISTS idx_kh_ingestion_job_owner_document
     ON kh_document_ingestion_job(owner_id, document_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS kh_conversation (
+    id VARCHAR PRIMARY KEY,
+    owner_id BIGINT NOT NULL,
+    title VARCHAR NOT NULL,
+    dataset_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kh_conversation_owner_id
+    ON kh_conversation(owner_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS kh_chat_message (
+    id VARCHAR PRIMARY KEY,
+    conversation_id VARCHAR NOT NULL,
+    owner_id BIGINT NOT NULL,
+    role VARCHAR NOT NULL,
+    content TEXT NOT NULL,
+    status VARCHAR NOT NULL DEFAULT 'COMPLETED',
+    used_tools_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    model VARCHAR,
+    thinking BOOLEAN NOT NULL DEFAULT false,
+    confidence REAL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kh_chat_message_conversation
+    ON kh_chat_message(owner_id, conversation_id, created_at);
+
+CREATE TABLE IF NOT EXISTS kh_chat_citation (
+    id VARCHAR PRIMARY KEY,
+    message_id VARCHAR NOT NULL,
+    owner_id BIGINT NOT NULL,
+    document_id BIGINT NOT NULL,
+    chunk_id VARCHAR NOT NULL,
+    quote TEXT NOT NULL,
+    locator_json JSONB NOT NULL,
+    rank INT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kh_chat_citation_message
+    ON kh_chat_citation(owner_id, message_id, rank);

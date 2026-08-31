@@ -17,6 +17,10 @@ import { DatasetDocumentEntity } from './dataset/entities/dataset-document.entit
 import { DocumentIngestionJobEntity } from './document/entities/document-ingestion-job.entity';
 import { GraphModule } from './graph/graph.module';
 import { RetrievalModule } from './retrieval/retrieval.module';
+import { ChatModule } from './chat/chat.module';
+import { ConversationEntity } from './chat/entities/conversation.entity';
+import { ChatMessageEntity } from './chat/entities/chat-message.entity';
+import { ChatCitationEntity } from './chat/entities/citation.entity';
 
 const standalone = buildConfiguration(process.env).runtime.standalone;
 
@@ -24,7 +28,13 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
   imports: [
     ...(standalone
       ? []
-      : [DatasetModule, GraphModule, DocumentModule, RetrievalModule]),
+      : [
+          DatasetModule,
+          GraphModule,
+          DocumentModule,
+          RetrievalModule,
+          ChatModule,
+        ]),
     AuthModule,
     HealthModule,
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
@@ -46,6 +56,9 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
                 DatasetEntity,
                 DatasetDocumentEntity,
                 DocumentIngestionJobEntity,
+                ConversationEntity,
+                ChatMessageEntity,
+                ChatCitationEntity,
               ],
               synchronize: false,
             }),

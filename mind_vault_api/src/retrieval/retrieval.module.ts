@@ -9,5 +9,6 @@ import { RetrievalService } from './retrieval.service';
   imports: [AuthModule, GraphModule, DocumentModule],
   controllers: [RetrievalController],
   providers: [RetrievalService],
+  exports: [RetrievalService],
 })
 export class RetrievalModule {}
