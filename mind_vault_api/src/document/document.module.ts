@@ -74,6 +74,12 @@ import { GraphModule } from '../graph/graph.module';
         }),
     },
   ],
-  exports: [DocumentService, DocumentReviewService, FileParserService],
+  exports: [
+    DocumentService,
+    DocumentReviewService,
+    FileParserService,
+    ElasticsearchIndexService,
+    EmbeddingService,
+  ],
 })
 export class DocumentModule {}

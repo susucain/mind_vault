@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unnecessary-type-assertion */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { ElasticsearchIndexService } from './elasticsearch-index.service';
 
 describe('ElasticsearchIndexService', () => {

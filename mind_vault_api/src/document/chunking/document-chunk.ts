@@ -5,6 +5,7 @@ export interface DocumentChunk {
   parentId: string;
   ownerId: string;
   documentId: string;
+  datasetIds?: string[];
   documentVersion: number;
   sectionId: string;
   chunkOrder: number;

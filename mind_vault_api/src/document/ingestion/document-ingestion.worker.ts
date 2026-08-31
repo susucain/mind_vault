@@ -191,13 +191,16 @@ export class DocumentIngestionWorker {
       chunks.forEach((chunk, index) => {
         chunk.embedding = vectors[index];
       });
-      stage = 'indexing';
-      await this.updateJob(job, IngestionJobStatus.Indexing, 'indexing');
-      await this.index.indexChunks(chunks);
       const datasetRows = await this.datasetDocuments.find({
         where: { ownerId: message.ownerId, documentId: document.id },
       });
       const datasetIds = datasetRows.map((row) => row.datasetId);
+      chunks.forEach((chunk) => {
+        chunk.datasetIds = datasetIds;
+      });
+      stage = 'indexing';
+      await this.updateJob(job, IngestionJobStatus.Indexing, 'indexing');
+      await this.index.indexChunks(chunks);
       for (const chunk of chunks) {
         const extraction = await this.graphExtraction.extract(chunk);
         await this.graph.indexChunk({
