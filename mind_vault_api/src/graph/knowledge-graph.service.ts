@@ -186,6 +186,34 @@ export class KnowledgeGraphService {
     }
   }
 
+  async deleteDocument(ownerId: string, documentId: string) {
+    const session = this.driver.session();
+    try {
+      await session.run(
+        `
+        MATCH (document:Document {ownerId: $ownerId, id: $documentId})
+        MATCH (document)<-[:PART_OF {ownerId: $ownerId}]-(chunk:Chunk)
+        MATCH (entity:Entity)-[mention:MENTIONED_IN {ownerId: $ownerId}]->(chunk)
+        DELETE mention
+        WITH DISTINCT entity
+        WHERE NOT (entity)-[:MENTIONED_IN {ownerId: $ownerId}]->(:Chunk)
+        DETACH DELETE entity
+        `,
+        { ownerId, documentId },
+      );
+      await session.run(
+        `
+        MATCH (document:Document {ownerId: $ownerId, id: $documentId})
+        MATCH (document)<-[:PART_OF {ownerId: $ownerId}]-(remaining:Chunk)
+        DETACH DELETE remaining, document
+        `,
+        { ownerId, documentId },
+      );
+    } finally {
+      await session.close();
+    }
+  }
+
   private async mergeRelationship(
     session: ReturnType<Driver['session']>,
     ownerId: string,

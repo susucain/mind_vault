@@ -3,9 +3,10 @@ import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { RetrievalQueryDto } from './dto/retrieval-query.dto';
 import { RetrievalService } from './retrieval.service';
+import { RateLimitGuard } from '../common/guards/rate-limit.guard';
 
 @Controller('retrieval')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, RateLimitGuard)
 export class RetrievalController {
   constructor(private readonly retrieval: RetrievalService) {}
 

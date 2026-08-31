@@ -14,9 +14,10 @@ import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { DocumentUploadService } from './document-upload.service';
+import { RateLimitGuard } from '../common/guards/rate-limit.guard';
 
 @Controller('documents')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, RateLimitGuard)
 export class DocumentUploadController {
   constructor(private readonly service: DocumentUploadService) {}
 

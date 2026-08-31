@@ -100,4 +100,60 @@ describe('DocumentIngestionWorker', () => {
       }),
     );
   });
+
+  it('deletes source storage and external indexes for a deletion job', async () => {
+    const job = {
+      id: 'job_delete',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      operation: 'delete',
+      status: 'DELETING',
+      currentStage: 'deleting',
+      retryCount: 0,
+    };
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue(job),
+      save: jest.fn().mockResolvedValue(job),
+    };
+    const storage = {
+      isEnabled: jest.fn().mockReturnValue(true),
+      deleteObject: jest.fn(),
+    };
+    const index = { deleteByDocument: jest.fn().mockResolvedValue(undefined) };
+    const graph = { deleteDocument: jest.fn().mockResolvedValue(undefined) };
+    const worker = new DocumentIngestionWorker(
+      jobs as never,
+      {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'doc_1',
+          ownerId: 'user_1',
+          sourceFileKey: 'users/user_1/doc_1.pdf',
+        }),
+      } as never,
+      {} as never,
+      {} as never,
+      storage as never,
+      { get: jest.fn().mockReturnValue(false) } as never,
+      {} as never,
+      {} as never,
+      index as never,
+      {} as never,
+      graph as never,
+      {} as never,
+    );
+
+    await expect(
+      worker.process({
+        jobId: 'job_delete',
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        documentVersion: 1,
+        operation: 'delete',
+      }),
+    ).resolves.toMatchObject({ status: 'DELETED' });
+    expect(storage.deleteObject).toHaveBeenCalledWith('users/user_1/doc_1.pdf');
+    expect(index.deleteByDocument).toHaveBeenCalledWith('user_1', 'doc_1');
+    expect(graph.deleteDocument).toHaveBeenCalledWith('user_1', 'doc_1');
+  });
 });

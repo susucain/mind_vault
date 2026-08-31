@@ -8,6 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { RateLimitGuard } from '../common/guards/rate-limit.guard';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { CreateConversationDto } from './dto/create-conversation.dto';
@@ -15,7 +16,7 @@ import { CreateMessageDto } from './dto/create-message.dto';
 import { ChatService } from './chat.service';
 
 @Controller('conversations')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, RateLimitGuard)
 export class ChatController {
   constructor(private readonly chat: ChatService) {}
 

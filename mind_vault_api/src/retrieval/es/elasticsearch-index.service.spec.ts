@@ -9,6 +9,7 @@ describe('ElasticsearchIndexService', () => {
         create: jest.fn().mockResolvedValue({}),
       },
       bulk: jest.fn().mockResolvedValue({ errors: false }),
+      updateByQuery: jest.fn().mockResolvedValue({}),
     };
     const service = new ElasticsearchIndexService(
       client as never,

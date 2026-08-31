@@ -22,6 +22,8 @@ export enum IngestionJobStatus {
   Indexing = 'INDEXING',
   Ready = 'READY',
   Failed = 'FAILED',
+  Deleting = 'DELETING',
+  Deleted = 'DELETED',
 }
 
 @Entity('kh_document_ingestion_job')

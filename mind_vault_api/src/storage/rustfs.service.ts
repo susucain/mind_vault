@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   CreateBucketCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
   PutObjectCommand,
@@ -97,6 +98,12 @@ export class RustfsService {
       `RustFS download completed: bucket=${this.bucket}, key=${key}`,
     );
     return Buffer.from(bytes);
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    await this.client.send(
+      new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
   }
 
   private async ensureBucket() {

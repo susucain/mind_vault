@@ -19,6 +19,8 @@ import { DocumentUploadService } from './document-upload.service';
 import { DocumentUploadController } from './document-upload.controller';
 import { DocumentCatalogController } from './document-catalog.controller';
 import { DocumentCatalogService } from './document-catalog.service';
+import { DocumentLifecycleController } from './document-lifecycle.controller';
+import { DocumentLifecycleService } from './document-lifecycle.service';
 import { DocumentIngestionWorker } from './ingestion/document-ingestion.worker';
 import { DocumentChunkingService } from './chunking/document-chunking.service';
 import { EmbeddingService } from '../embedding/embedding.service';
@@ -49,7 +51,11 @@ import { GraphModule } from '../graph/graph.module';
       { name: DocumentContent.name, schema: DocumentContentSchema },
     ]),
   ],
-  controllers: [DocumentUploadController, DocumentCatalogController],
+  controllers: [
+    DocumentUploadController,
+    DocumentCatalogController,
+    DocumentLifecycleController,
+  ],
   providers: [
     DocumentService,
     DocumentReviewService,
@@ -58,6 +64,7 @@ import { GraphModule } from '../graph/graph.module';
     DocumentPipelinePublisher,
     DocumentUploadService,
     DocumentCatalogService,
+    DocumentLifecycleService,
     DocumentIngestionWorker,
     DocumentChunkingService,
     EmbeddingService,

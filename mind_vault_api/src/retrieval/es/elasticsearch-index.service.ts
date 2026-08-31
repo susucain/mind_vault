@@ -22,6 +22,8 @@ interface ElasticsearchLike {
       }>;
     };
   }>;
+  deleteByQuery(input: unknown): Promise<unknown>;
+  updateByQuery(input: unknown): Promise<unknown>;
 }
 
 @Injectable()
@@ -62,6 +64,7 @@ export class ElasticsearchIndexService {
             index: true,
             similarity: 'cosine',
           },
+          deleted: { type: 'boolean' },
           updatedAt: { type: 'date' },
         },
       },
@@ -85,6 +88,7 @@ export class ElasticsearchIndexService {
         documentId: chunk.documentId,
         datasetIds: chunk.datasetIds ?? [],
         documentVersion: chunk.documentVersion,
+        deleted: false,
         sectionId: chunk.sectionId,
         chunkOrder: chunk.chunkOrder,
         titlePath: chunk.titlePath,
@@ -170,6 +174,36 @@ export class ElasticsearchIndexService {
     return this.toHits(result, 'graph');
   }
 
+  async deleteByDocument(ownerId: string, documentId: string) {
+    return this.client.deleteByQuery({
+      index: this.indexName,
+      conflicts: 'proceed',
+      query: {
+        bool: {
+          filter: [{ term: { ownerId } }, { term: { documentId } }],
+        },
+      },
+      refresh: true,
+    });
+  }
+
+  async markDocumentDeleted(ownerId: string, documentId: string) {
+    return this.client.updateByQuery({
+      index: this.indexName,
+      conflicts: 'proceed',
+      refresh: true,
+      script: {
+        lang: 'painless',
+        source: 'ctx._source.deleted = true',
+      },
+      query: {
+        bool: {
+          filter: [{ term: { ownerId } }, { term: { documentId } }],
+        },
+      },
+    });
+  }
+
   private embeddingDimensions(): number {
     const configured =
       this.config.get<string | number>('EMBEDDING_DIMENSIONS') ??
@@ -183,7 +217,10 @@ export class ElasticsearchIndexService {
   }
 
   private filters(ownerId: string, datasetIds?: string[]) {
-    const filters: unknown[] = [{ term: { ownerId } }];
+    const filters: unknown[] = [
+      { term: { ownerId } },
+      { bool: { must_not: { term: { deleted: true } } } },
+    ];
     if (datasetIds?.length) {
       filters.push({ terms: { datasetIds } });
     }

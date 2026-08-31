@@ -121,6 +121,9 @@ export class DocumentIngestionWorker {
     ) {
       return job;
     }
+    if (message.operation === 'delete') {
+      return this.deleteDocument(message, job);
+    }
     if (message.operation !== 'index' && message.operation !== 'reindex') {
       return job;
     }
@@ -241,6 +244,30 @@ export class DocumentIngestionWorker {
     job.errorCode = null;
     job.errorMessage = null;
     return this.jobs.save(job);
+  }
+
+  private async deleteDocument(
+    message: IndexMessage,
+    job: DocumentIngestionJobEntity,
+  ) {
+    const document = await this.documents.findOne({
+      where: { id: message.documentId, ownerId: message.ownerId },
+    });
+    if (document?.sourceFileKey && this.storage.isEnabled()) {
+      await this.storage.deleteObject(document.sourceFileKey);
+    }
+    await this.index.deleteByDocument(message.ownerId, message.documentId);
+    await this.graph.deleteDocument(message.ownerId, message.documentId);
+    job.status = IngestionJobStatus.Deleted;
+    job.currentStage = 'deleted';
+    job.errorCode = null;
+    job.errorMessage = null;
+    await this.jobs.save(job);
+    return {
+      jobId: job.id,
+      documentId: message.documentId,
+      status: IngestionJobStatus.Deleted,
+    };
   }
 }
 
