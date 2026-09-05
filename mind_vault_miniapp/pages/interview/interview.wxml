@@ -1,0 +1,13 @@
+<view class="page">
+  <view class="header">
+    <text class="kicker">INTERVIEW COACH</text>
+    <text class="title">面试训练</text>
+    <text class="subtitle">从你的项目资料中生成问题、追问和复习项。</text>
+  </view>
+
+  <view class="training surface">
+    <text class="training-title">项目深挖</text>
+    <text class="training-copy">选择资料集后开始一轮训练。</text>
+    <van-button type="primary" size="small" bind:click="startSession">开始训练</van-button>
+  </view>
+</view>

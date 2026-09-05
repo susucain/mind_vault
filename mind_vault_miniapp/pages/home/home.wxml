@@ -1,0 +1,26 @@
+<view class="page">
+  <view class="welcome">
+    <text class="kicker">MIND VAULT</text>
+    <text class="title">你的资料，随时可问。</text>
+    <text class="subtitle">上传、检索、引用和面试训练都将在这里完成。</text>
+  </view>
+
+  <view class="status surface">
+    <text class="status-label">服务状态</text>
+    <text wx:if="{{loading}}" class="muted">检查中</text>
+    <text wx:elif="{{error}}" class="status-error">{{error}}</text>
+    <text wx:else class="status-ok">{{health === 'ok' ? '可用' : '部分不可用'}}</text>
+  </view>
+
+  <view class="section-title">开始使用</view>
+  <view class="actions">
+    <view class="action-card surface" bind:tap="openLibrary">
+      <text class="action-title">管理资料</text>
+      <text class="action-copy">建立资料集并上传文件</text>
+    </view>
+    <view class="action-card surface" bind:tap="openInterview">
+      <text class="action-title">面试训练</text>
+      <text class="action-copy">基于项目资料进行追问</text>
+    </view>
+  </view>
+</view>

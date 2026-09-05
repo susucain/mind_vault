@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "面试训练",
+  "usingComponents": {
+    "van-button": "@vant/weapp/button/index"
+  }
+}

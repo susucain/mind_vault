@@ -1,0 +1,24 @@
+{
+  "description": "Mind Vault 个人知识库小程序",
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "preloadBackgroundData": false,
+    "minified": true,
+    "newFeature": true,
+    "coverView": true,
+    "nodeModules": true
+  },
+  "compileType": "miniprogram",
+  "libVersion": "3.7.9",
+  "appid": "",
+  "projectname": "mind-vault-miniapp",
+  "miniprogramRoot": "./",
+  "condition": {}
+}

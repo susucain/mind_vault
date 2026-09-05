@@ -1,0 +1,40 @@
+.header {
+  display: flex;
+  flex-direction: column;
+  padding: 28rpx 0;
+}
+
+.kicker {
+  color: #087f78;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.title {
+  margin-top: 12rpx;
+  font-size: 48rpx;
+  font-weight: 700;
+}
+
+.subtitle {
+  margin-top: 16rpx;
+  color: #718087;
+  font-size: 28rpx;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+  padding: 36rpx 28rpx;
+}
+
+.empty-title {
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.empty-copy {
+  color: #718087;
+  font-size: 26rpx;
+}

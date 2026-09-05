@@ -1,0 +1,44 @@
+.login-page {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 64rpx 48rpx;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 80rpx;
+}
+
+.brand-kicker {
+  color: #087f78;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.brand-name {
+  margin-top: 16rpx;
+  color: #17232b;
+  font-size: 64rpx;
+  font-weight: 700;
+}
+
+.brand-copy {
+  margin-top: 22rpx;
+  color: #718087;
+  font-size: 30rpx;
+  line-height: 1.6;
+}
+
+.login-panel {
+  padding: 32rpx;
+}
+
+.error {
+  display: block;
+  margin-top: 20rpx;
+  color: #c65353;
+  font-size: 24rpx;
+}

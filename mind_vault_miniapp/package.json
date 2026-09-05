@@ -1,0 +1,18 @@
+{
+  "name": "mind-vault-miniapp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"**/*.{ts,json,wxss}\"",
+    "format:check": "prettier --check \"**/*.{ts,json,wxss}\""
+  },
+  "dependencies": {
+    "@vant/weapp": "^1.11.7"
+  },
+  "devDependencies": {
+    "miniprogram-api-typings": "^4.0.4",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3"
+  }
+}

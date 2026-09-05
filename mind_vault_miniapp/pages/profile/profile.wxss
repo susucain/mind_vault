@@ -1,0 +1,45 @@
+.header {
+  display: flex;
+  flex-direction: column;
+  padding: 28rpx 0;
+}
+
+.kicker {
+  color: #087f78;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.title {
+  margin-top: 12rpx;
+  font-size: 48rpx;
+  font-weight: 700;
+}
+
+.account,
+.setting {
+  display: flex;
+  flex-direction: column;
+  padding: 30rpx 28rpx;
+}
+
+.name {
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.id,
+.setting-copy {
+  margin-top: 14rpx;
+  color: #718087;
+  font-size: 24rpx;
+}
+
+.setting-title {
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.logout {
+  margin-top: 48rpx;
+}

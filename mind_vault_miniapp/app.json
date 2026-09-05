@@ -1,0 +1,42 @@
+{
+  "pages": [
+    "pages/login/login",
+    "pages/home/home",
+    "pages/library/library",
+    "pages/interview/interview",
+    "pages/profile/profile"
+  ],
+  "window": {
+    "backgroundColor": "#f5f7f6",
+    "backgroundTextStyle": "dark",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "Mind Vault"
+  },
+  "tabBar": {
+    "color": "#768187",
+    "selectedColor": "#087f78",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/home/home",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/library/library",
+        "text": "知识库"
+      },
+      {
+        "pagePath": "pages/interview/interview",
+        "text": "面试"
+      },
+      {
+        "pagePath": "pages/profile/profile",
+        "text": "我的"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

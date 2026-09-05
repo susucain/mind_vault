@@ -1,0 +1,20 @@
+<view class="page login-page">
+  <view class="brand">
+    <text class="brand-kicker">MIND VAULT</text>
+    <text class="brand-name">个人知识库</text>
+    <text class="brand-copy">把资料变成可追溯的答案与行动。</text>
+  </view>
+
+  <view class="login-panel surface">
+    <van-button
+      type="primary"
+      block
+      loading="{{loading}}"
+      loading-text="正在登录"
+      bind:click="handleLogin"
+    >
+      进入知识库
+    </van-button>
+    <text wx:if="{{error}}" class="error">{{error}}</text>
+  </view>
+</view>

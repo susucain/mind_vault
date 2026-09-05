@@ -1,0 +1,35 @@
+page {
+  min-height: 100%;
+  color: #17232b;
+  background: #f5f7f6;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei',
+    sans-serif;
+}
+
+button::after {
+  border: 0;
+}
+
+.page {
+  min-height: 100vh;
+  padding: 32rpx;
+  box-sizing: border-box;
+}
+
+.section-title {
+  margin: 36rpx 0 20rpx;
+  color: #25333a;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.surface {
+  border: 1rpx solid #e3e9e8;
+  border-radius: 16rpx;
+  background: #ffffff;
+}
+
+.muted {
+  color: #77858b;
+}

@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "知识库",
+  "usingComponents": {
+    "van-button": "@vant/weapp/button/index"
+  }
+}

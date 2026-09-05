@@ -1,0 +1,41 @@
+.header {
+  display: flex;
+  flex-direction: column;
+  padding: 28rpx 0;
+}
+
+.kicker {
+  color: #b85f2b;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.title {
+  margin-top: 12rpx;
+  font-size: 48rpx;
+  font-weight: 700;
+}
+
+.subtitle {
+  margin-top: 16rpx;
+  color: #718087;
+  font-size: 28rpx;
+  line-height: 1.5;
+}
+
+.training {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+  padding: 36rpx 28rpx;
+}
+
+.training-title {
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.training-copy {
+  color: #718087;
+  font-size: 26rpx;
+}

@@ -1,0 +1,13 @@
+<view class="page">
+  <view class="header">
+    <text class="kicker">KNOWLEDGE LIBRARY</text>
+    <text class="title">知识库</text>
+    <text class="subtitle">在这里管理资料集、文档和解析进度。</text>
+  </view>
+
+  <view class="empty surface">
+    <text class="empty-title">还没有加载资料</text>
+    <text class="empty-copy">资料集和文档列表将在下一阶段接入。</text>
+    <van-button type="primary" size="small" bind:click="openUpload">准备上传</van-button>
+  </view>
+</view>

@@ -1,0 +1,19 @@
+<view class="page">
+  <view class="header">
+    <text class="kicker">ACCOUNT</text>
+    <text class="title">我的</text>
+  </view>
+
+  <view class="account surface">
+    <text class="name">{{nickname}}</text>
+    <text class="id">用户 ID：{{userId}}</text>
+  </view>
+
+  <view class="section-title">设置</view>
+  <view class="setting surface">
+    <text class="setting-title">模型调用与数据隐私</text>
+    <text class="setting-copy">正式设置页将在后续版本接入。</text>
+  </view>
+
+  <van-button class="logout" type="danger" plain block bind:click="logout">退出登录</van-button>
+</view>

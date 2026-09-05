@@ -1,0 +1,67 @@
+.welcome {
+  display: flex;
+  flex-direction: column;
+  padding: 28rpx 0 20rpx;
+}
+
+.kicker {
+  color: #087f78;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.title {
+  margin-top: 14rpx;
+  font-size: 48rpx;
+  font-weight: 700;
+}
+
+.subtitle {
+  margin-top: 16rpx;
+  color: #718087;
+  font-size: 28rpx;
+  line-height: 1.6;
+}
+
+.status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 28rpx;
+}
+
+.status-label,
+.action-title {
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.status-ok {
+  color: #087f78;
+  font-size: 26rpx;
+}
+
+.status-error {
+  color: #c65353;
+  font-size: 24rpx;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20rpx;
+}
+
+.action-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 160rpx;
+  padding: 26rpx;
+}
+
+.action-copy {
+  margin-top: 14rpx;
+  color: #718087;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
