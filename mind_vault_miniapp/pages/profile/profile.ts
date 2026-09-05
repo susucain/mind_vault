@@ -1,4 +1,5 @@
 import { clearSession, loadSession } from '../../utils/session';
+import { ensureAuthenticated } from '../../utils/auth-guard';
 
 Page({
   data: {
@@ -7,6 +8,7 @@ Page({
   },
 
   onShow() {
+    if (!ensureAuthenticated()) return;
     const session = loadSession();
     this.setData({
       userId: session?.user.id ?? '',

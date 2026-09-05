@@ -17,8 +17,22 @@ export function devLogin() {
 export function wechatLogin(): Promise<UserSession> {
   return new Promise((resolve, reject) => {
     wx.login({
-      success() {
-        reject(new Error('后端微信登录尚未接入'));
+      async success(result) {
+        if (!result.code) {
+          reject(new Error('微信登录未返回 code'));
+          return;
+        }
+        try {
+          const session = await request<UserSession, { code: string }>({
+            path: '/auth/wechat',
+            method: 'POST',
+            skipAuth: true,
+            data: { code: result.code },
+          });
+          resolve(session);
+        } catch {
+          reject(new Error('微信登录服务尚未开放'));
+        }
       },
       fail: reject,
     });

@@ -1,0 +1,14 @@
+<view class="state">
+  <van-loading wx:if="{{type === 'loading'}}" color="#087f78" size="28rpx">加载中</van-loading>
+  <text wx:else class="state-title">{{title}}</text>
+  <text wx:if="{{type !== 'loading' && description}}" class="state-copy">{{description}}</text>
+  <van-button
+    wx:if="{{type === 'error'}}"
+    type="primary"
+    plain
+    size="small"
+    bind:click="handleAction"
+  >
+    {{actionText}}
+  </van-button>
+</view>

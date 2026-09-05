@@ -1,6 +1,7 @@
 import { login } from '../../services/auth';
 import { AppOption } from '../../types/app';
 import { saveSession } from '../../utils/session';
+import { showRequestError } from '../../utils/feedback';
 
 Page({
   data: {
@@ -21,6 +22,7 @@ Page({
       saveSession(session);
       wx.switchTab({ url: '/pages/home/home' });
     } catch (error) {
+      showRequestError(error);
       this.setData({
         error: error instanceof Error ? error.message : '登录失败，请稍后重试',
       });

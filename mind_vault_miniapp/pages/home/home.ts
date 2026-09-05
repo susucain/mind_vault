@@ -1,4 +1,5 @@
 import { getHealth } from '../../services/system';
+import { ensureAuthenticated } from '../../utils/auth-guard';
 
 Page({
   data: {
@@ -8,6 +9,7 @@ Page({
   },
 
   onShow() {
+    if (!ensureAuthenticated()) return;
     void this.loadHealth();
   },
 

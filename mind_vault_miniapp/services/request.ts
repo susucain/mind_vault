@@ -1,6 +1,7 @@
 import { environment } from '../config/env';
 import { ApiError } from '../types/api';
-import { clearSession, loadSession } from '../utils/session';
+import { loadSession } from '../utils/session';
+import { handleUnauthorized } from '../utils/auth-guard';
 
 type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
@@ -33,8 +34,7 @@ export function request<TResponse, TData = Record<string, unknown>>(
           return;
         }
         if (response.statusCode === 401) {
-          clearSession();
-          wx.reLaunch({ url: '/pages/login/login' });
+          handleUnauthorized();
         }
         reject({
           statusCode: response.statusCode,

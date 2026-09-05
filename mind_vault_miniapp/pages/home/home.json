@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "Mind Vault"
+  "navigationBarTitleText": "Mind Vault",
+  "usingComponents": {
+    "app-state": "/components/app-state/app-state"
+  }
 }

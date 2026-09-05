@@ -1,5 +1,11 @@
+import { ensureAuthenticated } from '../../utils/auth-guard';
+
 Page({
   data: {},
+
+  onShow() {
+    ensureAuthenticated();
+  },
 
   startSession() {
     wx.showToast({
