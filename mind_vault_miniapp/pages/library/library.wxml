@@ -20,6 +20,34 @@
     <van-button type="primary" size="small" bind:click="openCreateDataset">新建</van-button>
   </view>
 
+  <view wx:if="{{selectedDatasetId}}" class="upload surface">
+    <view class="upload-copy">
+      <text class="upload-title">导入资料</text>
+      <text class="upload-desc">支持 PDF、Office、TXT、MD、CSV、JSON，最大 100MB</text>
+    </view>
+    <van-button type="primary" size="small" loading="{{uploading}}" bind:click="chooseAndUpload">
+      选择文件
+    </van-button>
+  </view>
+
+  <view wx:if="{{uploadFileName}}" class="upload-status surface">
+    <view class="upload-status-row">
+      <text class="upload-file">{{uploadFileName}}</text>
+      <text class="upload-stage">{{uploadStatus || 'UPLOADED'}}</text>
+    </view>
+    <van-progress percentage="{{uploadProgress}}" color="#087f78" stroke-width="6" />
+    <text wx:if="{{uploadError}}" class="upload-error">{{uploadError}}</text>
+    <van-button
+      wx:if="{{uploadStatus === 'FAILED'}}"
+      type="primary"
+      plain
+      size="small"
+      bind:click="retryUploadProcess"
+    >
+      重试解析
+    </van-button>
+  </view>
+
   <app-state wx:if="{{loading}}" type="loading"></app-state>
   <app-state
     wx:elif="{{error}}"

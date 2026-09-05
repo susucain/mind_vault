@@ -36,6 +36,39 @@ export interface DocumentItem {
   updatedAt: string;
 }
 
+export type DocumentProcessStatus =
+  | 'UPLOADED'
+  | 'PARSING'
+  | 'PARSED'
+  | 'CHUNKING'
+  | 'EMBEDDING'
+  | 'INDEXING'
+  | 'READY'
+  | 'FAILED'
+  | 'DELETING'
+  | 'DELETED';
+
+export interface UploadDocumentResponse {
+  documentId: string;
+  jobId: string;
+  title: string;
+  fileName: string;
+  fileExtension: string;
+  fileSize: number;
+  fileKey?: string | null;
+  status: DocumentProcessStatus;
+}
+
+export interface DocumentProcess {
+  documentId: string;
+  jobId: string;
+  status: DocumentProcessStatus;
+  currentStage?: string | null;
+  retryCount: number;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;

@@ -1,8 +1,16 @@
 import { ensureAuthenticated } from '../../utils/auth-guard';
 import { createDataset, listDatasets } from '../../services/datasets';
-import { listDocuments } from '../../services/documents';
-import { Dataset, DocumentItem } from '../../types/api';
+import {
+  getDocumentProcess,
+  listDocuments,
+  retryDocumentProcess,
+  uploadDocument,
+} from '../../services/documents';
+import { Dataset, DocumentItem, DocumentProcessStatus } from '../../types/api';
 import { showRequestError } from '../../utils/feedback';
+import { chooseKnowledgeFile, SelectedFile } from '../../utils/file-picker';
+
+let pollingTimer: ReturnType<typeof setTimeout> | null = null;
 
 Page({
   data: {
@@ -15,11 +23,31 @@ Page({
     datasetName: '',
     datasetDescription: '',
     creating: false,
+    uploading: false,
+    uploadProgress: 0,
+    uploadFileName: '',
+    uploadDocumentId: '',
+    uploadStatus: '' as DocumentProcessStatus | '',
+    uploadError: '',
   },
 
   onShow() {
     if (!ensureAuthenticated()) return;
     void this.loadLibrary();
+    if (
+      this.data.uploadDocumentId &&
+      !['READY', 'FAILED', 'DELETED'].includes(this.data.uploadStatus)
+    ) {
+      void this.pollDocumentStatus(this.data.uploadDocumentId);
+    }
+  },
+
+  onHide() {
+    this.stopPolling();
+  },
+
+  onUnload() {
+    this.stopPolling();
   },
 
   async loadLibrary() {
@@ -104,6 +132,95 @@ Page({
     wx.navigateTo({
       url: `/pages/document-detail/document-detail?id=${id}`,
     });
+  },
+
+  async chooseAndUpload() {
+    if (!this.data.selectedDatasetId) {
+      wx.showToast({ title: '请先新建资料集', icon: 'none' });
+      return;
+    }
+    let file: SelectedFile;
+    try {
+      file = await chooseKnowledgeFile();
+    } catch (error) {
+      if (error instanceof Error && error.message === '已取消选择文件') return;
+      showRequestError(error);
+      return;
+    }
+    this.stopPolling();
+    this.setData({
+      uploading: true,
+      uploadProgress: 0,
+      uploadFileName: file.name,
+      uploadDocumentId: '',
+      uploadStatus: 'UPLOADED',
+      uploadError: '',
+    });
+    try {
+      const result = await uploadDocument(
+        file,
+        this.data.selectedDatasetId,
+        (uploadProgress) => this.setData({ uploadProgress })
+      );
+      this.setData({
+        uploadDocumentId: result.documentId,
+        uploadStatus: result.status,
+      });
+      void this.pollDocumentStatus(result.documentId);
+      await this.loadLibrary();
+    } catch (error) {
+      this.setData({
+        uploadStatus: 'FAILED',
+        uploadError:
+          error instanceof Error ? error.message : '文件上传失败，请重试',
+      });
+      showRequestError(error);
+    } finally {
+      this.setData({ uploading: false });
+    }
+  },
+
+  async retryUploadProcess() {
+    const documentId = this.data.uploadDocumentId;
+    if (!documentId) return;
+    try {
+      const result = await retryDocumentProcess(documentId);
+      this.setData({ uploadStatus: result.status, uploadError: '' });
+      void this.pollDocumentStatus(documentId);
+    } catch (error) {
+      showRequestError(error);
+    }
+  },
+
+  async pollDocumentStatus(documentId: string) {
+    this.stopPolling();
+    try {
+      const process = await getDocumentProcess(documentId);
+      this.setData({
+        uploadStatus: process.status,
+        uploadError: process.errorMessage ?? '',
+      });
+      if (process.status === 'READY') {
+        await this.loadLibrary();
+        return;
+      }
+      if (process.status === 'FAILED' || process.status === 'DELETED') return;
+      pollingTimer = setTimeout(() => {
+        void this.pollDocumentStatus(documentId);
+      }, 1500);
+    } catch (error) {
+      this.setData({
+        uploadStatus: 'FAILED',
+        uploadError: '无法获取文档处理状态',
+      });
+      showRequestError(error);
+    }
+  },
+
+  stopPolling() {
+    if (!pollingTimer) return;
+    clearTimeout(pollingTimer);
+    pollingTimer = null;
   },
 });
 

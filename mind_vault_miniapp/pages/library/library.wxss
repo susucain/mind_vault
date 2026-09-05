@@ -29,6 +29,65 @@
   margin: 10rpx 0 12rpx;
 }
 
+.upload,
+.upload-status {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  margin: 18rpx 0;
+  padding: 24rpx;
+}
+
+.upload-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.upload-title {
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.upload-desc {
+  margin-top: 8rpx;
+  color: #718087;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+
+.upload-status {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.upload-status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.upload-file {
+  overflow: hidden;
+  flex: 1;
+  font-size: 24rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-stage {
+  color: #087f78;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.upload-error {
+  color: #c65353;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+
 .dataset-scroll {
   flex: 1;
   white-space: nowrap;
