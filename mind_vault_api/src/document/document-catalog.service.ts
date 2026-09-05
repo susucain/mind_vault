@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Model } from 'mongoose';
-import { ILike, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { QueryDocumentDto } from './dto/query-document.dto';
 import { DocumentEntity } from './entities/document.entity';
 import {
@@ -20,17 +20,27 @@ export class DocumentCatalogService {
   ) {}
 
   async findAll(ownerId: string, query: QueryDocumentDto) {
-    const where = {
-      ownerId,
-      deleted: false,
-      ...(query.title ? { title: ILike(`%${query.title}%`) } : {}),
-    };
-    const [items, total] = await this.documents.findAndCount({
-      where,
-      order: { createdAt: 'DESC' },
-      skip: ((query.page ?? 1) - 1) * (query.pageSize ?? 20),
-      take: query.pageSize ?? 20,
-    });
+    const qb = this.documents
+      .createQueryBuilder('doc')
+      .where('doc.owner_id = :ownerId', { ownerId })
+      .andWhere('doc.deleted = false');
+    if (query.datasetId) {
+      qb.innerJoin(
+        'kh_dataset_document',
+        'datasetDocument',
+        'datasetDocument.document_id = doc.id AND datasetDocument.owner_id = :ownerId',
+        { ownerId },
+      ).andWhere('datasetDocument.dataset_id = :datasetId', {
+        datasetId: query.datasetId,
+      });
+    }
+    if (query.title) {
+      qb.andWhere('doc.title ILIKE :title', { title: `%${query.title}%` });
+    }
+    qb.orderBy('doc.created_at', 'DESC')
+      .skip(((query.page ?? 1) - 1) * (query.pageSize ?? 20))
+      .take(query.pageSize ?? 20);
+    const [items, total] = await qb.getManyAndCount();
     return {
       items,
       total,

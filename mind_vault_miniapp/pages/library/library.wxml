@@ -5,9 +5,65 @@
     <text class="subtitle">在这里管理资料集、文档和解析进度。</text>
   </view>
 
-  <view class="empty surface">
-    <text class="empty-title">还没有加载资料</text>
-    <text class="empty-copy">资料集和文档列表将在下一阶段接入。</text>
-    <van-button type="primary" size="small" bind:click="openUpload">准备上传</van-button>
+  <view class="dataset-row">
+    <scroll-view class="dataset-scroll" scroll-x>
+      <view
+        wx:for="{{datasets}}"
+        wx:key="id"
+        class="dataset-chip {{item.id === selectedDatasetId ? 'dataset-chip-active' : ''}}"
+        data-id="{{item.id}}"
+        bind:tap="selectDataset"
+      >
+        {{item.name}}
+      </view>
+    </scroll-view>
+    <van-button type="primary" size="small" bind:click="openCreateDataset">新建</van-button>
   </view>
+
+  <app-state wx:if="{{loading}}" type="loading"></app-state>
+  <app-state
+    wx:elif="{{error}}"
+    type="error"
+    title="知识库加载失败"
+    description="{{error}}"
+    bind:action="loadLibrary"
+  ></app-state>
+  <app-state
+    wx:elif="{{datasets.length === 0}}"
+    type="empty"
+    title="还没有资料集"
+    description="新建资料集后即可上传和管理文档。"
+  ></app-state>
+  <app-state
+    wx:elif="{{documents.length === 0}}"
+    type="empty"
+    title="资料集内还没有文档"
+    description="文件上传将在下一阶段接入。"
+  ></app-state>
+
+  <view wx:else class="document-list">
+    <view
+      wx:for="{{documents}}"
+      wx:key="id"
+      class="document surface"
+      data-id="{{item.id}}"
+      bind:tap="openDocument"
+    >
+      <view class="document-type">{{item.sourceFileExtension || 'FILE'}}</view>
+      <view class="document-main">
+        <text class="document-title">{{item.title}}</text>
+        <text class="document-meta">{{item.sourceFileName || '未命名文件'}}</text>
+      </view>
+      <text class="document-arrow">›</text>
+    </view>
+  </view>
+
+  <van-popup show="{{showCreateDataset}}" position="bottom" round bind:close="closeCreateDataset">
+    <view class="create-panel">
+      <text class="create-title">新建资料集</text>
+      <van-field value="{{datasetName}}" label="名称" placeholder="例如：后端面试" bind:change="updateDatasetName" />
+      <van-field value="{{datasetDescription}}" label="说明" placeholder="可选" bind:change="updateDatasetDescription" />
+      <van-button type="primary" block loading="{{creating}}" bind:click="createDataset">创建资料集</van-button>
+    </view>
+  </van-popup>
 </view>

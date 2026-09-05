@@ -8,6 +8,11 @@ export class QueryDocumentDto {
   @IsString()
   title?: string;
 
+  /** 资料集 ID */
+  @IsOptional()
+  @IsString()
+  datasetId?: string;
+
   /** 分类 ID */
   @IsOptional()
   @IsString()

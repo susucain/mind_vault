@@ -1,0 +1,44 @@
+.content {
+  display: flex;
+  flex-direction: column;
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  padding: 28rpx;
+}
+
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 24rpx;
+  padding: 14rpx 0;
+}
+
+.label {
+  color: #718087;
+  font-size: 24rpx;
+}
+
+.value {
+  overflow: hidden;
+  flex: 1;
+  color: #25333a;
+  font-size: 24rpx;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-content {
+  padding: 28rpx;
+  color: #324148;
+  font-size: 27rpx;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.delete {
+  margin-top: 48rpx;
+}

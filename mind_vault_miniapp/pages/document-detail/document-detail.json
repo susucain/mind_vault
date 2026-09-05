@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "文档详情",
+  "usingComponents": {
+    "van-button": "@vant/weapp/button/index",
+    "app-state": "/components/app-state/app-state"
+  }
+}

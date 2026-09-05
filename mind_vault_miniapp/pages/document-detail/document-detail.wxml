@@ -1,0 +1,42 @@
+<view class="page">
+  <app-state wx:if="{{loading}}" type="loading"></app-state>
+  <app-state
+    wx:elif="{{error}}"
+    type="error"
+    title="文档加载失败"
+    description="{{error}}"
+  ></app-state>
+
+  <view wx:elif="{{document}}" class="content">
+    <view class="meta surface">
+      <view class="meta-row">
+        <text class="label">文件</text>
+        <text class="value">{{document.sourceFileName || document.title}}</text>
+      </view>
+      <view class="meta-row">
+        <text class="label">格式</text>
+        <text class="value">{{document.sourceFileExtension || '未知'}}</text>
+      </view>
+      <view class="meta-row">
+        <text class="label">状态</text>
+        <text class="value">{{document.status === 0 ? '处理中或草稿' : '可用'}}</text>
+      </view>
+    </view>
+
+    <view class="section-title">解析内容</view>
+    <view class="document-content surface">
+      <text>{{document.content || '文档正在解析，稍后可查看内容。'}}</text>
+    </view>
+
+    <van-button
+      class="delete"
+      type="danger"
+      plain
+      block
+      loading="{{deleting}}"
+      bind:click="confirmDelete"
+    >
+      删除文档
+    </van-button>
+  </view>
+</view>
