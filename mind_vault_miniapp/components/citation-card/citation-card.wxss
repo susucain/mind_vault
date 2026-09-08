@@ -1,0 +1,36 @@
+.citation {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  margin-top: 16rpx;
+  padding: 18rpx;
+  border-left: 5rpx solid #b85f2b;
+  background: #fff8f2;
+}
+
+.citation-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.citation-title {
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.citation-link {
+  color: #087f78;
+  font-size: 22rpx;
+}
+
+.citation-quote {
+  color: #4b585d;
+  font-size: 22rpx;
+  line-height: 1.55;
+}
+
+.citation-locator {
+  color: #8a969a;
+  font-size: 20rpx;
+}

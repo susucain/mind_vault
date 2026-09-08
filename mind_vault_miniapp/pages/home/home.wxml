@@ -21,6 +21,10 @@
 
   <view wx:if="{{!loading && !error}}" class="section-title">开始使用</view>
   <view wx:if="{{!loading && !error}}" class="actions">
+    <view class="action-card surface" bind:tap="openChat">
+      <text class="action-title">资料问答</text>
+      <text class="action-copy">基于资料生成可追溯回答</text>
+    </view>
     <view class="action-card surface" bind:tap="openLibrary">
       <text class="action-title">管理资料</text>
       <text class="action-copy">建立资料集并上传文件</text>

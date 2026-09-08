@@ -1,0 +1,109 @@
+.chat-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding-bottom: 150rpx;
+}
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18rpx 0;
+}
+
+.chat-heading {
+  display: flex;
+  flex-direction: column;
+}
+
+.kicker {
+  color: #087f78;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.title {
+  margin-top: 8rpx;
+  font-size: 40rpx;
+  font-weight: 700;
+}
+
+.dataset-scroll {
+  min-height: 66rpx;
+  margin: 12rpx 0;
+  white-space: nowrap;
+}
+
+.dataset-chip {
+  display: inline-block;
+  margin-right: 12rpx;
+  padding: 10rpx 18rpx;
+  border: 1rpx solid #dfe7e5;
+  border-radius: 999rpx;
+  color: #718087;
+  background: #ffffff;
+  font-size: 22rpx;
+}
+
+.dataset-chip-active {
+  border-color: #087f78;
+  color: #087f78;
+  background: #e7f5f1;
+}
+
+.message-list {
+  flex: 1;
+  min-height: 0;
+  padding: 16rpx 0 220rpx;
+}
+
+.message {
+  display: flex;
+  margin: 18rpx 0;
+}
+
+.message.user {
+  justify-content: flex-end;
+}
+
+.bubble {
+  max-width: 88%;
+  padding: 22rpx;
+  border: 1rpx solid #e0e8e6;
+  border-radius: 14rpx;
+  background: #ffffff;
+}
+
+.user .bubble {
+  border-color: #087f78;
+  color: #ffffff;
+  background: #087f78;
+}
+
+.message-content {
+  font-size: 27rpx;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.message-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 16rpx;
+  color: #718087;
+  font-size: 20rpx;
+}
+
+.composer {
+  position: fixed;
+  right: 24rpx;
+  bottom: 24rpx;
+  left: 24rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 10rpx;
+  box-shadow: 0 8rpx 28rpx rgba(27, 48, 53, 0.1);
+}

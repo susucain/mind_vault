@@ -5,7 +5,8 @@
     "pages/library/library",
     "pages/interview/interview",
     "pages/profile/profile",
-    "pages/document-detail/document-detail"
+    "pages/document-detail/document-detail",
+    "pages/chat/chat"
   ],
   "window": {
     "backgroundColor": "#f5f7f6",

@@ -32,4 +32,8 @@ Page({
   openInterview() {
     wx.switchTab({ url: '/pages/interview/interview' });
   },
+
+  openChat() {
+    wx.navigateTo({ url: '/pages/chat/chat' });
+  },
 });

@@ -1,0 +1,10 @@
+<view class="citation" bind:tap="openSource">
+  <view class="citation-top">
+    <text class="citation-title">引用资料</text>
+    <text class="citation-link">查看原文 ›</text>
+  </view>
+  <text class="citation-quote">{{citation.quote}}</text>
+  <text class="citation-locator">
+    {{citation.locator.page ? '第 ' + citation.locator.page + ' 页' : citation.locator.slide ? '第 ' + citation.locator.slide + ' 张' : citation.locator.sheet ? citation.locator.sheet : '原文片段'}}
+  </text>
+</view>
