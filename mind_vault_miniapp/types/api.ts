@@ -34,6 +34,9 @@ export interface DocumentItem {
   status: number;
   createdAt: string;
   updatedAt: string;
+  ingestionStatus?: DocumentProcessStatus | null;
+  ingestionStage?: string | null;
+  ingestionErrorMessage?: string | null;
 }
 
 export interface DocumentLocator {

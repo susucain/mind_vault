@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title">
+  <title id="title">日用知行温暖手绘头像</title>
+  <defs>
+    <filter id="paper">
+      <feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="2" seed="7" result="noise"/>
+      <feColorMatrix in="noise" type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="table" tableValues="0 .08"/></feComponentTransfer>
+      <feBlend in="SourceGraphic" mode="multiply"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" rx="216" fill="#4E8C79"/>
+  <path d="M62 717C173 608 195 821 334 752c109-54 111 103 235 46 133-61 165 35 393-60v286H62V717Z" fill="#2F6D62"/>
+  <circle cx="760" cy="260" r="122" fill="#F6D77A" opacity=".96"/>
+  <path d="M190 389c0-95 80-150 185-129 64 12 112 44 137 88 27-44 75-76 137-88 105-21 185 34 185 129v315c-73-38-152-37-224 3-59 33-107 33-166 0-72-40-151-41-224-3V389Z" fill="#F7F0DC" filter="url(#paper)"/>
+  <path d="M512 351v364" fill="none" stroke="#D8CDB2" stroke-linecap="round" stroke-width="17"/>
+  <path d="M266 430c55-18 107-11 156 20M266 501c55-18 107-11 156 20M266 572c55-18 107-11 156 20M758 430c-55-18-107-11-156 20M758 501c-55-18-107-11-156 20M758 572c-55-18-107-11-156 20" fill="none" stroke="#90B59B" stroke-linecap="round" stroke-width="18"/>
+  <path d="M400 710c82-10 106-74 131-136 22-56 63-94 128-108" fill="none" stroke="#E98A62" stroke-linecap="round" stroke-width="32"/>
+  <path d="m645 444 28 25 40-1-19 34 15 37-38-8-31 23-5-39-33-22 34-16 9-37Z" fill="#E98A62"/>
+  <path d="M384 733c5-83 50-126 116-145M388 732c-45-53-88-57-132-43M401 722c-4-53 14-90 56-113" fill="none" stroke="#EAF2BD" stroke-linecap="round" stroke-width="17"/>
+  <path d="M264 690c11-32 35-47 68-42-10 31-33 47-68 42ZM454 610c6-31 26-50 57-54-5 31-24 50-57 54Z" fill="#EAF2BD"/>
+  <circle cx="400" cy="710" r="22" fill="#E98A62"/>
+</svg>

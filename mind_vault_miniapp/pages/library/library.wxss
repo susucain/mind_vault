@@ -160,6 +160,31 @@
   white-space: nowrap;
 }
 
+.document-ingestion-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 10rpx;
+}
+
+.document-ingestion {
+  color: #087f78;
+  font-size: 20rpx;
+}
+
+.document-ingestion-failed,
+.document-error {
+  color: #c65353;
+}
+
+.document-error {
+  overflow: hidden;
+  margin-top: 8rpx;
+  font-size: 20rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .document-arrow {
   color: #8b969a;
   font-size: 40rpx;

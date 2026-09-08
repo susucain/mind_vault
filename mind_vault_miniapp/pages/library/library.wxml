@@ -81,6 +81,28 @@
       <view class="document-main">
         <text class="document-title">{{item.title}}</text>
         <text class="document-meta">{{item.sourceFileName || '未命名文件'}}</text>
+        <view class="document-ingestion-row">
+          <text
+            class="document-ingestion {{item.ingestionStatus === 'FAILED' ? 'document-ingestion-failed' : ''}}"
+          >
+            {{item.ingestionStatusLabel}}
+          </text>
+          <van-button
+            wx:if="{{item.canRetryIngestion}}"
+            size="mini"
+            plain
+            type="primary"
+            loading="{{retryingDocumentId === item.id}}"
+            data-id="{{item.id}}"
+            catchtap="stopDocumentOpen"
+            bind:click="retryDocument"
+          >
+            重试解析
+          </van-button>
+        </view>
+        <text wx:if="{{item.ingestionErrorMessage}}" class="document-error">
+          {{item.ingestionErrorMessage}}
+        </text>
       </view>
       <text class="document-arrow">›</text>
     </view>

@@ -9,6 +9,7 @@ import { environment } from '../config/env';
 import { request } from './request';
 import { loadSession } from '../utils/session';
 import { SelectedFile } from '../utils/file-picker';
+import { recordRequestTrace } from '../utils/telemetry';
 
 export interface DocumentDetail extends DocumentItem {
   content: string;
@@ -49,12 +50,17 @@ export function uploadDocument(
 ) {
   const session = loadSession();
   if (!session) return Promise.reject(new Error('登录已失效'));
+  const startedAt = Date.now();
   return new Promise<UploadDocumentResponse>((resolve, reject) => {
     const task = wx.uploadFile({
       url: `${environment.apiBaseUrl}/documents/upload`,
+      timeout: 60_000,
       filePath: file.path,
       name: 'file',
-      formData: { datasetId },
+      formData: {
+        datasetId,
+        sourceFileName: file.name,
+      },
       header: {
         Authorization: `Bearer ${session.accessToken}`,
       },
@@ -63,13 +69,37 @@ export function uploadDocument(
           const data = JSON.parse(response.data || '{}') as {
             message?: string;
           };
-          reject(new Error(data.message ?? '文件上传失败'));
+          const error = new Error(data.message ?? '文件上传失败');
+          recordRequestTrace({
+            timestamp: Date.now(),
+            method: 'POST',
+            path: '/documents/upload',
+            durationMs: Date.now() - startedAt,
+            statusCode: response.statusCode,
+            error: error.message,
+          });
+          reject(error);
           return;
         }
+        recordRequestTrace({
+          timestamp: Date.now(),
+          method: 'POST',
+          path: '/documents/upload',
+          durationMs: Date.now() - startedAt,
+          statusCode: response.statusCode,
+        });
         resolve(JSON.parse(response.data) as UploadDocumentResponse);
       },
       fail(error) {
-        reject(new Error(error.errMsg || '文件上传失败'));
+        const uploadError = new Error(error.errMsg || '文件上传失败');
+        recordRequestTrace({
+          timestamp: Date.now(),
+          method: 'POST',
+          path: '/documents/upload',
+          durationMs: Date.now() - startedAt,
+          error: uploadError.message,
+        });
+        reject(uploadError);
       },
     });
     task.onProgressUpdate((progress) => onProgress(progress.progress));

@@ -31,7 +31,7 @@
 $ pnpm install
 ```
 
-复制 `.env.example` 为 `.env` 后再启动。阶段 0 可以使用 standalone 模式验证认证和健康接口，不依赖本地数据库容器：
+启动前检查 `.env` 中的本地服务地址和模型配置。阶段 0 可以使用 standalone 模式验证认证和健康接口，不依赖本地数据库容器：
 
 ```bash
 $ pnpm run start:standalone

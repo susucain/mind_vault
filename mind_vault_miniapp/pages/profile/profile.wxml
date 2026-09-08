@@ -15,5 +15,11 @@
     <text class="setting-copy">正式设置页将在后续版本接入。</text>
   </view>
 
+  <view class="section-title">最近请求</view>
+  <view class="setting surface">
+    <text class="setting-title">{{lastRequest}}</text>
+    <text class="setting-copy">仅保存在本机，不记录资料内容、问题或回答。</text>
+  </view>
+
   <van-button class="logout" type="danger" plain block bind:click="logout">退出登录</van-button>
 </view>

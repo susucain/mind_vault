@@ -9,13 +9,23 @@ import {
 import { Dataset, DocumentItem, DocumentProcessStatus } from '../../types/api';
 import { showRequestError } from '../../utils/feedback';
 import { chooseKnowledgeFile, SelectedFile } from '../../utils/file-picker';
+import { selectAvailableDatasetId } from '../../utils/dataset-selection';
+import {
+  ingestionStatusLabel,
+  isRetryableIngestionStatus,
+} from '../../utils/document-ingestion';
 
 let pollingTimer: ReturnType<typeof setTimeout> | null = null;
+
+type LibraryDocumentItem = DocumentItem & {
+  ingestionStatusLabel: string;
+  canRetryIngestion: boolean;
+};
 
 Page({
   data: {
     datasets: [] as Dataset[],
-    documents: [] as DocumentItem[],
+    documents: [] as LibraryDocumentItem[],
     selectedDatasetId: '',
     loading: true,
     error: '',
@@ -29,6 +39,7 @@ Page({
     uploadDocumentId: '',
     uploadStatus: '' as DocumentProcessStatus | '',
     uploadError: '',
+    retryingDocumentId: '',
   },
 
   onShow() {
@@ -54,9 +65,13 @@ Page({
     this.setData({ loading: true, error: '' });
     try {
       const datasets = (await listDatasets()).items;
-      const selectedDatasetId =
-        this.data.selectedDatasetId || datasets[0]?.id || '';
-      const documents = (await listDocuments(selectedDatasetId)).items;
+      const selectedDatasetId = selectAvailableDatasetId(
+        this.data.selectedDatasetId,
+        datasets,
+      );
+      const documents = withIngestionState(
+        (await listDocuments(selectedDatasetId)).items,
+      );
       this.setData({ datasets, selectedDatasetId, documents });
     } catch (error) {
       this.setData({ error: '无法加载知识库内容' });
@@ -71,7 +86,9 @@ Page({
     if (!datasetId || datasetId === this.data.selectedDatasetId) return;
     this.setData({ selectedDatasetId: datasetId, loading: true });
     try {
-      const documents = (await listDocuments(datasetId)).items;
+      const documents = withIngestionState(
+        (await listDocuments(datasetId)).items,
+      );
       this.setData({ documents });
     } catch (error) {
       showRequestError(error);
@@ -117,7 +134,9 @@ Page({
         datasets: [dataset, ...this.data.datasets],
         selectedDatasetId: dataset.id,
       });
-      const documents = (await listDocuments(dataset.id)).items;
+      const documents = withIngestionState(
+        (await listDocuments(dataset.id)).items,
+      );
       this.setData({ documents });
     } catch (error) {
       showRequestError(error);
@@ -192,6 +211,23 @@ Page({
     }
   },
 
+  async retryDocument(event: WechatMiniprogram.BaseEvent) {
+    const documentId = event.currentTarget.dataset.id as string;
+    if (!documentId || this.data.retryingDocumentId) return;
+    this.setData({ retryingDocumentId: documentId });
+    try {
+      await retryDocumentProcess(documentId);
+      await this.loadLibrary();
+      wx.showToast({ title: '已重新提交解析', icon: 'success' });
+    } catch (error) {
+      showRequestError(error);
+    } finally {
+      this.setData({ retryingDocumentId: '' });
+    }
+  },
+
+  stopDocumentOpen() {},
+
   async pollDocumentStatus(documentId: string) {
     this.stopPolling();
     try {
@@ -235,4 +271,12 @@ function inputValue(detail: unknown): string {
     return detail.value;
   }
   return '';
+}
+
+function withIngestionState(documents: DocumentItem[]): LibraryDocumentItem[] {
+  return documents.map((document) => ({
+    ...document,
+    ingestionStatusLabel: ingestionStatusLabel(document.ingestionStatus),
+    canRetryIngestion: isRetryableIngestionStatus(document.ingestionStatus),
+  }));
 }

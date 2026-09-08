@@ -36,6 +36,7 @@ export class DocumentUploadController {
     return this.service.upload(user.id, file, dto.datasetId, {
       tags: dto.tags,
       remark: dto.remark,
+      sourceFileName: dto.sourceFileName,
     });
   }
 

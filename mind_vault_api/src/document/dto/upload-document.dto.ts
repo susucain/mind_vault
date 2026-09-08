@@ -13,4 +13,9 @@ export class UploadDocumentDto {
   @IsString()
   @MaxLength(500)
   remark?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  sourceFileName?: string;
 }

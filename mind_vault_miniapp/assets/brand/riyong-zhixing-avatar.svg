@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title">
+  <title id="title">日用知行应用头像</title>
+  <rect width="1024" height="1024" rx="216" fill="#087E8B"/>
+  <path d="M178 370c0-63 51-114 114-114h174c59 0 109 24 144 66 35-42 85-66 144-66h78c63 0 114 51 114 114v266c0 63-51 114-114 114h-78c-59 0-109 24-144 66-35-42-85-66-144-66H292c-63 0-114-51-114-114V370Z" fill="#F6FFF8"/>
+  <path d="M512 323v426" fill="none" stroke="#C8E7DE" stroke-linecap="round" stroke-width="24"/>
+  <path d="M267 390h144M267 464h144M267 538h85M757 390H613M757 464H613M757 538h-85" fill="none" stroke="#84BEB8" stroke-linecap="round" stroke-width="28"/>
+  <path d="M403 653c52 0 91-23 117-68l77-133c19-33 53-54 91-54h59" fill="none" stroke="#D9FF57" stroke-linecap="round" stroke-width="48"/>
+  <path d="m735 332 74 66-74 66" fill="none" stroke="#D9FF57" stroke-linecap="round" stroke-linejoin="round" stroke-width="48"/>
+  <circle cx="403" cy="653" r="30" fill="#FF7452"/>
+</svg>

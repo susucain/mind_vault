@@ -64,6 +64,53 @@ describe('DocumentUploadService', () => {
     );
   });
 
+  it('uses the client file name instead of the WeChat temporary upload name', async () => {
+    const contentModel = {
+      create: jest.fn().mockResolvedValue({ _id: 'mongo_content_1' }),
+    };
+    const manager = {
+      create: jest.fn((_, input) => input),
+      save: jest.fn(async (input) => ({ id: 'doc_1', ...input })),
+    };
+    const jobs = {
+      create: jest.fn((input) => input),
+      save: jest.fn(async (input) => ({ id: 'job_1', ...input })),
+    };
+    const service = new DocumentUploadService(
+      manager as never,
+      contentModel as never,
+      jobs as never,
+      { isEnabled: jest.fn().mockReturnValue(false) } as never,
+      { publishIndex: jest.fn().mockResolvedValue(undefined) } as never,
+      { findOne: jest.fn().mockResolvedValue({ id: 'dataset_1' }) } as never,
+    );
+
+    await expect(
+      service.upload(
+        'user_1',
+        {
+          originalname: 'nVoiZShG09cGa2be9d37b42111390.pdf',
+          mimetype: 'application/pdf',
+          size: 1024,
+          buffer: Buffer.from('pdf'),
+        },
+        'dataset_1',
+        { sourceFileName: '中文资料.pdf' },
+      ),
+    ).resolves.toMatchObject({
+      title: '中文资料',
+      fileName: '中文资料.pdf',
+    });
+
+    expect(manager.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        title: '中文资料',
+        sourceFileName: '中文资料.pdf',
+      }),
+    );
+  });
+
   it('resets a failed job and republishes the same document version', async () => {
     const job = {
       id: 'job_1',
@@ -92,6 +139,44 @@ describe('DocumentUploadService', () => {
     await expect(service.retry('user_1', 'doc_1')).resolves.toMatchObject({
       status: 'UPLOADED',
       retryCount: 1,
+    });
+    expect(publisher.publishIndex).toHaveBeenCalledWith({
+      jobId: 'job_1',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      operation: 'index',
+    });
+  });
+
+  it('retries an uploaded job when its initial message was not delivered', async () => {
+    const job = {
+      id: 'job_1',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      status: 'UPLOADED',
+      retryCount: 0,
+      errorCode: null,
+      errorMessage: null,
+    };
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue(job),
+      save: jest.fn().mockResolvedValue(job),
+    };
+    const publisher = { publishIndex: jest.fn().mockResolvedValue(undefined) };
+    const service = new DocumentUploadService(
+      {} as never,
+      {} as never,
+      jobs as never,
+      {} as never,
+      publisher as never,
+      {} as never,
+    );
+
+    await expect(service.retry('user_1', 'doc_1')).resolves.toMatchObject({
+      status: 'UPLOADED',
+      retryCount: 0,
     });
     expect(publisher.publishIndex).toHaveBeenCalledWith({
       jobId: 'job_1',

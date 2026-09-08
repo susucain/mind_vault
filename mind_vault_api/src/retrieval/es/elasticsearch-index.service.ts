@@ -206,7 +206,6 @@ export class ElasticsearchIndexService {
 
   private embeddingDimensions(): number {
     const configured =
-      this.config.get<string | number>('EMBEDDING_DIMENSIONS') ??
       this.config.get<string | number>('EMBEDDING_DIMENSION') ??
       1024;
     const dimensions = Number(configured);

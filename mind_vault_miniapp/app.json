@@ -15,6 +15,11 @@
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "Mind Vault"
   },
+  "networkTimeout": {
+    "request": 15000,
+    "uploadFile": 60000,
+    "downloadFile": 60000
+  },
   "tabBar": {
     "color": "#768187",
     "selectedColor": "#087f78",
@@ -23,19 +28,27 @@
     "list": [
       {
         "pagePath": "pages/home/home",
-        "text": "首页"
+        "text": "首页",
+        "iconPath": "assets/tab/home.png",
+        "selectedIconPath": "assets/tab/home-active.png"
       },
       {
         "pagePath": "pages/library/library",
-        "text": "知识库"
+        "text": "知识库",
+        "iconPath": "assets/tab/library.png",
+        "selectedIconPath": "assets/tab/library-active.png"
       },
       {
         "pagePath": "pages/interview/interview",
-        "text": "面试"
+        "text": "面试",
+        "iconPath": "assets/tab/interview.png",
+        "selectedIconPath": "assets/tab/interview-active.png"
       },
       {
         "pagePath": "pages/profile/profile",
-        "text": "我的"
+        "text": "我的",
+        "iconPath": "assets/tab/profile.png",
+        "selectedIconPath": "assets/tab/profile-active.png"
       }
     ]
   },

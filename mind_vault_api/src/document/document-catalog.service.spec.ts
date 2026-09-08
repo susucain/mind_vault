@@ -14,7 +14,11 @@ describe('DocumentCatalogService', () => {
     const documents = {
       createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
     };
-    const service = new DocumentCatalogService(documents as never, {} as never);
+    const service = new DocumentCatalogService(
+      documents as never,
+      {} as never,
+      {} as never,
+    );
 
     await service.findAll('user_1', {
       datasetId: 'dataset_1',
@@ -53,12 +57,58 @@ describe('DocumentCatalogService', () => {
     const service = new DocumentCatalogService(
       documents as never,
       contents as never,
+      {} as never,
     );
 
     await expect(service.findOne('user_1', 'doc_1')).resolves.toMatchObject({
       content: '原文',
       pageCount: 3,
       sections: [{ sectionId: 'section_1' }],
+    });
+  });
+
+  it('includes the latest ingestion status for each listed document', async () => {
+    const queryBuilder = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([
+        [{ id: 'doc_1', title: '资料' }],
+        1,
+      ]),
+    };
+    const documents = {
+      createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+    };
+    const jobs = {
+      find: jest.fn().mockResolvedValue([
+        {
+          documentId: 'doc_1',
+          status: 'FAILED',
+          currentStage: 'parsing',
+          errorMessage: '文件格式错误',
+        },
+      ]),
+    };
+    const service = new DocumentCatalogService(
+      documents as never,
+      {} as never,
+      jobs as never,
+    );
+
+    await expect(
+      service.findAll('user_1', { page: 1, pageSize: 20 }),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          id: 'doc_1',
+          ingestionStatus: 'FAILED',
+          ingestionStage: 'parsing',
+          ingestionErrorMessage: '文件格式错误',
+        },
+      ],
     });
   });
 });

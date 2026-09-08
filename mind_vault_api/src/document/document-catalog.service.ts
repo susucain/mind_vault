@@ -2,9 +2,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Model } from 'mongoose';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { QueryDocumentDto } from './dto/query-document.dto';
 import { DocumentEntity } from './entities/document.entity';
+import { DocumentIngestionJobEntity } from './entities/document-ingestion-job.entity';
 import {
   DocumentContent,
   DocumentContentDocument,
@@ -17,6 +18,8 @@ export class DocumentCatalogService {
     private readonly documents: Repository<DocumentEntity>,
     @InjectModel(DocumentContent.name)
     private readonly contents: Model<DocumentContentDocument>,
+    @InjectRepository(DocumentIngestionJobEntity)
+    private readonly jobs: Repository<DocumentIngestionJobEntity>,
   ) {}
 
   async findAll(ownerId: string, query: QueryDocumentDto) {
@@ -41,8 +44,31 @@ export class DocumentCatalogService {
       .skip(((query.page ?? 1) - 1) * (query.pageSize ?? 20))
       .take(query.pageSize ?? 20);
     const [items, total] = await qb.getManyAndCount();
+    const jobs = items.length
+      ? await this.jobs.find({
+          where: {
+            ownerId,
+            documentId: In(items.map((item) => item.id)),
+          },
+          order: { createdAt: 'DESC' },
+        })
+      : [];
+    const latestJobs = new Map<string, DocumentIngestionJobEntity>();
+    for (const job of jobs) {
+      if (!latestJobs.has(job.documentId)) {
+        latestJobs.set(job.documentId, job);
+      }
+    }
     return {
-      items,
+      items: items.map((item) => {
+        const job = latestJobs.get(item.id);
+        return {
+          ...item,
+          ingestionStatus: job?.status ?? null,
+          ingestionStage: job?.currentStage ?? null,
+          ingestionErrorMessage: job?.errorMessage ?? null,
+        };
+      }),
       total,
       page: query.page ?? 1,
       pageSize: query.pageSize ?? 20,

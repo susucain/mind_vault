@@ -64,12 +64,14 @@ export class DocumentUploadService {
       buffer: Buffer;
     },
     datasetId: string,
-    metadata: { tags?: string; remark?: string } = {},
+    metadata: { tags?: string; remark?: string; sourceFileName?: string } = {},
   ) {
     if (!file?.buffer?.length) {
       throw new BadRequestException('文件不能为空');
     }
-    const originalname = decodeUploadFilename(file.originalname);
+    const originalname =
+      metadata.sourceFileName?.trim() ||
+      decodeUploadFilename(file.originalname);
     const extension = getExtension(originalname);
     if (!SUPPORTED_EXTENSIONS.has(extension)) {
       throw new BadRequestException(
@@ -184,8 +186,11 @@ export class DocumentUploadService {
       order: { createdAt: 'DESC' },
     });
     if (!job) throw new BadRequestException('未找到文档处理任务');
-    if (job.status !== IngestionJobStatus.Failed) {
-      throw new BadRequestException('只有失败任务可以重试');
+    if (
+      job.status !== IngestionJobStatus.Failed &&
+      job.status !== IngestionJobStatus.Uploaded
+    ) {
+      throw new BadRequestException('只有失败或待处理任务可以重试');
     }
     job.status = IngestionJobStatus.Uploaded;
     job.currentStage = 'retry_pending';
