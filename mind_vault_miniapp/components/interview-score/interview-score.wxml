@@ -1,0 +1,18 @@
+<view class="score-grid">
+  <view class="score-cell">
+    <text>{{evaluation.accuracy || 0}}</text>
+    <text>准确性</text>
+  </view>
+  <view class="score-cell">
+    <text>{{evaluation.depth || 0}}</text>
+    <text>技术深度</text>
+  </view>
+  <view class="score-cell">
+    <text>{{evaluation.structure || 0}}</text>
+    <text>表达结构</text>
+  </view>
+  <view class="score-cell">
+    <text>{{evaluation.clarity || 0}}</text>
+    <text>清晰度</text>
+  </view>
+</view>

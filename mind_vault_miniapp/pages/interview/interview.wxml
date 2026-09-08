@@ -5,9 +5,95 @@
     <text class="subtitle">从你的项目资料中生成问题、追问和复习项。</text>
   </view>
 
-  <view class="training surface">
-    <text class="training-title">项目深挖</text>
-    <text class="training-copy">选择资料集后开始一轮训练。</text>
-    <van-button type="primary" size="small" bind:click="startSession">开始训练</van-button>
+  <app-state wx:if="{{loading}}" type="loading"></app-state>
+  <app-state
+    wx:elif="{{error}}"
+    type="error"
+    title="训练资料加载失败"
+    description="{{error}}"
+    bind:action="loadDatasets"
+  ></app-state>
+  <app-state
+    wx:elif="{{datasets.length === 0}}"
+    type="empty"
+    title="还没有可训练的资料集"
+    description="请先在知识库上传项目或面试资料。"
+  ></app-state>
+
+  <view wx:elif="{{!session}}" class="training surface">
+    <text class="training-title">开始训练</text>
+    <text class="training-copy">选择资料集和训练模式。</text>
+
+    <scroll-view class="dataset-scroll" scroll-x>
+      <view
+        wx:for="{{datasets}}"
+        wx:key="id"
+        class="dataset-chip {{item.id === selectedDatasetId ? 'dataset-chip-active' : ''}}"
+        data-id="{{item.id}}"
+        bind:tap="selectDataset"
+      >
+        {{item.name}}
+      </view>
+    </scroll-view>
+
+    <view class="mode-grid">
+      <view class="mode {{mode === 'project_deep_dive' ? 'mode-active' : ''}}" data-mode="project_deep_dive" bind:tap="selectMode">项目深挖</view>
+      <view class="mode {{mode === 'quick_qa' ? 'mode-active' : ''}}" data-mode="quick_qa" bind:tap="selectMode">快速问答</view>
+      <view class="mode {{mode === 'technical' ? 'mode-active' : ''}}" data-mode="technical" bind:tap="selectMode">技术面试</view>
+      <view class="mode {{mode === 'behavioral' ? 'mode-active' : ''}}" data-mode="behavioral" bind:tap="selectMode">行为面试</view>
+    </view>
+
+    <van-button type="primary" block loading="{{creating}}" bind:click="startSession">生成第一题</van-button>
+  </view>
+
+  <view wx:else class="session">
+    <view class="progress surface">
+      <text>第 {{session.currentIndex + 1}} / {{session.totalQuestions}} 题</text>
+      <text>{{session.status === 'COMPLETED' ? '训练已完成' : '训练进行中'}}</text>
+    </view>
+
+    <view wx:if="{{session.currentQuestion}}" class="question surface">
+      <text class="question-label">当前问题</text>
+      <text class="question-text">{{session.currentQuestion}}</text>
+    </view>
+
+    <view wx:if="{{session.status === 'IN_PROGRESS'}}" class="answer surface">
+      <van-field
+        value="{{answer}}"
+        type="textarea"
+        autosize
+        maxlength="4000"
+        placeholder="输入你的回答"
+        border="{{false}}"
+        bind:change="updateAnswer"
+      />
+      <van-button type="primary" block loading="{{submitting}}" bind:click="submitAnswer">提交回答</van-button>
+    </view>
+
+    <view wx:if="{{evaluation}}" class="feedback surface">
+      <text class="feedback-title">本轮反馈</text>
+      <interview-score evaluation="{{evaluation}}"></interview-score>
+      <view class="feedback-section">
+        <text>优点</text>
+        <text wx:for="{{evaluation.strengths}}" wx:key="*this" class="feedback-item">{{item}}</text>
+      </view>
+      <view class="feedback-section">
+        <text>待加强</text>
+        <text wx:for="{{evaluation.gaps}}" wx:key="*this" class="feedback-item gap">{{item}}</text>
+      </view>
+    </view>
+
+    <view class="actions">
+      <van-button wx:if="{{session.status === 'IN_PROGRESS'}}" type="default" plain bind:click="finishSession">结束训练</van-button>
+      <van-button wx:if="{{session.status === 'COMPLETED'}}" type="primary" bind:click="resetSession">开始新训练</van-button>
+    </view>
+  </view>
+
+  <view wx:if="{{reviewItems.length}}" class="review">
+    <text class="section-title">待复习</text>
+    <view wx:for="{{reviewItems}}" wx:key="id" class="review-item surface">
+      <text class="review-title">{{item.title}}</text>
+      <text class="review-reason">{{item.reason}}</text>
+    </view>
   </view>
 </view>

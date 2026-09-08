@@ -1,0 +1,46 @@
+import { request } from './request';
+import {
+  InterviewAnswerResult,
+  InterviewMode,
+  InterviewSession,
+  ReviewItem,
+} from '../types/interview';
+
+export function createInterviewSession(input: {
+  datasetId: string;
+  mode: InterviewMode;
+  totalQuestions: number;
+}) {
+  return request<InterviewSession, typeof input>({
+    path: '/interview/sessions',
+    method: 'POST',
+    data: input,
+  });
+}
+
+export function getInterviewSession(id: string) {
+  return request<InterviewSession>({
+    path: `/interview/sessions/${id}`,
+  });
+}
+
+export function submitInterviewAnswer(id: string, answer: string) {
+  return request<InterviewAnswerResult, { answer: string }>({
+    path: `/interview/sessions/${id}/answers`,
+    method: 'POST',
+    data: { answer },
+  });
+}
+
+export function finishInterviewSession(id: string) {
+  return request<InterviewSession>({
+    path: `/interview/sessions/${id}/finish`,
+    method: 'POST',
+  });
+}
+
+export function listReviewItems() {
+  return request<ReviewItem[]>({
+    path: '/interview/review-items',
+  });
+}

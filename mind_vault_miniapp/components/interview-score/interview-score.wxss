@@ -1,0 +1,26 @@
+.score-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8rpx;
+}
+
+.score-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+  padding: 18rpx 6rpx;
+  border-radius: 10rpx;
+  color: #1e4140;
+  background: #e7f5f1;
+}
+
+.score-cell text:first-child {
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.score-cell text:last-child {
+  color: #5d6e72;
+  font-size: 20rpx;
+}

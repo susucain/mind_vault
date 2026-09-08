@@ -1,6 +1,9 @@
 {
   "navigationBarTitleText": "面试训练",
   "usingComponents": {
-    "van-button": "@vant/weapp/button/index"
+    "van-button": "@vant/weapp/button/index",
+    "van-field": "@vant/weapp/field/index",
+    "app-state": "/components/app-state/app-state",
+    "interview-score": "/components/interview-score/interview-score"
   }
 }
