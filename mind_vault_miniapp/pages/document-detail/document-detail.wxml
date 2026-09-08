@@ -24,8 +24,24 @@
     </view>
 
     <view class="section-title">解析内容</view>
+    <view wx:if="{{locatorLabel}}" class="locator-banner">
+      {{locatorLabel}}
+    </view>
+    <view wx:if="{{quote}}" class="quote-banner">
+      <text>引用片段</text>
+      <text>{{quote}}</text>
+    </view>
     <view class="document-content surface">
-      <text>{{document.content || '文档正在解析，稍后可查看内容。'}}</text>
+      <view
+        wx:for="{{document.sections}}"
+        wx:key="sectionId"
+        id="{{item.sectionId}}"
+        class="section {{item.sectionId === targetSectionId ? 'section-target' : ''}}"
+      >
+        <text wx:if="{{item.heading}}" class="section-heading">{{item.heading}}</text>
+        <text class="section-text">{{item.text}}</text>
+      </view>
+      <text wx:if="{{!document.sections.length}}">{{document.content || '文档正在解析，稍后可查看内容。'}}</text>
     </view>
 
     <van-button

@@ -1,5 +1,6 @@
 import {
   DocumentItem,
+  DocumentSection,
   DocumentProcess,
   PaginatedResponse,
   UploadDocumentResponse,
@@ -11,6 +12,8 @@ import { SelectedFile } from '../utils/file-picker';
 
 export interface DocumentDetail extends DocumentItem {
   content: string;
+  sections: DocumentSection[];
+  pageCount: number;
 }
 
 export function listDocuments(datasetId?: string) {

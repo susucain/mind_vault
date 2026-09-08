@@ -33,4 +33,32 @@ describe('DocumentCatalogService', () => {
       { datasetId: 'dataset_1' },
     );
   });
+
+  it('returns parsed sections and page count with document content', async () => {
+    const documents = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'doc_1',
+        ownerId: 'user_1',
+      }),
+    };
+    const contents = {
+      findOne: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue({
+          content: '原文',
+          sections: [{ sectionId: 'section_1', text: '原文' }],
+          pageCount: 3,
+        }),
+      }),
+    };
+    const service = new DocumentCatalogService(
+      documents as never,
+      contents as never,
+    );
+
+    await expect(service.findOne('user_1', 'doc_1')).resolves.toMatchObject({
+      content: '原文',
+      pageCount: 3,
+      sections: [{ sectionId: 'section_1' }],
+    });
+  });
 });

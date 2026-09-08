@@ -57,6 +57,11 @@ export class DocumentCatalogService {
     const content = await this.contents
       .findOne({ documentId: id, deleted: false })
       .lean();
-    return { ...document, content: content?.content ?? '' };
+    return {
+      ...document,
+      content: content?.content ?? '',
+      sections: content?.sections ?? [],
+      pageCount: content?.pageCount ?? 0,
+    };
   }
 }

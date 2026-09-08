@@ -39,6 +39,55 @@
   white-space: pre-wrap;
 }
 
+.locator-banner,
+.quote-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-bottom: 18rpx;
+  padding: 18rpx;
+  border-left: 5rpx solid #087f78;
+  color: #31605b;
+  background: #e7f5f1;
+  font-size: 23rpx;
+  line-height: 1.55;
+}
+
+.quote-banner {
+  border-left-color: #b85f2b;
+  color: #71401f;
+  background: #fff8f2;
+}
+
+.section {
+  padding: 12rpx 0 28rpx;
+}
+
+.section + .section {
+  border-top: 1rpx solid #e7eceb;
+}
+
+.section-target {
+  margin: 0 -12rpx;
+  padding: 20rpx 12rpx 28rpx;
+  border-radius: 10rpx;
+  background: #fff8e9;
+}
+
+.section-heading {
+  display: block;
+  margin-bottom: 12rpx;
+  color: #1e4140;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.section-text {
+  font-size: 27rpx;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
 .delete {
   margin-top: 48rpx;
 }

@@ -36,6 +36,24 @@ export interface DocumentItem {
   updatedAt: string;
 }
 
+export interface DocumentLocator {
+  page?: number;
+  slide?: number;
+  sheet?: string;
+  cellRange?: string;
+  lineStart?: number;
+  lineEnd?: number;
+  jsonPath?: string;
+}
+
+export interface DocumentSection {
+  sectionId: string;
+  heading?: string;
+  text: string;
+  order: number;
+  locator: DocumentLocator;
+}
+
 export type DocumentProcessStatus =
   | 'UPLOADED'
   | 'PARSING'

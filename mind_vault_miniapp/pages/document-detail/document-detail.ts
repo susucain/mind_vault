@@ -5,6 +5,7 @@ import {
 } from '../../services/documents';
 import { ensureAuthenticated } from '../../utils/auth-guard';
 import { showRequestError } from '../../utils/feedback';
+import { DocumentLocator, DocumentSection } from '../../types/api';
 
 Page({
   data: {
@@ -12,6 +13,9 @@ Page({
     loading: true,
     error: '',
     deleting: false,
+    targetSectionId: '',
+    quote: '',
+    locatorLabel: '',
   },
 
   onLoad(query: Record<string, string | undefined>) {
@@ -21,14 +25,22 @@ Page({
       return;
     }
     if (!ensureAuthenticated()) return;
-    void this.loadDocument(id);
+    const locator = parseLocator(query.locator);
+    this.setData({
+      quote: decodeURIComponent(query.quote ?? ''),
+      locatorLabel: formatLocator(locator),
+    });
+    void this.loadDocument(id, locator);
   },
 
-  async loadDocument(id: string) {
+  async loadDocument(id: string, locator: DocumentLocator = {}) {
     this.setData({ loading: true, error: '' });
     try {
       const document = await getDocument(id);
-      this.setData({ document });
+      this.setData({
+        document,
+        targetSectionId: findSection(document.sections, locator),
+      });
       wx.setNavigationBarTitle({ title: document.title });
     } catch (error) {
       this.setData({ error: '无法加载文档详情' });
@@ -61,3 +73,40 @@ Page({
     });
   },
 });
+
+function parseLocator(value?: string): DocumentLocator {
+  if (!value) return {};
+  try {
+    return JSON.parse(decodeURIComponent(value)) as DocumentLocator;
+  } catch {
+    return {};
+  }
+}
+
+function findSection(sections: DocumentSection[], locator: DocumentLocator) {
+  const matched = sections.find((section) => {
+    if (locator.page && section.locator.page === locator.page) return true;
+    if (locator.slide && section.locator.slide === locator.slide) return true;
+    if (locator.sheet && section.locator.sheet === locator.sheet) return true;
+    if (locator.jsonPath && section.locator.jsonPath === locator.jsonPath)
+      return true;
+    if (
+      locator.lineStart &&
+      section.locator.lineStart &&
+      section.locator.lineStart <= locator.lineStart &&
+      (section.locator.lineEnd ?? Number.MAX_SAFE_INTEGER) >= locator.lineStart
+    )
+      return true;
+    return false;
+  });
+  return matched?.sectionId ?? '';
+}
+
+function formatLocator(locator: DocumentLocator) {
+  if (locator.page) return `定位到第 ${locator.page} 页`;
+  if (locator.slide) return `定位到第 ${locator.slide} 张幻灯片`;
+  if (locator.sheet) return `定位到工作表：${locator.sheet}`;
+  if (locator.jsonPath) return `定位到 ${locator.jsonPath}`;
+  if (locator.lineStart) return `定位到第 ${locator.lineStart} 行`;
+  return '';
+}
