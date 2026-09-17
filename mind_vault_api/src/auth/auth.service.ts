@@ -1,11 +1,11 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { TokenService } from './token.service';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly tokens: TokenService,
+    private readonly jwt: JwtService,
     private readonly config: ConfigService,
   ) {}
 
@@ -15,7 +15,10 @@ export class AuthService {
     }
 
     return {
-      accessToken: this.tokens.sign({ sub: userId, nickname }),
+      accessToken: this.jwt.sign(
+        { sub: userId, nickname },
+        { expiresIn: '7d' },
+      ),
       user: { id: userId, nickname },
     };
   }
