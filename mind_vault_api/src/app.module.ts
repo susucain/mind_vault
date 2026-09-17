@@ -1,14 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { DocumentModule } from './document/document.module';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import configuration from './config/configuration';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DocumentEntity } from './document/entities/document.entity';
-import { DocumentReviewEntity } from './document/entities/document-review.entity';
 import { MongooseModule } from '@nestjs/mongoose';
 import { buildConfiguration } from './config/configuration';
 import { DatasetModule } from './dataset/dataset.module';
@@ -59,7 +56,6 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
               database: config.get<string>('POSTGRES_DB', 'knowledge_hub'),
               entities: [
                 DocumentEntity,
-                DocumentReviewEntity,
                 DatasetEntity,
                 DatasetDocumentEntity,
                 DocumentIngestionJobEntity,
@@ -84,7 +80,5 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
           }),
         ]),
   ],
-  controllers: [AppController],
-  providers: [AppService],
 })
 export class AppModule {}

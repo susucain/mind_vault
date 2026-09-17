@@ -1,7 +1,5 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { DocumentService } from './document.service';
-import { DocumentReviewService } from './document-review.service';
 import {
   DocumentContent,
   DocumentContentSchema,
@@ -32,11 +30,6 @@ import { Client } from '@elastic/elasticsearch';
 import { ConfigService } from '@nestjs/config';
 import { GraphModule } from '../graph/graph.module';
 
-/**
- * 文档模块
- * - DocumentService：文档 CRUD + 状态流转（草稿 / 发布 / 归档 / 待审核）
- * - DocumentReviewService：发布审核（提交 / 通过 / 驳回）
- */
 @Module({
   imports: [
     AuthModule,
@@ -57,8 +50,6 @@ import { GraphModule } from '../graph/graph.module';
     DocumentLifecycleController,
   ],
   providers: [
-    DocumentService,
-    DocumentReviewService,
     FileParserService,
     RustfsService,
     DocumentPipelinePublisher,
@@ -81,12 +72,6 @@ import { GraphModule } from '../graph/graph.module';
         }),
     },
   ],
-  exports: [
-    DocumentService,
-    DocumentReviewService,
-    FileParserService,
-    ElasticsearchIndexService,
-    EmbeddingService,
-  ],
+  exports: [FileParserService, ElasticsearchIndexService, EmbeddingService],
 })
 export class DocumentModule {}
