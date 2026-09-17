@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { PDFParse } from 'pdf-parse';
+import { ParsedDocument } from '../parsed-document';
 import { cleanMarkdown, toMarkdownTable } from '../utils/markdown.util';
 
 const logger = new Logger('PdfParser');
@@ -28,7 +29,7 @@ export interface ParsePdfOptions {
 }
 
 /**
- * 将 PDF 解析为 Markdown。
+ * 将 PDF 解析为统一的结构化文档。
  *
  * 整体流程：
  * 1. 按页提取文本；
@@ -39,10 +40,11 @@ export interface ParsePdfOptions {
  *
  * 图片提取失败不会中断解析，会降级为仅文本；单张图片上传失败则跳过该张。
  */
-export async function parsePdf(
+export async function parsePdfDocument(
   buffer: Buffer,
+  title = 'document.pdf',
   options: ParsePdfOptions = {},
-): Promise<string> {
+): Promise<ParsedDocument> {
   const parser = new PDFParse({ data: buffer });
   const threshold = options.imageThreshold ?? 50;
 
@@ -169,7 +171,46 @@ export async function parsePdf(
       // 表格提取失败不影响主结果
     }
 
-    return markdown;
+    const sections =
+      pageTexts.length > 0
+        ? pageTexts
+            .map((page, index) => {
+              const pageNumber = page.num ?? index + 1;
+              const text = (page.text ?? '').trim();
+              const urls = pageImageUrls.get(pageNumber) ?? [];
+              const sectionText = cleanMarkdown(
+                [text, ...urls.map((url) => `![](${url})`)].join('\n\n'),
+              );
+              return {
+                sectionId: `section_${String(index + 1).padStart(4, '0')}`,
+                heading: `第 ${pageNumber} 页`,
+                text: sectionText,
+                order: index,
+                locator: { page: pageNumber },
+              };
+            })
+            .filter((section) => section.text)
+        : markdown
+          ? [
+              {
+                sectionId: 'section_0001',
+                text: markdown,
+                order: 0,
+                locator: { page: 1 },
+              },
+            ]
+          : [];
+
+    return {
+      title,
+      format: 'pdf',
+      pageCount: pageTexts.length,
+      sections,
+      assets: [...pageImageUrls.entries()].flatMap(([page, urls]) =>
+        urls.map((url) => ({ url, locator: { page } })),
+      ),
+      rawText: markdown,
+    };
   } finally {
     // 释放 pdf-parse / wasm 等底层资源，避免泄漏
     await parser.destroy();

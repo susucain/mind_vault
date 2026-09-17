@@ -1,4 +1,9 @@
+jest.mock('./parsers/pdf.parser', () => ({
+  parsePdfDocument: jest.fn(),
+}));
+
 import { FileParserService } from './file-parser.service';
+import { parsePdfDocument } from './parsers/pdf.parser';
 
 describe('FileParserService', () => {
   const service = new FileParserService({
@@ -60,5 +65,50 @@ describe('FileParserService', () => {
       lineEnd: 2,
     });
     expect(result.rawText).toContain('Mind Vault | 100');
+  });
+
+  it('uses the same PDF extraction result for structured and text parsing', async () => {
+    const parsed = {
+      title: 'guide.pdf',
+      format: 'pdf',
+      pageCount: 1,
+      sections: [
+        {
+          sectionId: 'section_0001',
+          text: 'PDF content',
+          order: 0,
+          locator: { page: 1 },
+        },
+      ],
+      assets: [],
+      rawText: 'PDF content',
+    };
+    const parsePdfDocumentMock = parsePdfDocument as jest.MockedFunction<
+      typeof parsePdfDocument
+    >;
+    parsePdfDocumentMock.mockResolvedValue(parsed);
+    const file = {
+      originalname: 'guide.pdf',
+      buffer: Buffer.from('pdf'),
+    };
+
+    await expect(service.parseStructured(file)).resolves.toEqual(parsed);
+    await expect(service.parse(file)).resolves.toBe('PDF content');
+
+    expect(parsePdfDocumentMock).toHaveBeenCalledTimes(2);
+    expect(parsePdfDocumentMock).toHaveBeenCalledWith(
+      file.buffer,
+      file.originalname,
+      expect.objectContaining({ uploadImage: undefined }),
+    );
+  });
+
+  it('returns CSV text from the same structured parser used for ingestion', async () => {
+    await expect(
+      service.parse({
+        originalname: 'data.csv',
+        buffer: Buffer.from('name,score\nMind Vault,100\n'),
+      }),
+    ).resolves.toContain('Mind Vault | 100');
   });
 });

@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { RustfsService } from '../../storage/rustfs.service';
 import { parseDocx } from './parsers/docx.parser';
-import { parsePdf } from './parsers/pdf.parser';
+import { ParsePdfOptions, parsePdfDocument } from './parsers/pdf.parser';
 import { parsePlainText } from './parsers/plain-text.parser';
 import { parsePptx } from './parsers/pptx.parser';
 import { parseXlsx } from './parsers/xlsx.parser';
@@ -10,7 +10,6 @@ import { ParsedDocument } from './parsed-document';
 import { sectionsFromMarkdown } from './parsers/structured.util';
 import { parseCsv } from './parsers/csv.parser';
 import { parseJson } from './parsers/json.parser';
-import { parsePdfSections } from './parsers/pdf-structured.parser';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -43,7 +42,7 @@ export interface ParseInput {
 /**
  * 文件 → Markdown 解析服务。
  *
- * 按扩展名分发到各 parser；PDF 在对象存储可用时注入图片上传回调。
+ * 按扩展名分发到各 parser；所有格式先生成 ParsedDocument。
  * 解析结果为空或格式不支持时抛 BadRequestException。
  */
 @Injectable()
@@ -64,66 +63,13 @@ export class FileParserService {
 
   /**
    * 将上传文件解析为 Markdown 字符串。
-   *
-   * - pdf：可选提取图片并上传到 rustfs（`pdf-images/` 前缀）
-   * - xlsx：exceljs 优先，失败降级 officeparser（见 parseXlsxWithFallback）
-   * - pptx / docx / txt / md：直接调用对应 parser
+   * 与 parseStructured 共用同一份提取结果，避免不同入口产生不一致内容。
    */
   async parse(file: ParseInput): Promise<string> {
-    const extension = getExtension(file.originalname);
-
-    if (!this.isSupported(extension)) {
-      throw new BadRequestException(
-        `不支持的文件格式: ${extension || '(无扩展名)'}，支持的格式: ${this.supportedList()}`,
-      );
-    }
-
-    if (!file.buffer?.length) {
-      throw new BadRequestException('文件内容为空，无法解析');
-    }
-
     const start = Date.now();
-    let result: string;
-
-    switch (extension) {
-      case 'docx':
-        result = await parseDocx(file.buffer);
-        break;
-      case 'doc':
-        result = await this.parseLegacyOffice(file, 'docx');
-        break;
-      case 'pdf':
-        result = await parsePdf(file.buffer, {
-          // 存储未启用时不传 uploadImage，PDF 仅输出文本/表格
-          uploadImage: this.rustfs.isEnabled()
-            ? (bytes, fileName, contentType) =>
-                this.rustfs.uploadBytes(bytes, {
-                  fileName,
-                  contentType,
-                  prefix: 'pdf-images',
-                })
-            : undefined,
-        });
-        break;
-      case 'pptx':
-        result = await parsePptx(file.buffer);
-        break;
-      case 'ppt':
-        result = await this.parseLegacyOffice(file, 'pptx');
-        break;
-      case 'xlsx':
-        result = await this.parseXlsxWithFallback(file.buffer);
-        break;
-      case 'xls':
-        result = await this.parseLegacyOffice(file, 'xlsx');
-        break;
-      case 'txt':
-      case 'md':
-        result = parsePlainText(file.buffer);
-        break;
-      default:
-        throw new BadRequestException(`不支持的文件格式: ${extension}`);
-    }
+    const parsed = await this.parseStructured(file);
+    const extension = getExtension(file.originalname);
+    const result = parsed.rawText;
 
     const elapsed = Date.now() - start;
     this.logger.log(
@@ -153,7 +99,11 @@ export class FileParserService {
     let parsed: ParsedDocument;
     switch (extension) {
       case 'pdf':
-        parsed = await parsePdfSections(file.buffer, file.originalname);
+        parsed = await parsePdfDocument(
+          file.buffer,
+          file.originalname,
+          this.pdfOptions(),
+        );
         break;
       case 'csv':
         parsed = parseCsv(file.buffer, file.originalname);
@@ -162,45 +112,95 @@ export class FileParserService {
         parsed = parseJson(file.buffer, file.originalname);
         break;
       case 'txt':
-      case 'md': {
-        const text = parsePlainText(file.buffer);
-        parsed = {
-          title: file.originalname,
-          format: extension,
-          sections: sectionsFromMarkdown(
-            text,
-            (_index, _heading, lineStart) => ({
-              lineStart,
-            }),
-          ),
-          assets: [],
-          rawText: text,
-        };
+      case 'md':
+        parsed = this.markdownDocument(
+          file.originalname,
+          extension,
+          parsePlainText(file.buffer),
+        );
         break;
-      }
-      default: {
-        const text = await this.parse(file);
-        parsed = {
-          title: file.originalname,
-          format: extension,
-          sections: sectionsFromMarkdown(text, (index, heading, lineStart) =>
-            extension.startsWith('ppt')
-              ? {
-                  slide: Number(heading?.match(/\d+/)?.[0] ?? index + 1),
-                }
-              : extension.startsWith('xls')
-                ? { sheet: heading }
-                : { lineStart },
-          ),
-          assets: [],
-          rawText: text,
-        };
-      }
+      case 'docx':
+        parsed = this.markdownDocument(
+          file.originalname,
+          extension,
+          await parseDocx(file.buffer),
+        );
+        break;
+      case 'doc':
+        parsed = this.markdownDocument(
+          file.originalname,
+          extension,
+          await this.parseLegacyOffice(file, 'docx'),
+        );
+        break;
+      case 'pptx':
+        parsed = this.markdownDocument(
+          file.originalname,
+          extension,
+          await parsePptx(file.buffer),
+        );
+        break;
+      case 'ppt':
+        parsed = this.markdownDocument(
+          file.originalname,
+          extension,
+          await this.parseLegacyOffice(file, 'pptx'),
+        );
+        break;
+      case 'xlsx':
+        parsed = this.markdownDocument(
+          file.originalname,
+          extension,
+          await this.parseXlsxWithFallback(file.buffer),
+        );
+        break;
+      case 'xls':
+        parsed = this.markdownDocument(
+          file.originalname,
+          extension,
+          await this.parseLegacyOffice(file, 'xlsx'),
+        );
+        break;
+      default:
+        throw new BadRequestException(`不支持的文件格式: ${extension}`);
     }
     if (!parsed.rawText.trim()) {
       throw new BadRequestException('文件解析结果为空');
     }
     return parsed;
+  }
+
+  private markdownDocument(
+    title: string,
+    format: string,
+    rawText: string,
+  ): ParsedDocument {
+    return {
+      title,
+      format,
+      sections: sectionsFromMarkdown(rawText, (index, heading, lineStart) =>
+        format.startsWith('ppt')
+          ? { slide: Number(heading?.match(/\d+/)?.[0] ?? index + 1) }
+          : format.startsWith('xls')
+            ? { sheet: heading }
+            : { lineStart },
+      ),
+      assets: [],
+      rawText,
+    };
+  }
+
+  private pdfOptions(): ParsePdfOptions {
+    return {
+      uploadImage: this.rustfs.isEnabled()
+        ? (bytes, fileName, contentType) =>
+            this.rustfs.uploadBytes(bytes, {
+              fileName,
+              contentType,
+              prefix: 'pdf-images',
+            })
+        : undefined,
+    };
   }
 
   /**
