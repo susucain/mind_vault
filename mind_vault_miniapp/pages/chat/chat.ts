@@ -12,6 +12,29 @@ import { showRequestError } from '../../utils/feedback';
 
 interface DisplayMessage extends ChatMessage {
   streaming?: boolean;
+  /** 本轮是否注入了长期记忆，用于气泡下方提示，不展示原始 memory 工具名 */
+  usedMemory?: boolean;
+}
+
+const MEMORY_TOOL = 'memory';
+
+/**
+ * 把记忆工具名从展示列表里摘出来单独标记：
+ * 后端 meta 只给工具名数组，气泡上直接显示 "memory" 对用户没有意义。
+ */
+function splitMemoryTool(usedTools: string[]): {
+  tools: string[];
+  usedMemory: boolean;
+} {
+  return {
+    tools: usedTools.filter((tool) => tool !== MEMORY_TOOL),
+    usedMemory: usedTools.includes(MEMORY_TOOL),
+  };
+}
+
+function withMemoryFlag(message: ChatMessage): DisplayMessage {
+  const { tools, usedMemory } = splitMemoryTool(message.usedTools);
+  return { ...message, usedTools: tools, usedMemory };
 }
 
 Page({
@@ -111,11 +134,18 @@ Page({
       });
       this.scrollToBottom();
 
+      let streamFailed = false;
       await streamMessage(this.data.conversationId, content, (event) => {
+        if (event.event === 'error') streamFailed = true;
         this.handleStreamEvent(assistantMessage.id, event.event, event.data);
       });
+      if (streamFailed) {
+        // 失败时后端没有落库助手消息，用服务端历史覆盖会抹掉刚渲染的错误提示
+        this.scrollToBottom();
+        return;
+      }
       const history = await listMessages(this.data.conversationId);
-      this.setData({ messages: history.items });
+      this.setData({ messages: history.items.map(withMemoryFlag) });
       this.scrollToBottom();
     } catch (error) {
       showRequestError(error);
@@ -133,8 +163,10 @@ Page({
     const target = messages.find((message) => message.id === localMessageId);
     if (!target) return;
     if (event === 'meta' && isMetaEvent(data)) {
+      const { tools, usedMemory } = splitMemoryTool(data.usedTools);
       target.id = data.messageId;
-      target.usedTools = data.usedTools;
+      target.usedTools = tools;
+      target.usedMemory = usedMemory;
       target.model = data.model ?? null;
       target.thinking = data.thinking;
     }

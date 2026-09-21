@@ -1,0 +1,184 @@
+.header {
+  display: flex;
+  flex-direction: column;
+  padding: 28rpx 0;
+}
+
+.kicker {
+  color: #087f78;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.title {
+  margin-top: 12rpx;
+  font-size: 48rpx;
+  font-weight: 700;
+}
+
+.subtitle {
+  margin-top: 16rpx;
+  color: #718087;
+  font-size: 26rpx;
+  line-height: 1.6;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin: 10rpx 0 12rpx;
+}
+
+.filter-spacer {
+  flex: 1;
+}
+
+.filter-chip {
+  padding: 12rpx 20rpx;
+  border: 1rpx solid #dfe7e5;
+  border-radius: 999rpx;
+  color: #718087;
+  background: #ffffff;
+  font-size: 24rpx;
+}
+
+.filter-chip-active {
+  border-color: #087f78;
+  color: #087f78;
+  background: #e7f5f1;
+}
+
+.usage {
+  display: flex;
+  flex-direction: column;
+  margin: 20rpx 0 4rpx;
+  padding: 26rpx 24rpx;
+}
+
+.usage-title {
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.usage-copy {
+  margin-top: 12rpx;
+  color: #718087;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+
+.usage-hint {
+  margin-top: 12rpx;
+  color: #9aa5a9;
+  font-size: 20rpx;
+}
+
+.capacity {
+  display: flex;
+  flex-direction: column;
+  margin: 20rpx 0 4rpx;
+  padding: 26rpx 24rpx;
+}
+
+.capacity-title {
+  color: #c65353;
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.capacity-copy {
+  margin-top: 12rpx;
+  color: #718087;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+
+.capacity-action {
+  margin-top: 16rpx;
+  color: #087f78;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.memory {
+  display: flex;
+  flex-direction: column;
+  padding: 24rpx;
+}
+
+.memory-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.memory-kind {
+  padding: 6rpx 14rpx;
+  border-radius: 999rpx;
+  color: #087f78;
+  background: #e7f5f1;
+  font-size: 20rpx;
+  font-weight: 700;
+}
+
+.memory-time {
+  color: #8b969a;
+  font-size: 20rpx;
+}
+
+.memory-content {
+  margin-top: 16rpx;
+  font-size: 28rpx;
+  line-height: 1.6;
+}
+
+.memory-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12rpx;
+  margin-top: 20rpx;
+}
+
+.clear {
+  margin-top: 40rpx;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+  padding: 36rpx 32rpx 52rpx;
+}
+
+.editor-title {
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.kind-row {
+  display: flex;
+  gap: 16rpx;
+}
+
+.kind-chip {
+  padding: 12rpx 24rpx;
+  border: 1rpx solid #dfe7e5;
+  border-radius: 999rpx;
+  color: #718087;
+  font-size: 24rpx;
+}
+
+.kind-chip-active {
+  border-color: #087f78;
+  color: #087f78;
+  background: #e7f5f1;
+}

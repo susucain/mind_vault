@@ -33,6 +33,8 @@ export interface ChatStreamMeta extends Record<string, unknown> {
   usedTools: string[];
   model?: string;
   thinking: boolean;
+  /** rag：回答基于资料命中；general：资料无依据，改由模型通用知识作答 */
+  answerMode?: 'rag' | 'general';
 }
 
 export interface DatasetChoice extends Dataset {

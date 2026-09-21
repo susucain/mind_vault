@@ -9,6 +9,17 @@
     <text class="id">用户 ID：{{userId}}</text>
   </view>
 
+  <view class="section-title">长期记忆</view>
+  <view class="setting surface" bind:tap="openMemories">
+    <view class="setting-head">
+      <text class="setting-title">记忆管理</text>
+      <text class="setting-arrow">›</text>
+    </view>
+    <text class="setting-copy">
+      查看、修改或删除模型记住的偏好与目标，也可以一键清空。
+    </text>
+  </view>
+
   <view class="section-title">设置</view>
   <view class="setting surface">
     <text class="setting-title">模型调用与数据隐私</text>

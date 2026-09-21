@@ -38,8 +38,12 @@
     <view wx:for="{{messages}}" wx:key="id" id="message-{{index}}" class="message {{item.role}}">
       <view class="bubble">
         <text class="message-content">{{item.content || (item.streaming ? '正在生成回答...' : '')}}</text>
-        <view wx:if="{{item.role === 'assistant' && item.usedTools.length}}" class="message-meta">
-          <text>{{item.usedTools.join(' · ')}}</text>
+        <view
+          wx:if="{{item.role === 'assistant' && (item.usedMemory || item.usedTools.length || item.model || item.thinking)}}"
+          class="message-meta"
+        >
+          <text wx:if="{{item.usedMemory}}" class="memory-hint">已参考你的记忆</text>
+          <text wx:if="{{item.usedTools.length}}">{{item.usedTools.join(' · ')}}</text>
           <text wx:if="{{item.model}}">{{item.model}}</text>
           <text wx:if="{{item.thinking}}">thinking</text>
         </view>

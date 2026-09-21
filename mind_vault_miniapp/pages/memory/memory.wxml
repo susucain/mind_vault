@@ -1,0 +1,163 @@
+<view class="page">
+  <view class="header">
+    <text class="kicker">LONG TERM MEMORY</text>
+    <text class="title">长期记忆</text>
+    <text class="subtitle">
+      记忆只用于理解你的偏好和目标，会随每轮提问一起交给模型，不会被当作资料引用。自动抽取的记忆也会出现在这里。
+    </text>
+  </view>
+
+  <view class="filter-row">
+    <view
+      class="filter-chip {{status === 'ACTIVE' ? 'filter-chip-active' : ''}}"
+      data-status="ACTIVE"
+      bind:tap="switchStatus"
+    >
+      生效中 {{counts.active}}
+    </view>
+    <view
+      class="filter-chip {{status === 'SUPERSEDED' ? 'filter-chip-active' : ''}}"
+      data-status="SUPERSEDED"
+      bind:tap="switchStatus"
+    >
+      已失效 {{counts.superseded}}
+    </view>
+    <view class="filter-spacer"></view>
+    <van-button
+      wx:if="{{status === 'ACTIVE'}}"
+      type="primary"
+      size="small"
+      bind:click="openCreate"
+    >
+      新增
+    </van-button>
+  </view>
+
+  <view wx:if="{{usage.total}}" class="usage surface">
+    <text class="usage-title">参考情况</text>
+    <text class="usage-copy">
+      最近 {{usage.total}} 次问答中，{{usage.memoryInjected}} 次参考了记忆（{{usage.memoryRateText}}）。
+    </text>
+    <text class="usage-copy">
+      其中 {{usage.generalAnswers}} 次资料里没找到依据（{{usage.generalRateText}}），改由模型通用知识作答。
+    </text>
+    <text class="usage-hint">统计只保存在本机，取样上限为最近 50 次请求。</text>
+  </view>
+
+  <view wx:if="{{atCapacity}}" class="capacity surface">
+    <text class="capacity-title">记忆已达上限 {{maxActive}} 条</text>
+    <text class="capacity-copy">
+      再抽取到新记忆时，最久没有被参考的条目会被自动转为已失效。建议先清理不再需要的记忆。
+    </text>
+    <text
+      wx:if="{{status === 'ACTIVE'}}"
+      class="capacity-action"
+      data-status="SUPERSEDED"
+      bind:tap="switchStatus"
+    >
+      查看已失效 {{counts.superseded}} 条
+    </text>
+  </view>
+
+  <app-state wx:if="{{loading}}" type="loading"></app-state>
+  <app-state
+    wx:elif="{{error}}"
+    type="error"
+    title="记忆加载失败"
+    description="{{error}}"
+    bind:action="loadMemories"
+  ></app-state>
+  <app-state
+    wx:elif="{{memories.length === 0}}"
+    type="empty"
+    title="{{status === 'ACTIVE' ? '还没有记忆' : '没有被取代的记忆'}}"
+    description="{{status === 'ACTIVE' ? '在对话中告诉模型你的偏好，或点右上角新增一条。' : '当新记忆取代旧记忆时，旧条目会出现在这里。'}}"
+  ></app-state>
+
+  <view wx:else class="memory-list">
+    <view wx:for="{{memories}}" wx:key="id" class="memory surface">
+      <view class="memory-head">
+        <text class="memory-kind">{{item.kindLabel}}</text>
+        <text class="memory-time">{{item.timeLabel}}</text>
+      </view>
+      <text class="memory-content">{{item.content}}</text>
+      <view class="memory-actions">
+        <van-button
+          wx:if="{{item.status === 'SUPERSEDED'}}"
+          size="mini"
+          plain
+          type="primary"
+          data-id="{{item.id}}"
+          bind:click="restoreMemory"
+        >
+          恢复
+        </van-button>
+        <van-button
+          size="mini"
+          plain
+          type="primary"
+          data-id="{{item.id}}"
+          bind:click="openEdit"
+        >
+          编辑
+        </van-button>
+        <van-button
+          size="mini"
+          plain
+          type="danger"
+          data-id="{{item.id}}"
+          bind:click="removeMemory"
+        >
+          删除
+        </van-button>
+      </view>
+    </view>
+  </view>
+
+  <van-button
+    wx:if="{{memories.length > 0}}"
+    class="clear"
+    type="danger"
+    plain
+    block
+    loading="{{clearing}}"
+    bind:click="clearAll"
+  >
+    清空全部记忆
+  </van-button>
+
+  <van-popup show="{{showEditor}}" position="bottom" round bind:close="closeEditor">
+    <view class="editor">
+      <text class="editor-title">{{editingId ? '编辑记忆' : '新增记忆'}}</text>
+      <van-field
+        value="{{draftContent}}"
+        type="textarea"
+        autosize
+        maxlength="200"
+        show-word-limit
+        label="内容"
+        placeholder="例如：偏好简短回答，先给结论再给理由"
+        bind:change="updateContent"
+      />
+      <view class="kind-row">
+        <view
+          wx:for="{{kindOptions}}"
+          wx:key="value"
+          class="kind-chip {{item.value === draftKind ? 'kind-chip-active' : ''}}"
+          data-kind="{{item.value}}"
+          bind:tap="selectKind"
+        >
+          {{item.label}}
+        </view>
+      </view>
+      <van-button
+        type="primary"
+        block
+        loading="{{saving}}"
+        bind:click="saveMemory"
+      >
+        {{editingId ? '保存修改' : '记住这条'}}
+      </van-button>
+    </view>
+  </van-popup>
+</view>

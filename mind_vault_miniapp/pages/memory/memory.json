@@ -1,0 +1,9 @@
+{
+  "navigationBarTitleText": "长期记忆",
+  "usingComponents": {
+    "van-button": "@vant/weapp/button/index",
+    "van-field": "@vant/weapp/field/index",
+    "van-popup": "@vant/weapp/popup/index",
+    "app-state": "/components/app-state/app-state"
+  }
+}

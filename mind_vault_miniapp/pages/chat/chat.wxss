@@ -96,6 +96,14 @@
   font-size: 20rpx;
 }
 
+.memory-hint {
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  color: #087f78;
+  background: #e7f5f1;
+  font-weight: 700;
+}
+
 .composer {
   position: fixed;
   right: 24rpx;

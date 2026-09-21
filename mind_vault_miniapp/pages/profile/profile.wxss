@@ -35,6 +35,18 @@
   font-size: 24rpx;
 }
 
+.setting-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.setting-arrow {
+  color: #8b969a;
+  font-size: 40rpx;
+}
+
 .setting-title {
   font-size: 28rpx;
   font-weight: 700;

@@ -19,6 +19,10 @@ Page({
     });
   },
 
+  openMemories() {
+    wx.navigateTo({ url: '/pages/memory/memory' });
+  },
+
   logout() {
     clearSession();
     wx.reLaunch({ url: '/pages/login/login' });
