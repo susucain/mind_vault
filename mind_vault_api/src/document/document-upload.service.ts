@@ -186,13 +186,19 @@ export class DocumentUploadService {
       order: { createdAt: 'DESC' },
     });
     if (!job) throw new BadRequestException('未找到文档处理任务');
-    if (
-      job.status !== IngestionJobStatus.Failed &&
-      job.status !== IngestionJobStatus.Uploaded
-    ) {
+    const retryable: IngestionJobStatus[] = [
+      IngestionJobStatus.Failed,
+      IngestionJobStatus.Uploaded,
+      IngestionJobStatus.Deleting,
+    ];
+    if (!retryable.includes(job.status)) {
       throw new BadRequestException('只有失败或待处理任务可以重试');
     }
-    job.status = IngestionJobStatus.Uploaded;
+    const isDelete = job.operation === IngestionJobOperation.Delete;
+    // 按原操作重发：删除任务若重发成 index，会因文档已软删而必然失败
+    job.status = isDelete
+      ? IngestionJobStatus.Deleting
+      : IngestionJobStatus.Uploaded;
     job.currentStage = 'retry_pending';
     job.errorCode = null;
     job.errorMessage = null;
@@ -202,7 +208,7 @@ export class DocumentUploadService {
       ownerId,
       documentId,
       documentVersion: job.documentVersion,
-      operation: 'index',
+      operation: job.operation,
     });
     return {
       documentId,

@@ -117,6 +117,7 @@ describe('DocumentUploadService', () => {
       ownerId: 'user_1',
       documentId: 'doc_1',
       documentVersion: 1,
+      operation: 'index',
       status: 'FAILED',
       retryCount: 1,
       errorCode: 'PARSE_FAILED',
@@ -155,6 +156,7 @@ describe('DocumentUploadService', () => {
       ownerId: 'user_1',
       documentId: 'doc_1',
       documentVersion: 1,
+      operation: 'index',
       status: 'UPLOADED',
       retryCount: 0,
       errorCode: null,
@@ -184,6 +186,45 @@ describe('DocumentUploadService', () => {
       documentId: 'doc_1',
       documentVersion: 1,
       operation: 'index',
+    });
+  });
+
+  it('republishes a deletion job as delete when the cleanup failed', async () => {
+    const job = {
+      id: 'job_1',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      operation: 'delete',
+      status: 'DELETING',
+      retryCount: 1,
+      errorCode: null,
+      errorMessage: null,
+    };
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue(job),
+      save: jest.fn().mockResolvedValue(job),
+    };
+    const publisher = { publishIndex: jest.fn().mockResolvedValue(undefined) };
+    const service = new DocumentUploadService(
+      {} as never,
+      {} as never,
+      jobs as never,
+      {} as never,
+      publisher as never,
+      {} as never,
+    );
+
+    await expect(service.retry('user_1', 'doc_1')).resolves.toMatchObject({
+      status: 'DELETING',
+      retryCount: 1,
+    });
+    expect(publisher.publishIndex).toHaveBeenCalledWith({
+      jobId: 'job_1',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      operation: 'delete',
     });
   });
 });

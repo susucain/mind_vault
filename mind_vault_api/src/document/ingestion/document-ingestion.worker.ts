@@ -74,7 +74,8 @@ export class DocumentIngestionWorker {
     await this.channel.bindQueue(
       'mind-vault.ingestion.worker',
       'mind-vault.ingestion',
-      'document.index',
+      // 通配绑定，避免新增 operation 时漏绑导致消息被交换器丢弃
+      'document.*',
     );
     await this.channel.consume(
       'mind-vault.ingestion.worker',
@@ -203,6 +204,12 @@ export class DocumentIngestionWorker {
       });
       stage = 'indexing';
       await this.updateJob(job, IngestionJobStatus.Indexing, 'indexing');
+      if (message.operation === 'reindex') {
+        // 重建前清空旧数据：分块策略或 embedding 模型变化后 chunkId 会变，
+        // 不清空会导致新旧 chunk 同时留在索引里被重复召回
+        await this.index.deleteByDocument(message.ownerId, message.documentId);
+        await this.graph.deleteDocument(message.ownerId, message.documentId);
+      }
       await this.index.indexChunks(chunks);
       for (const chunk of chunks) {
         const extraction = await this.graphExtraction.extract(chunk);
@@ -250,6 +257,14 @@ export class DocumentIngestionWorker {
     message: IndexMessage,
     job: DocumentIngestionJobEntity,
   ) {
+    if (job.status === IngestionJobStatus.Deleted) {
+      return {
+        jobId: job.id,
+        documentId: message.documentId,
+        status: IngestionJobStatus.Deleted,
+        skipped: true,
+      };
+    }
     const document = await this.documents.findOne({
       where: { id: message.documentId, ownerId: message.ownerId },
     });

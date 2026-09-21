@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await */
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DocumentLifecycleService } from './document-lifecycle.service';
 
 describe('DocumentLifecycleService', () => {
@@ -50,6 +51,94 @@ describe('DocumentLifecycleService', () => {
     );
     expect(publisher.publishDelete).toHaveBeenCalledWith(
       expect.objectContaining({ ownerId: 'user_1', documentId: 'doc_1' }),
+    );
+  });
+
+  it('queues a reindex job on a fresh job record', async () => {
+    const documents = {
+      findOne: jest
+        .fn()
+        .mockResolvedValue({ id: 'doc_1', ownerId: 'user_1', deleted: false }),
+    };
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'job_old',
+        documentVersion: 1,
+        status: 'READY',
+      }),
+      create: jest.fn((input) => input),
+      save: jest.fn(async (input) => ({ ...input, id: 'job_new' })),
+    };
+    const publisher = { publishIndex: jest.fn().mockResolvedValue(undefined) };
+    const service = new DocumentLifecycleService(
+      documents as never,
+      {} as never,
+      jobs as never,
+      publisher as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(service.reindex('user_1', 'doc_1')).resolves.toMatchObject({
+      documentId: 'doc_1',
+      jobId: 'job_new',
+      status: 'UPLOADED',
+    });
+    expect(jobs.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'reindex',
+        documentVersion: 1,
+        status: 'UPLOADED',
+      }),
+    );
+    expect(publisher.publishIndex).toHaveBeenCalledWith({
+      jobId: 'job_new',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      operation: 'reindex',
+    });
+  });
+
+  it('rejects a reindex while the document is still being processed', async () => {
+    const documents = {
+      findOne: jest
+        .fn()
+        .mockResolvedValue({ id: 'doc_1', ownerId: 'user_1', deleted: false }),
+    };
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue({ id: 'job_1', status: 'CHUNKING' }),
+      create: jest.fn(),
+      save: jest.fn(),
+    };
+    const publisher = { publishIndex: jest.fn() };
+    const service = new DocumentLifecycleService(
+      documents as never,
+      {} as never,
+      jobs as never,
+      publisher as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(service.reindex('user_1', 'doc_1')).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(publisher.publishIndex).not.toHaveBeenCalled();
+  });
+
+  it('rejects a reindex for a missing or already deleted document', async () => {
+    const service = new DocumentLifecycleService(
+      { findOne: jest.fn().mockResolvedValue(null) } as never,
+      {} as never,
+      {} as never,
+      { publishIndex: jest.fn() } as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(service.reindex('user_1', 'doc_1')).rejects.toThrow(
+      NotFoundException,
     );
   });
 });

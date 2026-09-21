@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Channel, ChannelModel, connect } from 'amqplib';
-import { DocumentEntity } from '../document/entities/document.entity';
 
 @Injectable()
 export class DocumentPipelinePublisher {
@@ -38,29 +37,6 @@ export class DocumentPipelinePublisher {
     operation: 'delete';
   }) {
     return this.publishIndex(message);
-  }
-
-  async afterPublish(document: DocumentEntity, content: string): Promise<void> {
-    await this.publishIndex({
-      jobId: `publish-${document.id}-${Date.now()}`,
-      ownerId: document.ownerId,
-      documentId: document.id,
-      documentVersion: 1,
-      operation: 'index',
-    });
-    this.logger.debug(
-      `Document publish queued: documentId=${document.id}, chars=${content.length}`,
-    );
-  }
-
-  async afterUnpublish(documentId: string): Promise<void> {
-    await this.publishIndex({
-      jobId: `delete-${documentId}-${Date.now()}`,
-      ownerId: 'unknown',
-      documentId,
-      documentVersion: 1,
-      operation: 'delete',
-    });
   }
 
   private async getChannel(): Promise<Channel> {

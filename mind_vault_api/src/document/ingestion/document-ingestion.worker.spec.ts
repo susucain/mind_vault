@@ -156,4 +156,148 @@ describe('DocumentIngestionWorker', () => {
     expect(index.deleteByDocument).toHaveBeenCalledWith('user_1', 'doc_1');
     expect(graph.deleteDocument).toHaveBeenCalledWith('user_1', 'doc_1');
   });
+
+  it('skips a deletion job that already finished', async () => {
+    const job = {
+      id: 'job_delete',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      operation: 'delete',
+      status: IngestionJobStatus.Deleted,
+      currentStage: 'deleted',
+      retryCount: 0,
+    };
+    const storage = {
+      isEnabled: jest.fn().mockReturnValue(true),
+      deleteObject: jest.fn(),
+    };
+    const index = { deleteByDocument: jest.fn().mockResolvedValue(undefined) };
+    const graph = { deleteDocument: jest.fn().mockResolvedValue(undefined) };
+    const worker = new DocumentIngestionWorker(
+      { findOne: jest.fn().mockResolvedValue(job), save: jest.fn() } as never,
+      { findOne: jest.fn() } as never,
+      {} as never,
+      {} as never,
+      storage as never,
+      { get: jest.fn().mockReturnValue(false) } as never,
+      {} as never,
+      {} as never,
+      index as never,
+      {} as never,
+      graph as never,
+      {} as never,
+    );
+
+    await expect(
+      worker.process({
+        jobId: 'job_delete',
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        documentVersion: 1,
+        operation: 'delete',
+      }),
+    ).resolves.toMatchObject({
+      status: IngestionJobStatus.Deleted,
+      skipped: true,
+    });
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+    expect(index.deleteByDocument).not.toHaveBeenCalled();
+    expect(graph.deleteDocument).not.toHaveBeenCalled();
+  });
+
+  it('clears the existing index before rebuilding for a reindex job', async () => {
+    const job = {
+      id: 'job_reindex',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      operation: 'reindex',
+      status: IngestionJobStatus.Uploaded,
+      currentStage: 'reindex_pending',
+      retryCount: 0,
+    };
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue(job),
+      save: jest.fn(async (entity) => entity),
+    };
+    const index = {
+      deleteByDocument: jest.fn().mockResolvedValue(undefined),
+      indexChunks: jest.fn().mockResolvedValue(undefined),
+    };
+    const graph = {
+      deleteDocument: jest.fn().mockResolvedValue(undefined),
+      indexChunk: jest.fn().mockResolvedValue(undefined),
+    };
+    const worker = new DocumentIngestionWorker(
+      jobs as never,
+      {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'doc_1',
+          ownerId: 'user_1',
+          title: 'notes.md',
+          sourceFileName: 'notes.md',
+          sourceFileKey: null,
+          contentId: 'content_1',
+        }),
+      } as never,
+      {
+        findOne: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({
+            sourceBytes: Buffer.from('# 标题\n正文'),
+          }),
+        }),
+        updateOne: jest.fn().mockResolvedValue({ matchedCount: 1 }),
+      } as never,
+      {
+        parseStructured: jest.fn().mockResolvedValue({
+          title: 'notes.md',
+          format: 'md',
+          rawText: '# 标题\n正文',
+          sections: [
+            {
+              sectionId: 'section_0001',
+              heading: '标题',
+              text: '标题\n正文',
+              order: 0,
+              locator: { lineStart: 1 },
+            },
+          ],
+          assets: [],
+        }),
+      } as never,
+      { downloadBytes: jest.fn() } as never,
+      { get: jest.fn().mockReturnValue(false) } as never,
+      {
+        chunk: jest
+          .fn()
+          .mockReturnValue([
+            { chunkId: 'chunk_1', text: '标题\n正文', documentId: 'doc_1' },
+          ]),
+      } as never,
+      { embedDocuments: jest.fn().mockResolvedValue([[0.1, 0.2]]) } as never,
+      index as never,
+      {
+        extract: jest.fn().mockResolvedValue({ entities: [], relations: [] }),
+      } as never,
+      graph as never,
+      { find: jest.fn().mockResolvedValue([]) } as never,
+    );
+
+    await expect(
+      worker.process({
+        jobId: 'job_reindex',
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        documentVersion: 1,
+        operation: 'reindex',
+      }),
+    ).resolves.toMatchObject({ status: IngestionJobStatus.Ready });
+
+    expect(index.deleteByDocument).toHaveBeenCalledWith('user_1', 'doc_1');
+    expect(graph.deleteDocument).toHaveBeenCalledWith('user_1', 'doc_1');
+    expect(index.deleteByDocument.mock.invocationCallOrder[0]).toBeLessThan(
+      index.indexChunks.mock.invocationCallOrder[0],
+    );
+  });
 });
