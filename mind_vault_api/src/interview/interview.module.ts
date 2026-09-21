@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { DatasetModule } from '../dataset/dataset.module';
+import { MemoryModule } from '../memory/memory.module';
 import { RetrievalModule } from '../retrieval/retrieval.module';
 import { InterviewAgentService } from './interview-agent.service';
 import { InterviewController } from './interview.controller';
@@ -15,6 +16,7 @@ import { ReviewItemEntity } from './entities/review-item.entity';
   imports: [
     AuthModule,
     DatasetModule,
+    MemoryModule,
     RetrievalModule,
     TypeOrmModule.forFeature([
       InterviewSessionEntity,

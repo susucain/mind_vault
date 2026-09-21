@@ -9,7 +9,7 @@ export class GraphExtractionService {
   constructor(private readonly gateway: ModelGatewayService) {}
 
   async extract(chunk: DocumentChunk): Promise<GraphExtraction> {
-    const { data } = await this.gateway.invokeJson<GraphExtraction>(
+    const { data } = await this.gateway.invokeJson(
       'fast',
       [
         new SystemMessage(
@@ -18,8 +18,9 @@ export class GraphExtractionService {
         new HumanMessage(`来源文档片段：\n${chunk.text}`),
       ],
       false,
+      (raw) => extractionSchema.parse(limitExtraction(raw)),
     );
-    return extractionSchema.parse(limitExtraction(data));
+    return data;
   }
 }
 

@@ -39,6 +39,11 @@ export function buildConfiguration(env: EnvironmentInput = process.env) {
         false,
       ),
     },
+    retrieval: {
+      // ES kNN 对 cosine 返回的 _score 为 (1 + 余弦相似度) / 2，落在 0~1。
+      // 默认 0.75 约等于余弦 0.5：低于它视为资料中没有相关内容，需要按真实语料校准。
+      vectorMinScore: parseNumber(env.RETRIEVAL_VECTOR_MIN_SCORE, 0.75),
+    },
     infrastructure: {
       postgres: {
         host: env.POSTGRES_HOST ?? 'localhost',

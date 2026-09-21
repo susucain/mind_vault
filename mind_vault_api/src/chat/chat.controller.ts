@@ -66,6 +66,8 @@ export class ChatController {
         usedTools: result.message.usedTools,
         model: result.message.model,
         thinking: result.message.thinking,
+        // rag / general：general 为资料无依据时的自动补答（正文自带来源提示行）
+        answerMode: result.answerMode,
       });
       for (const text of splitText(result.message.content, 48)) {
         writeEvent(response, 'token', { text });

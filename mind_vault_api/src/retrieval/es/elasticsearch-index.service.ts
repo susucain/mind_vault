@@ -53,9 +53,18 @@ export class ElasticsearchIndexService {
           documentVersion: { type: 'integer' },
           sectionId: { type: 'keyword' },
           chunkOrder: { type: 'integer' },
-          titlePath: { type: 'text', analyzer: 'standard' },
+          // 索引端用 ik_max_word 提高召回，检索端用 ik_smart 提高精度
+          titlePath: {
+            type: 'text',
+            analyzer: 'ik_max_word',
+            search_analyzer: 'ik_smart',
+          },
           titleKeyword: { type: 'keyword' },
-          text: { type: 'text', analyzer: 'ik_max_word' },
+          text: {
+            type: 'text',
+            analyzer: 'ik_max_word',
+            search_analyzer: 'ik_smart',
+          },
           parentContext: { type: 'text', index: false },
           locator: { type: 'object', enabled: true },
           embedding: {
@@ -122,9 +131,13 @@ export class ElasticsearchIndexService {
             {
               multi_match: {
                 query: input.query,
-                fields: ['titlePath^3', 'text', 'titleKeyword^2'],
+                fields: ['titlePath^3', 'text'],
               },
             },
+          ],
+          // titleKeyword 是 keyword 不分词，单独用 term 做标题精确命中加分
+          should: [
+            { term: { titleKeyword: { value: input.query, boost: 5 } } },
           ],
           filter: this.filters(input.ownerId, input.datasetIds),
         },
@@ -206,8 +219,7 @@ export class ElasticsearchIndexService {
 
   private embeddingDimensions(): number {
     const configured =
-      this.config.get<string | number>('EMBEDDING_DIMENSION') ??
-      1024;
+      this.config.get<string | number>('EMBEDDING_DIMENSION') ?? 1024;
     const dimensions = Number(configured);
     if (!Number.isInteger(dimensions) || dimensions < 1) {
       throw new Error(`无效的 Embedding 维度: ${String(configured)}`);

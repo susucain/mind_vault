@@ -39,6 +39,7 @@ describe('RetrievalService', () => {
       es as never,
       embedding as never,
       graph as never,
+      { get: jest.fn().mockReturnValue(0.75) } as never,
     );
 
     const result = await service.hybrid({
@@ -74,6 +75,7 @@ describe('RetrievalService', () => {
           relations: [{ sourceChunkId: 'chunk_graph' }],
         }),
       } as never,
+      { get: jest.fn().mockReturnValue(0.75) } as never,
     );
 
     const hits = await service.graph({
@@ -89,5 +91,70 @@ describe('RetrievalService', () => {
         sources: ['graph'],
       }),
     ]);
+  });
+
+  it('treats the question as evidence-backed once the top vector score passes the threshold', async () => {
+    const es = {
+      vectorSearch: jest
+        .fn()
+        .mockResolvedValue([hit('chunk_a', 0.82, 'vector')]),
+    };
+    const service = new RetrievalService(
+      es as never,
+      { embedQuery: jest.fn().mockResolvedValue([0.1]) } as never,
+      {} as never,
+      { get: jest.fn().mockReturnValue(0.75) } as never,
+    );
+
+    await expect(
+      service.assessEvidence({ ownerId: 'user_1', query: 'Kafka 的作用' }),
+    ).resolves.toMatchObject({ hasEvidence: true });
+  });
+
+  it('reports no evidence when even the top vector score stays below the threshold', async () => {
+    const es = {
+      vectorSearch: jest
+        .fn()
+        .mockResolvedValue([hit('chunk_a', 0.61, 'vector')]),
+    };
+    const service = new RetrievalService(
+      es as never,
+      { embedQuery: jest.fn().mockResolvedValue([0.1]) } as never,
+      {} as never,
+      { get: jest.fn().mockReturnValue(0.75) } as never,
+    );
+
+    const result = await service.assessEvidence({
+      ownerId: 'user_1',
+      query: '1+1 等于几',
+    });
+
+    expect(result.hasEvidence).toBe(false);
+    expect(result.hits).toHaveLength(1);
+  });
+
+  it('reuses precomputed vector hits instead of embedding the query again', async () => {
+    const es = {
+      keywordSearch: jest.fn().mockResolvedValue([]),
+      vectorSearch: jest.fn(),
+      getByChunkIds: jest.fn().mockResolvedValue([]),
+    };
+    const embedding = { embedQuery: jest.fn() };
+    const service = new RetrievalService(
+      es as never,
+      embedding as never,
+      {} as never,
+      { get: jest.fn().mockReturnValue(0.75) } as never,
+    );
+
+    await service.hybrid({
+      ownerId: 'user_1',
+      query: 'Kafka',
+      vectorHits: [hit('chunk_a', 0.9, 'vector')],
+      topK: 3,
+    });
+
+    expect(embedding.embedQuery).not.toHaveBeenCalled();
+    expect(es.vectorSearch).not.toHaveBeenCalled();
   });
 });

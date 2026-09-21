@@ -21,6 +21,14 @@ export class ConversationEntity {
   @Column({ name: 'dataset_ids_json', type: 'jsonb', default: () => "'[]'" })
   datasetIds: string[];
 
+  /** 滑出短期记忆窗口的更早轮次摘要 */
+  @Column({ type: 'text', nullable: true })
+  summary?: string | null;
+
+  /** 已纳入摘要的消息条数，作为增量压缩的游标 */
+  @Column({ name: 'summarized_message_count', type: 'int', default: 0 })
+  summarizedMessageCount: number;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 

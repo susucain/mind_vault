@@ -1,5 +1,7 @@
+import { BadGatewayException } from '@nestjs/common';
+import { BaseMessage, HumanMessage } from '@langchain/core/messages';
+import { z } from 'zod';
 import { ModelGatewayService } from './model-gateway.service';
-import { HumanMessage } from '@langchain/core/messages';
 
 describe('ModelGatewayService', () => {
   it('selects fast and reasoning ChatModels with explicit thinking configuration', () => {
@@ -29,32 +31,48 @@ describe('ModelGatewayService', () => {
     });
   });
 
-  it('uses the OpenAI key for an explicitly configured OpenAI-compatible endpoint', () => {
+  it('只从 LLM_* 取端点与密钥，不受 OPENAI_* 变量影响', () => {
     const gateway = new ModelGatewayService({
       get: jest.fn(
         (key: string, fallback: unknown) =>
           ({
-            OPENAI_BASE_URL: 'https://provider.example/v1',
+            LLM_BASE_URL: 'https://llm.example/v1',
+            LLM_API_KEY: 'llm-key',
+            OPENAI_BASE_URL: 'https://hijack.example/v1',
             OPENAI_API_KEY: 'openai-key',
             DASHSCOPE_API_KEY: 'dashscope-key',
           })[key] ?? fallback,
       ),
     } as never);
 
-    expect(
-      (gateway as unknown as { apiKey: () => string }).apiKey(),
-    ).toBe('openai-key');
+    const internals = gateway as unknown as {
+      apiKey: () => string;
+      baseUrl: () => string;
+    };
+    expect(internals.baseUrl()).toBe('https://llm.example/v1');
+    expect(internals.apiKey()).toBe('llm-key');
   });
 
-  it('uses MODEL_NAME when FAST_MODEL is not configured', () => {
+  it('未配置 LLM_API_KEY 时回退到 DASHSCOPE_API_KEY', () => {
     const gateway = new ModelGatewayService({
       get: jest.fn(
         (key: string, fallback: unknown) =>
-          ({ MODEL_NAME: 'qwen-plus' })[key] ?? fallback,
+          ({
+            DASHSCOPE_API_KEY: 'dashscope-key',
+            OPENAI_API_KEY: 'openai-key',
+          })[key] ?? fallback,
       ),
     } as never);
 
-    expect(gateway.getChatModel('fast', false).model).toBe('qwen-plus');
+    expect((gateway as unknown as { apiKey: () => string }).apiKey()).toBe(
+      'dashscope-key',
+    );
+  });
+
+  it('FAST_MODEL 未配置时回退到默认模型', () => {
+    const gateway = new ModelGatewayService({ get: jest.fn() } as never);
+
+    expect(gateway.getChatModel('fast', false).model).toBe('qwen3.8-flash');
   });
 
   it('omits response_format for Codex models that do not support it', () => {
@@ -80,9 +98,57 @@ describe('ModelGatewayService', () => {
     } as never);
 
     await expect(
-      gateway.invokeJson('fast', [new HumanMessage('test')], false),
+      gateway.invokeJson(
+        'fast',
+        [new HumanMessage('test')],
+        false,
+        (raw) => raw as { ok: boolean },
+      ),
     ).resolves.toMatchObject({
       data: { ok: true },
     });
+  });
+
+  it('输出不符合格式时带上错误反馈重试一次', async () => {
+    const gateway = new ModelGatewayService({ get: jest.fn() } as never);
+    const invoke = jest
+      .fn()
+      .mockResolvedValueOnce({
+        content: '{"intent":"lookup"}',
+        usage_metadata: {},
+      })
+      .mockResolvedValueOnce({
+        content: '{"intent":"semantic"}',
+        usage_metadata: {},
+      });
+    jest.spyOn(gateway, 'getChatModel').mockReturnValue({ invoke } as never);
+    const parse = (raw: unknown) =>
+      z.object({ intent: z.enum(['semantic', 'graph']) }).parse(raw);
+
+    await expect(
+      gateway.invokeJson('fast', [new HumanMessage('test')], false, parse),
+    ).resolves.toMatchObject({ data: { intent: 'semantic' } });
+
+    const calls = invoke.mock.calls as unknown as [BaseMessage[]][];
+    expect(calls).toHaveLength(2);
+    expect(calls[1][0]).toHaveLength(3);
+  });
+
+  it('重试后仍不符合格式时抛出 BadGatewayException', async () => {
+    const gateway = new ModelGatewayService({ get: jest.fn() } as never);
+    const invoke = jest.fn().mockResolvedValue({
+      content: '不是 JSON',
+      usage_metadata: {},
+    });
+    jest.spyOn(gateway, 'getChatModel').mockReturnValue({ invoke } as never);
+
+    await expect(
+      gateway.invokeJson('fast', [new HumanMessage('test')], false, (raw) =>
+        z.object({ intent: z.string() }).parse(raw),
+      ),
+    ).rejects.toThrow(BadGatewayException);
+
+    const calls = invoke.mock.calls as unknown as [BaseMessage[]][];
+    expect(calls).toHaveLength(2);
   });
 });

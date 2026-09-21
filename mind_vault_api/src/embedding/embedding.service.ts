@@ -1,13 +1,11 @@
 import { BadGatewayException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-
-interface EmbeddingResponse {
-  data?: Array<{ index: number; embedding: number[] }>;
-  error?: { message?: string };
-}
+import { OpenAIEmbeddings } from '@langchain/openai';
 
 @Injectable()
 export class EmbeddingService {
+  private embeddings?: OpenAIEmbeddings;
+
   constructor(private readonly config: ConfigService) {}
 
   async embedQuery(text: string): Promise<number[]> {
@@ -17,52 +15,42 @@ export class EmbeddingService {
 
   async embedDocuments(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) return [];
-    const batchSize = Math.max(
-      1,
-      this.config.get<number>('EMBEDDING_BATCH_SIZE', 10),
-    );
-    const all: number[][] = [];
-    for (let offset = 0; offset < texts.length; offset += batchSize) {
-      const batch = texts.slice(offset, offset + batchSize);
-      const response = await fetch(
-        `${this.config.get<string>(
+    try {
+      return await this.model().embedDocuments(texts);
+    } catch (error) {
+      throw new BadGatewayException(
+        `Embedding API 调用失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private model(): OpenAIEmbeddings {
+    this.embeddings ??= new OpenAIEmbeddings({
+      apiKey: this.config.get<string>(
+        'EMBEDDING_API_KEY',
+        this.config.get<string>('DASHSCOPE_API_KEY', ''),
+      ),
+      model: this.config.get<string>(
+        'EMBEDDING_MODEL',
+        'qwen3.7-text-embedding',
+      ),
+      configuration: {
+        baseURL: this.config.get<string>(
           'EMBEDDING_BASE_URL',
           'https://dashscope.aliyuncs.com/compatible-mode/v1',
-        )}/embeddings`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${this.config.get<string>(
-              'EMBEDDING_API_KEY',
-              this.config.get<string>('DASHSCOPE_API_KEY', ''),
-            )}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: this.config.get<string>(
-              'EMBEDDING_MODEL',
-              'qwen3.7-text-embedding',
-            ),
-            input: batch,
-            dimensions: this.config.get<number>(
-              'EMBEDDING_DIMENSIONS',
-              this.config.get<number>('EMBEDDING_DIMENSION', 1024),
-            ),
-          }),
-        },
-      );
-      const body = (await response.json()) as EmbeddingResponse;
-      if (!response.ok || !body.data) {
-        throw new BadGatewayException(
-          `Embedding API 调用失败: ${body.error?.message ?? response.statusText}`,
-        );
-      }
-      const ordered = [...body.data].sort((a, b) => a.index - b.index);
-      if (ordered.length !== batch.length) {
-        throw new BadGatewayException('Embedding API 返回数量与输入不一致');
-      }
-      all.push(...ordered.map((item) => item.embedding));
-    }
-    return all;
+        ),
+      },
+      dimensions: this.config.get<number>(
+        'EMBEDDING_DIMENSIONS',
+        this.config.get<number>('EMBEDDING_DIMENSION', 1024),
+      ),
+      batchSize: Math.max(
+        1,
+        this.config.get<number>('EMBEDDING_BATCH_SIZE', 10),
+      ),
+      // LangChain 默认会把换行替换为空格，会改变向量结果，必须关闭以保持与已有索引一致
+      stripNewLines: false,
+    });
+    return this.embeddings;
   }
 }

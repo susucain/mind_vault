@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { BadGatewayException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatOpenAI } from '@langchain/openai';
-import { BaseMessage } from '@langchain/core/messages';
+import { AIMessage, BaseMessage, HumanMessage } from '@langchain/core/messages';
 
 @Injectable()
 export class ModelGatewayService {
@@ -11,9 +11,7 @@ export class ModelGatewayService {
     const model =
       kind === 'reasoning'
         ? this.config.get<string>('REASONING_MODEL', 'deepseek-v4-flash-0731')
-        : this.config.get<string>('FAST_MODEL') ??
-          this.config.get<string>('MODEL_NAME') ??
-          'qwen3.8-flash';
+        : (this.config.get<string>('FAST_MODEL') ?? 'qwen3.8-flash');
     const modelKwargs: Record<string, unknown> = {};
     if (!model.startsWith('codex-')) {
       modelKwargs.response_format = { type: 'json_object' };
@@ -32,23 +30,43 @@ export class ModelGatewayService {
     });
   }
 
-  async invokeJson<T>(
+  async invokeJson<S>(
     kind: 'fast' | 'reasoning',
     messages: BaseMessage[],
     thinking: boolean,
-  ): Promise<{ data: T; usage: Record<string, unknown> }> {
-    const response = await this.getChatModel(kind, thinking).invoke(messages);
-    const content = jsonText(response.content);
-    return {
-      data: JSON.parse(content) as T,
-      usage: response.usage_metadata ?? {},
-    };
+    parse: (raw: unknown) => S,
+  ): Promise<{ data: S; usage: Record<string, unknown> }> {
+    const model = this.getChatModel(kind, thinking);
+    let lastError: unknown;
+    let conversation = messages;
+    // 首次调用 + 一次带错误反馈的重试
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await model.invoke(conversation);
+      const content = jsonText(response.content);
+      try {
+        return {
+          data: parse(JSON.parse(content) as unknown),
+          usage: response.usage_metadata ?? {},
+        };
+      } catch (error) {
+        lastError = error;
+        conversation = [
+          ...messages,
+          new AIMessage(content),
+          new HumanMessage(
+            `上一次输出不符合要求：${errorText(error)}。请严格按要求重新只输出 JSON，不要包含其他内容。`,
+          ),
+        ];
+      }
+    }
+    throw new BadGatewayException(
+      `模型输出不符合预期格式: ${errorText(lastError)}`,
+    );
   }
 
   private baseUrl() {
     return (
       this.config.get<string>('LLM_BASE_URL') ??
-      this.config.get<string>('OPENAI_BASE_URL') ??
       'https://dashscope.aliyuncs.com/compatible-mode/v1'
     );
   }
@@ -56,21 +74,7 @@ export class ModelGatewayService {
   private apiKey() {
     const explicitKey = this.config.get<string>('LLM_API_KEY');
     if (explicitKey) return explicitKey;
-    const explicitEndpoint =
-      this.config.get<string>('LLM_BASE_URL') ??
-      this.config.get<string>('OPENAI_BASE_URL');
-    if (explicitEndpoint) {
-      return (
-        this.config.get<string>('OPENAI_API_KEY') ??
-        this.config.get<string>('DASHSCOPE_API_KEY') ??
-        ''
-      );
-    }
-    return (
-      this.config.get<string>('DASHSCOPE_API_KEY') ??
-      this.config.get<string>('OPENAI_API_KEY') ??
-      ''
-    );
+    return this.config.get<string>('DASHSCOPE_API_KEY') ?? '';
   }
 }
 
@@ -93,4 +97,13 @@ function jsonText(content: unknown): string {
     if (text) return text;
   }
   return JSON.stringify(content);
+}
+
+const maxErrorLength = 500;
+
+function errorText(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  return text.length > maxErrorLength
+    ? `${text.slice(0, maxErrorLength)}…`
+    : text;
 }

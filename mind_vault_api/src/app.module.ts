@@ -23,6 +23,8 @@ import { InterviewSessionEntity } from './interview/entities/interview-session.e
 import { InterviewTurnEntity } from './interview/entities/interview-turn.entity';
 import { ReviewItemEntity } from './interview/entities/review-item.entity';
 import { ModelModule } from './model/model.module';
+import { MemoryModule } from './memory/memory.module';
+import { UserMemoryEntity } from './memory/entities/user-memory.entity';
 
 const standalone = buildConfiguration(process.env).runtime.standalone;
 
@@ -37,6 +39,7 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
           RetrievalModule,
           ChatModule,
           InterviewModule,
+          MemoryModule,
         ]),
     AuthModule,
     HealthModule,
@@ -65,6 +68,7 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
                 InterviewSessionEntity,
                 InterviewTurnEntity,
                 ReviewItemEntity,
+                UserMemoryEntity,
               ],
               synchronize: false,
             }),

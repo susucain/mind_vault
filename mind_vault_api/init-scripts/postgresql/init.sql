@@ -81,6 +81,10 @@ CREATE TABLE IF NOT EXISTS kh_conversation (
 CREATE INDEX IF NOT EXISTS idx_kh_conversation_owner_id
     ON kh_conversation(owner_id, updated_at DESC);
 
+-- 短期记忆：更早轮次的摘要 + 已纳入摘要的消息条数（增量压缩游标）
+ALTER TABLE kh_conversation ADD COLUMN IF NOT EXISTS summary TEXT;
+ALTER TABLE kh_conversation ADD COLUMN IF NOT EXISTS summarized_message_count INT NOT NULL DEFAULT 0;
+
 CREATE TABLE IF NOT EXISTS kh_chat_message (
     id VARCHAR PRIMARY KEY,
     conversation_id VARCHAR NOT NULL,
@@ -152,3 +156,25 @@ CREATE TABLE IF NOT EXISTS kh_review_item (
 );
 CREATE INDEX IF NOT EXISTS idx_kh_review_item_owner
     ON kh_review_item(owner_id, status, created_at DESC);
+
+-- 长期记忆：关于用户的稳定事实与偏好，与资料检索严格分离
+-- pgvector 扩展由镜像自带，只需启用；向量维度固定 1024，须与 EMBEDDING_DIMENSIONS 一致
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS kh_user_memory (
+    id VARCHAR PRIMARY KEY,
+    owner_id BIGINT NOT NULL,
+    content TEXT NOT NULL,
+    kind VARCHAR NOT NULL,
+    source_conversation_id VARCHAR,
+    status VARCHAR NOT NULL DEFAULT 'ACTIVE',
+    embedding vector(1024),
+    hit_count INT NOT NULL DEFAULT 0,
+    last_used_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kh_user_memory_owner
+    ON kh_user_memory(owner_id, status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_kh_user_memory_embedding
+    ON kh_user_memory USING hnsw (embedding vector_cosine_ops);

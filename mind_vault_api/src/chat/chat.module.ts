@@ -9,11 +9,13 @@ import { RagModelService } from './agent/rag-model.service';
 import { ChatCitationEntity } from './entities/citation.entity';
 import { ConversationEntity } from './entities/conversation.entity';
 import { ChatMessageEntity } from './entities/chat-message.entity';
+import { MemoryModule } from '../memory/memory.module';
 
 @Module({
   imports: [
     AuthModule,
     RetrievalModule,
+    MemoryModule,
     TypeOrmModule.forFeature([
       ConversationEntity,
       ChatMessageEntity,

@@ -1,7 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 import { RetrievalService } from '../retrieval/retrieval.service';
 import { RetrievalHit } from '../retrieval/retrieval-hit';
+import { MemoryService } from '../memory/memory.service';
+import { MemoryNote } from '../memory/memory.types';
 import {
   InterviewModelService,
   InterviewEvaluation,
@@ -33,6 +35,8 @@ const State = Annotation.Root({
 
 @Injectable()
 export class InterviewAgentService {
+  private readonly logger = new Logger(InterviewAgentService.name);
+
   private readonly graph: {
     invoke(input: InterviewState): Promise<InterviewState>;
   };
@@ -40,6 +44,7 @@ export class InterviewAgentService {
   constructor(
     private readonly models: InterviewModelService,
     private readonly retrieval: RetrievalService,
+    private readonly memories: MemoryService,
   ) {
     this.graph = new StateGraph(State)
       .addNode('retrieve', async (state) => {
@@ -85,7 +90,27 @@ export class InterviewAgentService {
             })
           ).hits
         : input.hits;
-    return this.models.generateQuestion({ ...input, hits });
+    const memories = await this.loadPreferenceMemories(input.ownerId);
+    return this.models.generateQuestion({ ...input, hits, memories });
+  }
+
+  /**
+   * 提问环节只注入偏好与目标：这两类能让题目贴近用户真正关心的方向。
+   * 评估环节（evaluate）不注入，评分口径只依据本轮回答与资料证据。
+   * 取用失败不影响出题，降级为不带记忆。
+   */
+  private async loadPreferenceMemories(
+    ownerId?: string,
+  ): Promise<MemoryNote[]> {
+    if (!ownerId) return [];
+    try {
+      return await this.memories.recallByKinds(ownerId, ['preference', 'goal']);
+    } catch (error) {
+      this.logger.warn(
+        `长期记忆取用失败，跳过注入: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return [];
+    }
   }
 
   evaluate(input: {

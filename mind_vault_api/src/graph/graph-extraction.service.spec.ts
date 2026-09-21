@@ -13,16 +13,24 @@ describe('GraphExtractionService', () => {
       confidence: 0.8,
     }));
     const gateway = {
-      invokeJson: jest.fn().mockResolvedValue({ data: { entities, relations } }),
+      invokeJson: jest.fn(
+        (
+          _kind: string,
+          _messages: unknown,
+          _thinking: boolean,
+          parse: (raw: unknown) => {
+            entities: unknown[];
+            relations: unknown[];
+          },
+        ) => Promise.resolve({ data: parse({ entities, relations }) }),
+      ),
     };
     const service = new GraphExtractionService(gateway as never);
 
     await expect(
       service.extract({ text: '内容' } as never),
     ).resolves.toMatchObject({
-      entities: expect.arrayContaining([
-        { name: 'Entity 0', type: 'CONCEPT' },
-      ]),
+      entities: expect.arrayContaining([{ name: 'Entity 0', type: 'CONCEPT' }]),
     });
 
     const result = await service.extract({ text: '内容' } as never);
