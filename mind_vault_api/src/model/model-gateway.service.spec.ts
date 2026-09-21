@@ -6,11 +6,16 @@ import { ModelGatewayService } from './model-gateway.service';
 describe('ModelGatewayService', () => {
   it('selects fast and reasoning ChatModels with explicit thinking configuration', () => {
     const gateway = new ModelGatewayService({
+      getOrThrow: jest.fn(
+        (key: string) =>
+          ({
+            'models.fast': 'qwen3.8-flash',
+            'models.reasoning': 'deepseek-v4-flash-0731',
+          })[key],
+      ),
       get: jest.fn(
         (key: string, fallback: unknown) =>
           ({
-            FAST_MODEL: 'qwen3.8-flash',
-            REASONING_MODEL: 'deepseek-v4-flash-0731',
             OPENAI_BASE_URL:
               'https://dashscope.aliyuncs.com/compatible-mode/v1',
             OPENAI_API_KEY: 'test-key',
@@ -69,17 +74,26 @@ describe('ModelGatewayService', () => {
     );
   });
 
-  it('FAST_MODEL 未配置时回退到默认模型', () => {
-    const gateway = new ModelGatewayService({ get: jest.fn() } as never);
+  it('requires a configured model name', () => {
+    const gateway = new ModelGatewayService({
+      getOrThrow: jest.fn(() => {
+        throw new Error('Configuration key "models.fast" does not exist');
+      }),
+    } as never);
 
-    expect(gateway.getChatModel('fast', false).model).toBe('qwen3.8-flash');
+    expect(() => gateway.getChatModel('fast', false)).toThrow(
+      'Configuration key "models.fast" does not exist',
+    );
   });
 
   it('omits response_format for Codex models that do not support it', () => {
     const gateway = new ModelGatewayService({
+      getOrThrow: jest.fn((key: string) =>
+        key === 'models.fast' ? 'codex-auto-review' : undefined,
+      ),
       get: jest.fn(
         (key: string, fallback: unknown) =>
-          ({ FAST_MODEL: 'codex-auto-review' })[key] ?? fallback,
+          (({}) as Record<string, unknown>)[key] ?? fallback,
       ),
     } as never);
 

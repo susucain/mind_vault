@@ -10,13 +10,18 @@ describe('EmbeddingService', () => {
 
   const createService = (overrides: Record<string, unknown> = {}) =>
     new EmbeddingService({
+      getOrThrow: jest.fn(
+        (key: string) =>
+          ({
+            'models.embedding': 'qwen3.7-text-embedding',
+          })[key],
+      ),
       get: jest.fn(
         (key: string, fallback: unknown) =>
           ({
             EMBEDDING_BASE_URL:
               'https://dashscope.aliyuncs.com/compatible-mode/v1',
             EMBEDDING_API_KEY: 'test-key',
-            EMBEDDING_MODEL: 'qwen3.7-text-embedding',
             EMBEDDING_DIMENSIONS: 1024,
             EMBEDDING_BATCH_SIZE: 10,
             ...overrides,

@@ -30,10 +30,7 @@ export class EmbeddingService {
         'EMBEDDING_API_KEY',
         this.config.get<string>('DASHSCOPE_API_KEY', ''),
       ),
-      model: this.config.get<string>(
-        'EMBEDDING_MODEL',
-        'qwen3.7-text-embedding',
-      ),
+      model: this.config.getOrThrow<string>('models.embedding'),
       configuration: {
         baseURL: this.config.get<string>(
           'EMBEDDING_BASE_URL',

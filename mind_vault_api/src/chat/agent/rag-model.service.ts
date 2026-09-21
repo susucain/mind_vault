@@ -121,7 +121,9 @@ export class RagModelService {
       (raw) => answerSchema.parse(raw),
     );
     return {
-      model: input.useReasoning ? 'deepseek-v4-flash-0731' : 'qwen3.8-flash',
+      model: this.gateway.getModelName(
+        input.useReasoning ? 'reasoning' : 'fast',
+      ),
       thinking: input.useReasoning,
       result: data,
     };
@@ -156,7 +158,7 @@ export class RagModelService {
       (raw) => answerSchema.parse(raw),
     );
     return {
-      model: 'qwen3.8-flash',
+      model: this.gateway.getModelName('fast'),
       thinking: false,
       result: data,
     };

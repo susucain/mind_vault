@@ -7,11 +7,12 @@ import { AIMessage, BaseMessage, HumanMessage } from '@langchain/core/messages';
 export class ModelGatewayService {
   constructor(private readonly config: ConfigService) {}
 
+  getModelName(kind: 'fast' | 'reasoning'): string {
+    return this.config.getOrThrow<string>(`models.${kind}`);
+  }
+
   getChatModel(kind: 'fast' | 'reasoning', thinking: boolean) {
-    const model =
-      kind === 'reasoning'
-        ? this.config.get<string>('REASONING_MODEL', 'deepseek-v4-flash-0731')
-        : (this.config.get<string>('FAST_MODEL') ?? 'qwen3.8-flash');
+    const model = this.getModelName(kind);
     const modelKwargs: Record<string, unknown> = {};
     if (!model.startsWith('codex-')) {
       modelKwargs.response_format = { type: 'json_object' };

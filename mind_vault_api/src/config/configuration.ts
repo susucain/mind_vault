@@ -30,9 +30,9 @@ export function buildConfiguration(env: EnvironmentInput = process.env) {
       ),
     },
     models: {
-      fast: env.FAST_MODEL ?? 'qwen3.8-flash',
-      reasoning: env.REASONING_MODEL ?? 'deepseek-v4-flash-0731',
-      embedding: env.EMBEDDING_MODEL ?? 'qwen3.7-text-embedding',
+      fast: env.FAST_MODEL,
+      reasoning: env.REASONING_MODEL,
+      embedding: env.EMBEDDING_MODEL,
       fastThinking: parseBoolean(env.FAST_MODEL_ENABLE_THINKING, false),
       reasoningThinking: parseBoolean(
         env.REASONING_MODEL_ENABLE_THINKING,
