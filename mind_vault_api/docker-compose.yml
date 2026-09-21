@@ -1,7 +1,7 @@
 services:
   # PostgreSQL
   postgres:
-      image: pgvector/pgvector:pg16
+      image: pgvector/pgvector:0.8.3-pg16
       container_name: mind_vault_postgres
       restart: no
       environment:
@@ -22,7 +22,7 @@ services:
   # PostgreSQL GUI (pgAdmin)
   pgadmin:
     container_name: mind_vault_pgadmin
-    image: dpage/pgadmin4:latest
+    image: dpage/pgadmin4:9.17
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@admin.com
       PGADMIN_DEFAULT_PASSWORD: admin
@@ -40,7 +40,7 @@ services:
 
   # MongoDB 主库
   mongodb:
-    image: mongo:7-jammy
+    image: mongo:7.0.43-jammy
     container_name: mind_vault_mongodb
     restart: no
     environment:
@@ -84,7 +84,7 @@ services:
 
   # RabbitMQ — 文档发布后异步管线（RAG / KG / ES）
   rabbitmq:
-    image: rabbitmq:3.13-management
+    image: rabbitmq:3.13.7-management
     container_name: mind_vault_rabbitmq
     restart: no
     ports:
@@ -134,7 +134,7 @@ services:
   # RustFS（S3 兼容对象存储）— PDF 抽图 / 原文件上传
   # 文档：https://docs.rustfs.com/installation/docker/
   rustfs:
-    image: rustfs/rustfs:latest
+    image: rustfs/rustfs:1.0.0-beta.10
     container_name: mind_vault_rustfs
     restart: no
     ports:
@@ -160,7 +160,7 @@ services:
 
   # Neo4j — KG 知识图谱
   neo4j:
-    image: neo4j:latest
+    image: neo4j:2026.08.1
     container_name: mind_vault_neo4j
     ports:
       - "7474:7474"   # Web 管理界面
