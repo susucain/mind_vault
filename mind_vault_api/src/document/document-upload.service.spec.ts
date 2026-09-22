@@ -111,6 +111,50 @@ describe('DocumentUploadService', () => {
     );
   });
 
+  it('does not mirror a large source file into MongoDB when RustFS is available', async () => {
+    const previousMirrorSetting = process.env.STORAGE_MIRROR_SOURCE_BYTES;
+    process.env.STORAGE_MIRROR_SOURCE_BYTES = 'true';
+    const contentModel = {
+      create: jest.fn().mockResolvedValue({ _id: 'mongo_content_1' }),
+    };
+    const service = new DocumentUploadService(
+      {
+        create: jest.fn((_, input) => input),
+        save: jest.fn(async (input) => ({ id: 'doc_1', ...input })),
+      } as never,
+      contentModel as never,
+      {
+        create: jest.fn((input) => input),
+        save: jest.fn(async (input) => ({ id: 'job_1', ...input })),
+      } as never,
+      {
+        isEnabled: jest.fn().mockReturnValue(true),
+        uploadBytes: jest.fn().mockResolvedValue('users/user_1/documents/a.pdf'),
+      } as never,
+      { publishIndex: jest.fn().mockResolvedValue(undefined) } as never,
+      { findOne: jest.fn().mockResolvedValue({ id: 'dataset_1' }) } as never,
+    );
+
+    try {
+      await service.upload(
+        'user_1',
+        {
+          originalname: 'large.pdf',
+          mimetype: 'application/pdf',
+          size: 16 * 1024 * 1024,
+          buffer: Buffer.alloc(16 * 1024 * 1024),
+        },
+        'dataset_1',
+      );
+    } finally {
+      process.env.STORAGE_MIRROR_SOURCE_BYTES = previousMirrorSetting;
+    }
+
+    expect(contentModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceBytes: undefined }),
+    );
+  });
+
   it('resets a failed job and republishes the same document version', async () => {
     const job = {
       id: 'job_1',

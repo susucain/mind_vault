@@ -101,6 +101,74 @@ describe('DocumentIngestionWorker', () => {
     );
   });
 
+  it('downloads from RustFS when a source mirror is unavailable', async () => {
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'job_1',
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        documentVersion: 1,
+        status: IngestionJobStatus.Uploaded,
+        retryCount: 0,
+      }),
+      save: jest.fn(async (job) => job),
+    };
+    const storage = {
+      downloadBytes: jest.fn().mockResolvedValue(Buffer.from('# RustFS source')),
+    };
+    const parser = {
+      parseStructured: jest.fn().mockResolvedValue({
+        rawText: '# RustFS source',
+        sections: [],
+        assets: [],
+      }),
+    };
+    const worker = new DocumentIngestionWorker(
+      jobs as never,
+      {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'doc_1',
+          ownerId: 'user_1',
+          sourceFileName: 'large.pdf',
+          sourceFileKey: 'users/user_1/documents/large.pdf',
+          contentId: 'content_1',
+        }),
+      } as never,
+      {
+        findOne: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({}),
+        }),
+        updateOne: jest.fn().mockResolvedValue({ matchedCount: 1 }),
+      } as never,
+      parser as never,
+      storage as never,
+      { get: jest.fn().mockReturnValue(true) } as never,
+      { chunk: jest.fn().mockReturnValue([]) } as never,
+      { embedDocuments: jest.fn().mockResolvedValue([]) } as never,
+      { indexChunks: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        extract: jest.fn().mockResolvedValue({ entities: [], relations: [] }),
+      } as never,
+      { indexChunk: jest.fn().mockResolvedValue(undefined) } as never,
+      { find: jest.fn().mockResolvedValue([]) } as never,
+    );
+
+    await worker.process({
+      jobId: 'job_1',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      operation: 'index',
+    });
+
+    expect(storage.downloadBytes).toHaveBeenCalledWith(
+      'users/user_1/documents/large.pdf',
+    );
+    expect(parser.parseStructured).toHaveBeenCalledWith(
+      expect.objectContaining({ buffer: Buffer.from('# RustFS source') }),
+    );
+  });
+
   it('deletes source storage and external indexes for a deletion job', async () => {
     const job = {
       id: 'job_delete',

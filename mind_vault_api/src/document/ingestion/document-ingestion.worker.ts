@@ -146,10 +146,7 @@ export class DocumentIngestionWorker {
         .lean();
       const mirroredBytes = toBuffer(content?.sourceBytes);
       let buffer = mirroredBytes;
-      const mirrorEnabled =
-        process.env.STORAGE_MIRROR_SOURCE_BYTES === 'true' ||
-        this.config.get<boolean>('STORAGE_MIRROR_SOURCE_BYTES', false);
-      if (document.sourceFileKey && !mirrorEnabled) {
+      if (!buffer?.length && document.sourceFileKey) {
         try {
           buffer = await this.storage.downloadBytes(document.sourceFileKey);
         } catch (error) {

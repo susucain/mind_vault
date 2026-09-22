@@ -38,6 +38,7 @@ const SUPPORTED_EXTENSIONS = new Set([
   'csv',
   'json',
 ]);
+const MAX_SOURCE_BYTES_MIRROR = 8 * 1024 * 1024;
 
 @Injectable()
 export class DocumentUploadService {
@@ -88,6 +89,12 @@ export class DocumentUploadService {
           prefix: `users/${ownerId}/documents`,
         })
       : null;
+    const shouldMirrorSourceBytes =
+      file.buffer.length <= MAX_SOURCE_BYTES_MIRROR &&
+      (!fileKey || process.env.STORAGE_MIRROR_SOURCE_BYTES === 'true');
+    if (!fileKey && !shouldMirrorSourceBytes) {
+      throw new BadRequestException('超过 8 MiB 的文件需要启用对象存储');
+    }
 
     const content = await this.contentModel.create({
       documentId,
@@ -96,10 +103,7 @@ export class DocumentUploadService {
       contentSummary: '',
       version: 1,
       deleted: false,
-      sourceBytes:
-        !fileKey || process.env.STORAGE_MIRROR_SOURCE_BYTES === 'true'
-          ? file.buffer
-          : undefined,
+      sourceBytes: shouldMirrorSourceBytes ? file.buffer : undefined,
       sourceMimeType: file.mimetype ?? 'application/octet-stream',
     });
     const document = this.em.create(DocumentEntity, {
