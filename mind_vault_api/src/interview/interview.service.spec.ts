@@ -2,6 +2,29 @@
 import { InterviewService } from './interview.service';
 
 describe('InterviewService', () => {
+  it('lists only the owner sessions ordered by latest activity', async () => {
+    const newer = { id: 'session_2', updatedAt: new Date('2026-09-22') };
+    const older = { id: 'session_1', updatedAt: new Date('2026-09-21') };
+    const sessions = {
+      find: jest.fn().mockResolvedValue([newer, older]),
+    };
+    const service = new InterviewService(
+      sessions as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(service.listSessions('user_1')).resolves.toEqual({
+      items: [newer, older],
+    });
+    expect(sessions.find).toHaveBeenCalledWith({
+      where: { ownerId: 'user_1' },
+      order: { updatedAt: 'DESC' },
+    });
+  });
+
   it('creates a session with the requested dataset and first question', async () => {
     const sessions = {
       create: jest.fn((input) => input),

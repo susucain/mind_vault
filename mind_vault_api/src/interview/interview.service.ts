@@ -58,6 +58,15 @@ export class InterviewService {
     return { ...session, turns };
   }
 
+  async listSessions(ownerId: string) {
+    return {
+      items: await this.sessions.find({
+        where: { ownerId },
+        order: { updatedAt: 'DESC' },
+      }),
+    };
+  }
+
   async submitAnswer(
     ownerId: string,
     id: string,

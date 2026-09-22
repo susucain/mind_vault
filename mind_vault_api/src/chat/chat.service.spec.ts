@@ -92,14 +92,15 @@ function turnsOf(messages: FakeMessage[]): HistoryTurn[] {
 
 describe('ChatService', () => {
   it('passes only the recent window and skips compaction below the batch size', async () => {
-    const { service, all, conversations, agent, memories } = buildService({
+    const { service, conversation, all, conversations, agent, memories } =
+      buildService({
       messageCount: 10,
-    });
+      });
 
     await service.ask('user_1', 'conversation_1', '继续说说');
 
     expect(agent.summarize).not.toHaveBeenCalled();
-    expect(conversations.save).not.toHaveBeenCalled();
+    expect(conversations.save).toHaveBeenCalledWith(conversation);
     expect(memories.extractFromTurns).not.toHaveBeenCalled();
     expect(agent.invoke).toHaveBeenCalledWith({
       ownerId: 'user_1',
@@ -136,15 +137,16 @@ describe('ChatService', () => {
   });
 
   it('keeps the previous summary and cursor when compaction returns nothing', async () => {
-    const { service, conversations, agent, memories } = buildService({
+    const { service, conversation, conversations, agent, memories } =
+      buildService({
       messageCount: 12,
       summary: '旧摘要',
       summarizeResult: '',
-    });
+      });
 
     await service.ask('user_1', 'conversation_1', '继续说说');
 
-    expect(conversations.save).not.toHaveBeenCalled();
+    expect(conversations.save).toHaveBeenCalledWith(conversation);
     expect(memories.extractFromTurns).not.toHaveBeenCalled();
     expect(agent.invoke).toHaveBeenCalledWith(
       expect.objectContaining({ summary: '旧摘要' }),
@@ -216,6 +218,25 @@ describe('ChatService', () => {
         role: 'assistant',
         content: '',
         status: 'FAILED',
+      }),
+    );
+  });
+
+  it('names a default conversation from its first question', async () => {
+    const { service, conversation, conversations } = buildService({
+      messageCount: 0,
+    });
+    conversation.title = '资料问答';
+
+    await service.ask(
+      'user_1',
+      'conversation_1',
+      '请总结这个项目的核心难点和关键技术取舍',
+    );
+
+    expect(conversations.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: '请总结这个项目的核心难点和关键技术取舍',
       }),
     );
   });

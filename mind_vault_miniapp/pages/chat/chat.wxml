@@ -2,54 +2,30 @@
   <view class="chat-header">
     <view class="chat-heading">
       <text class="kicker">ASK YOUR SOURCES</text>
-      <text class="title">资料问答</text>
+      <text class="title" bind:tap="toggleConversationPicker">{{currentConversationTitle}}</text>
     </view>
     <van-button type="primary" size="small" plain bind:click="newConversation">新对话</van-button>
   </view>
-
+  <view wx:if="{{showConversationPicker}}" class="conversation-picker">
+    <view wx:for="{{conversations}}" wx:key="id" class="conversation-option {{item.id === conversationId ? 'conversation-option-active' : ''}}" data-id="{{item.id}}" bind:tap="selectConversation">
+      {{item.title}}
+    </view>
+  </view>
   <scroll-view class="dataset-scroll" scroll-x>
-    <view
-      wx:for="{{datasets}}"
-      wx:key="id"
-      class="dataset-chip {{selectedDatasetIds.includes(item.id) ? 'dataset-chip-active' : ''}}"
-      data-id="{{item.id}}"
-      bind:tap="toggleDataset"
-    >
+    <view wx:for="{{datasets}}" wx:key="id" class="dataset-chip {{selectedDatasetIds.includes(item.id) ? 'dataset-chip-active' : ''}}" data-id="{{item.id}}" bind:tap="toggleDataset">
       {{item.name}}
     </view>
   </scroll-view>
-
   <app-state wx:if="{{loading}}" type="loading"></app-state>
-  <app-state
-    wx:elif="{{error}}"
-    type="error"
-    title="问答初始化失败"
-    description="{{error}}"
-    bind:action="initialize"
-  ></app-state>
-  <app-state
-    wx:elif="{{datasets.length === 0}}"
-    type="empty"
-    title="还没有可问答的资料集"
-    description="请先在知识库中创建资料集并上传文档。"
-  ></app-state>
-
+  <app-state wx:elif="{{error}}" type="error" title="问答初始化失败" description="{{error}}" bind:action="initialize"></app-state>
+  <app-state wx:elif="{{datasets.length === 0}}" type="empty" title="还没有可问答的资料集" description="请先在知识库中创建资料集并上传文档。"></app-state>
   <scroll-view wx:else class="message-list" scroll-y scroll-into-view="{{scrollTo}}">
     <view wx:for="{{messages}}" wx:key="id" id="message-{{index}}" class="message {{item.role}}">
       <view class="bubble">
-        <mp-html
-          wx:if="{{item.rendered}}"
-          class="message-content markdown-content"
-          content="{{item.markdownContent}}"
-          scroll-table="{{true}}"
-          selectable="{{true}}"
-        ></mp-html>
+        <mp-html wx:if="{{item.rendered}}" class="message-content markdown-content" content="{{item.markdownContent}}" scroll-table="{{true}}" selectable="{{true}}"></mp-html>
         <text wx:else class="message-content">{{item.content || (item.streaming ? '正在生成回答...' : '')}}</text>
         <text wx:if="{{item.stage}}" class="message-stage">{{item.stage}}</text>
-        <view
-          wx:if="{{item.role === 'assistant' && (item.usedMemory || item.toolLabels.length || item.model || item.thinking || item.answerMode)}}"
-          class="message-meta"
-        >
+        <view wx:if="{{item.role === 'assistant' && (item.usedMemory || item.toolLabels.length || item.model || item.thinking || item.answerMode)}}" class="message-meta">
           <text wx:if="{{item.usedMemory}}" class="memory-hint">已参考你的记忆</text>
           <text wx:if="{{item.answerMode === 'rag'}}">已基于资料检索</text>
           <text wx:if="{{item.answerMode === 'general'}}">使用通用知识补答</text>
@@ -57,25 +33,17 @@
           <text wx:if="{{item.model}}">{{item.model}}</text>
           <text wx:if="{{item.thinking}}">thinking</text>
         </view>
-        <citation-card
-          wx:for="{{item.citations}}"
-          wx:for-item="citation"
-          wx:key="id"
-          citation="{{citation}}"
-        ></citation-card>
+        <citation-card wx:for="{{item.citations}}" wx:for-item="citation" wx:key="id" citation="{{citation}}"></citation-card>
       </view>
     </view>
   </scroll-view>
-
   <view wx:if="{{!loading && !error && datasets.length}}" class="composer surface">
-    <van-field
-      value="{{input}}"
-      placeholder="问问你的资料"
-      border="{{false}}"
-      maxlength="4000"
-      bind:change="updateInput"
-    />
-    <van-button wx:if="{{sending}}" type="danger" size="small" plain loading="{{stopping}}" bind:click="stopGeneration">停止</van-button>
-    <van-button wx:else type="primary" size="small" bind:click="sendMessage">发送</van-button>
+    <van-field value="{{input}}" placeholder="问问你的资料" border="{{false}}" maxlength="4000" bind:change="updateInput" class="ask-input" type="textarea" autosize="{{ { maxHeight: 100 } }}"/>
+    <van-button wx:if="{{sending}}" size="small" plain loading="{{stopping}}" bind:click="stopGeneration" custom-class="send-btn">
+      <van-icon name="stop" custom-class="send-icon" size="{{25}}" style="height: 30px"/>
+    </van-button>
+    <van-button wx-else type="primary" size="small" bind:click="sendMessage" custom-class="send-btn">
+      <van-icon name="down" custom-class="send-icon" />
+    </van-button>
   </view>
 </view>

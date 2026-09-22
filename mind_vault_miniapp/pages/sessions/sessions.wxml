@@ -1,0 +1,24 @@
+<view class="page">
+  <view class="header">
+    <text class="kicker">ACTIVITY</text>
+    <text class="title">会话</text>
+  </view>
+  <view class="filters">
+    <view class="filter {{filter === 'all' ? 'filter-active' : ''}}" data-filter="all" bind:tap="selectFilter">全部</view>
+    <view class="filter {{filter === 'chat' ? 'filter-active' : ''}}" data-filter="chat" bind:tap="selectFilter">资料问答</view>
+    <view class="filter {{filter === 'interview' ? 'filter-active' : ''}}" data-filter="interview" bind:tap="selectFilter">面试训练</view>
+  </view>
+  <app-state wx:if="{{loading}}" type="loading"></app-state>
+  <app-state wx:elif="{{error}}" type="error" title="会话加载失败" description="{{error}}" bind:action="loadSessions"></app-state>
+  <app-state wx:elif="{{!visibleSessions.length}}" type="empty" title="还没有会话" description="从首页提问或开始一次面试训练。" ></app-state>
+  <view wx:else class="session-list">
+    <view wx:for="{{visibleSessions}}" wx:key="id" class="session surface" data-session="{{item}}" bind:tap="openSession">
+      <view class="kind {{item.kind}}">{{item.kind === 'chat' ? '问' : '练'}}</view>
+      <view class="session-main">
+        <text class="session-title">{{item.title}}</text>
+        <text class="session-copy">{{item.subtitle}} · {{item.status === 'IN_PROGRESS' ? '进行中' : item.status === 'COMPLETED' ? '已完成' : ''}}</text>
+      </view>
+      <text class="arrow">›</text>
+    </view>
+  </view>
+</view>

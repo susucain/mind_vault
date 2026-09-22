@@ -51,6 +51,12 @@
       <text>第 {{session.currentIndex + 1}} / {{session.totalQuestions}} 题</text>
       <text>{{session.status === 'COMPLETED' ? '训练已完成' : '训练进行中'}}</text>
     </view>
+    <view wx:if="{{session.turns && session.turns.length}}" class="history surface">
+      <text class="history-title">已完成题目</text>
+      <view wx:for="{{session.turns}}" wx:key="id" class="history-item">
+        <text>{{index + 1}}. {{item.question}}</text>
+      </view>
+    </view>
 
     <view wx:if="{{session.currentQuestion}}" class="question surface">
       <text class="question-label">当前问题</text>

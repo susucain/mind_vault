@@ -24,6 +24,12 @@ export function getInterviewSession(id: string) {
   });
 }
 
+export function listInterviewSessions() {
+  return request<{ items: InterviewSession[] }>({
+    path: '/interview/sessions',
+  });
+}
+
 export function submitInterviewAnswer(id: string, answer: string) {
   return request<InterviewAnswerResult, { answer: string }>({
     path: `/interview/sessions/${id}/answers`,

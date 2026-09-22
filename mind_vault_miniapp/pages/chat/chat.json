@@ -2,6 +2,7 @@
   "navigationBarTitleText": "资料问答",
   "usingComponents": {
     "van-button": "@vant/weapp/button/index",
+    "van-icon": "@vant/weapp/icon/index",
     "van-field": "@vant/weapp/field/index",
     "app-state": "/components/app-state/app-state",
     "citation-card": "/components/citation-card/citation-card",

@@ -1,6 +1,9 @@
 {
   "navigationBarTitleText": "Mind Vault",
   "usingComponents": {
-    "app-state": "/components/app-state/app-state"
+    "app-state": "/components/app-state/app-state",
+    "van-field": "@vant/weapp/field/index",
+    "van-button": "@vant/weapp/button/index",
+    "van-icon": "@vant/weapp/icon/index"
   }
 }

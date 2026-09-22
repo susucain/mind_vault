@@ -97,6 +97,9 @@ export class ChatService {
           thinking: false,
         }),
       );
+      if (conversation.title === '资料问答') {
+        conversation.title = question.trim().slice(0, 28) || '资料问答';
+      }
       const agentInput = {
         ownerId,
         question,
@@ -134,6 +137,7 @@ export class ChatService {
           thinking: false,
         }),
       );
+      await this.conversations.save(conversation);
       throw error;
     }
     const assistantMessage = await this.messages.save(
@@ -168,6 +172,7 @@ export class ChatService {
       );
       citations.push(citation);
     }
+    await this.conversations.save(conversation);
     return {
       userMessage,
       message: assistantMessage,

@@ -2,11 +2,12 @@ import { listDatasets } from '../../services/datasets';
 import {
   createConversation,
   isMetaEvent,
+  listConversations,
   listMessages,
   streamMessage,
   StreamHandle,
 } from '../../services/chat';
-import { ChatCitation, ChatMessage } from '../../types/chat';
+import { ChatCitation, ChatMessage, Conversation } from '../../types/chat';
 import { Dataset } from '../../types/api';
 import { ensureAuthenticated } from '../../utils/auth-guard';
 import { showRequestError } from '../../utils/feedback';
@@ -82,6 +83,9 @@ Page({
     messages: [] as DisplayMessage[],
     input: '',
     conversationId: '',
+    conversations: [] as Conversation[],
+    currentConversationTitle: '资料问答',
+    showConversationPicker: false,
     loading: true,
     sending: false,
     stopping: false,
@@ -94,21 +98,43 @@ Page({
     if (query.datasetId) {
       this.setData({ selectedDatasetIds: [query.datasetId] });
     }
-    void this.initialize();
+    void this.initialize(query);
   },
 
-  async initialize() {
+  async initialize(query: Record<string, string | undefined> = {}) {
     this.setData({ loading: true, error: '' });
     try {
-      const datasets = (await listDatasets()).items;
-      const selectedDatasetIds =
-        this.data.selectedDatasetIds.length > 0
-          ? this.data.selectedDatasetIds
-          : datasets[0]
-            ? [datasets[0].id]
-            : [];
-      this.setData({ datasets, selectedDatasetIds });
-      await this.createNewConversation();
+      const [datasetsResponse, conversationsResponse] = await Promise.all([
+        listDatasets(),
+        listConversations(),
+      ]);
+      const datasets = datasetsResponse.items;
+      const conversations = conversationsResponse.items;
+      this.setData({
+        datasets,
+        conversations,
+        selectedDatasetIds: datasets.map((dataset) => dataset.id),
+      });
+      const requestedConversation = conversations.find(
+        (conversation) => conversation.id === query.conversationId
+      );
+      if (requestedConversation) {
+        await this.openConversation(requestedConversation);
+      } else if (query.new === '1' || conversations.length === 0) {
+        await this.createNewConversation(datasets.map((dataset) => dataset.id));
+      } else {
+        await this.openConversation(conversations[0]);
+      }
+      const sendKey = query.sendKey;
+      const pendingQuestion =
+        sendKey && typeof wx.getStorageSync(sendKey) === 'string'
+          ? (wx.getStorageSync(sendKey) as string)
+          : '';
+      if (sendKey) wx.removeStorageSync(sendKey);
+      if (pendingQuestion) {
+        this.setData({ input: pendingQuestion });
+        await this.sendMessage();
+      }
     } catch (error) {
       this.setData({ error: '无法初始化问答会话' });
       showRequestError(error);
@@ -117,12 +143,28 @@ Page({
     }
   },
 
-  async createNewConversation() {
+  async createNewConversation(datasetIds?: string[]) {
     const conversation = await createConversation({
       title: '资料问答',
-      datasetIds: this.data.selectedDatasetIds,
+      datasetIds: datasetIds ?? this.data.selectedDatasetIds,
     });
-    this.setData({ conversationId: conversation.id, messages: [] });
+    this.setData({
+      conversationId: conversation.id,
+      currentConversationTitle: conversation.title,
+      selectedDatasetIds: conversation.datasetIds,
+      conversations: [conversation, ...this.data.conversations],
+      messages: [],
+    });
+  },
+
+  async openConversation(conversation: Conversation) {
+    const history = await listMessages(conversation.id);
+    this.setData({
+      conversationId: conversation.id,
+      currentConversationTitle: conversation.title,
+      selectedDatasetIds: conversation.datasetIds,
+      messages: history.items.map(withMemoryFlag),
+    });
   },
 
   toggleDataset(event: WechatMiniprogram.BaseEvent) {
@@ -259,6 +301,30 @@ Page({
     activeStream?.abort();
     activeStream = null;
     void this.createNewConversation();
+  },
+
+  toggleConversationPicker() {
+    if (this.data.sending) return;
+    this.setData({
+      showConversationPicker: !this.data.showConversationPicker,
+    });
+  },
+
+  async selectConversation(event: WechatMiniprogram.BaseEvent) {
+    if (this.data.sending) return;
+    const id = event.currentTarget.dataset.id as string;
+    const conversation = this.data.conversations.find((item) => item.id === id);
+    if (!conversation || conversation.id === this.data.conversationId) {
+      this.setData({ showConversationPicker: false });
+      return;
+    }
+    try {
+      await this.openConversation(conversation);
+      this.setData({ showConversationPicker: false });
+      this.scrollToBottom();
+    } catch (error) {
+      showRequestError(error);
+    }
   },
 
   stopGeneration() {

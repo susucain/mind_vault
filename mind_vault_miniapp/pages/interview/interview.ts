@@ -3,6 +3,7 @@ import { listDatasets } from '../../services/datasets';
 import {
   createInterviewSession,
   finishInterviewSession,
+  getInterviewSession,
   listReviewItems,
   submitInterviewAnswer,
 } from '../../services/interview';
@@ -14,6 +15,8 @@ import {
   ReviewItem,
 } from '../../types/interview';
 import { showRequestError } from '../../utils/feedback';
+
+let pendingSessionId = '';
 
 Page({
   data: {
@@ -31,6 +34,10 @@ Page({
     error: '',
   },
 
+  onLoad(query: Record<string, string | undefined>) {
+    pendingSessionId = query.sessionId ?? '';
+  },
+
   onShow() {
     if (!ensureAuthenticated()) return;
     void this.loadDatasets();
@@ -46,6 +53,14 @@ Page({
       });
       const reviewItems = await listReviewItems();
       this.setData({ reviewItems });
+      if (pendingSessionId) {
+        const session = await getInterviewSession(pendingSessionId);
+        pendingSessionId = '';
+        this.setData({
+          session,
+          selectedDatasetId: session.datasetId,
+        });
+      }
     } catch (error) {
       this.setData({ error: '无法加载训练资料' });
       showRequestError(error);

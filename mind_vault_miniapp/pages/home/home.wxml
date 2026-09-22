@@ -1,37 +1,64 @@
-<view class="page">
+<view class="page home-page">
   <view class="welcome">
     <text class="kicker">MIND VAULT</text>
-    <text class="title">你的资料，随时可问。</text>
-    <text class="subtitle">上传、检索、引用和面试训练都将在这里完成。</text>
+    <text class="title">你好，欢迎回来</text>
   </view>
-
-  <view wx:if="{{!loading && !error}}" class="status surface">
-    <text class="status-label">服务状态</text>
-    <text class="status-ok">{{health === 'ok' ? '可用' : '部分不可用'}}</text>
+  <view class="ask surface">
+    <van-field value="{{input}}" placeholder="问问你的资料：某个项目的核心难点是什么？" border="{{false}}" bind:change="updateInput" bind:confirm="startQuestion" class="ask-input" type="textarea" autosize="{{ { maxHeight: 100 } }}"/>
+    <van-button type="primary" size="small" loading="{{sending}}" bind:click="startQuestion" custom-class="send-btn">
+      <van-icon name="down" custom-class="send-icon" />
+    </van-button>
   </view>
-
   <app-state wx:if="{{loading}}" type="loading"></app-state>
-  <app-state
-    wx:if="{{error}}"
-    type="error"
-    title="服务暂时不可用"
-    description="{{error}}"
-    bind:action="loadHealth"
-  ></app-state>
-
-  <view wx:if="{{!loading && !error}}" class="section-title">开始使用</view>
-  <view wx:if="{{!loading && !error}}" class="actions">
-    <view class="action-card surface" bind:tap="openChat">
-      <text class="action-title">资料问答</text>
-      <text class="action-copy">基于资料生成可追溯回答</text>
+  <app-state wx:elif="{{error}}" type="error" title="首页加载失败" description="{{error}}" bind:action="loadWorkbench"></app-state>
+  <block wx:else>
+    <view wx:if="{{latestChat || latestInterview}}" class="section-title">今天继续</view>
+    <view wx:if="{{latestChat || latestInterview}}" class="continue-grid">
+      <view wx:if="{{latestChat}}" class="continue surface" data-session="{{latestChat}}" bind:tap="openSession">
+        <text class="continue-icon chat">问</text>
+        <text class="continue-title">继续最近会话</text>
+        <text class="continue-copy">{{latestChat.title}}</text>
+      </view>
+      <view wx:if="{{latestInterview}}" class="continue surface" data-session="{{latestInterview}}" bind:tap="openSession">
+        <text class="continue-icon interview">练</text>
+        <text class="continue-title">继续面试训练</text>
+        <text class="continue-copy">{{latestInterview.title}}</text>
+      </view>
     </view>
-    <view class="action-card surface" bind:tap="openLibrary">
-      <text class="action-title">管理资料</text>
-      <text class="action-copy">建立资料集并上传文件</text>
+    <view class="section-head">
+      <text class="section-title">最近会话</text>
+      <text class="link" bind:tap="openSessions">查看全部</text>
     </view>
-    <view class="action-card surface" bind:tap="openInterview">
-      <text class="action-title">面试训练</text>
-      <text class="action-copy">基于项目资料进行追问</text>
+    <view wx:if="{{recentSessions.length}}" class="session-list">
+      <view wx:for="{{recentSessions}}" wx:key="id" class="session surface" data-session="{{item}}" bind:tap="openSession">
+        <text class="session-kind {{item.kind}}">{{item.kind === 'chat' ? '问' : '练'}}</text>
+        <view class="session-main">
+          <text class="session-title">{{item.title}}</text>
+          <text class="session-copy">{{item.subtitle}}</text>
+        </view>
+        <text class="arrow">›</text>
+      </view>
     </view>
-  </view>
+    <view wx:else class="empty surface" bind:tap="openChat">从资料问答开始第一段会话</view>
+    <view class="section-head">
+      <text class="section-title">最近资料</text>
+      <text class="link" bind:tap="openLibrary">查看全部</text>
+    </view>
+    <view wx:for="{{documents}}" wx:key="id" class="document surface" bind:tap="openLibrary">
+      <text class="file-tag">{{item.sourceFileExtension || 'DOC'}}</text>
+      <view class="session-detail">
+        <text class="session-title">{{item.title}}</text>
+        <text class="session-copy">{{item.ingestionStatus === 'READY' ? '可问答' : '处理中'}}</text>
+      </view>
+    </view>
+    <view wx:if="{{reviewItems.length}}" class="section-title">待复习</view>
+    <view wx:for="{{reviewItems}}" wx:key="id" class="review surface">
+      <text class="continue-icon chat">Q</text>
+      <view class="session-main">
+        <text class="session-title">{{item.title}}</text>
+        <text class="session-copy">{{item.reason || '来自面试训练'}}</text>
+      </view>
+      <text class="arrow">›</text>
+    </view>
+  </block>
 </view>

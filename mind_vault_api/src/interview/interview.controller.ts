@@ -18,6 +18,11 @@ export class InterviewController {
     return this.service.createSession(user.id, dto);
   }
 
+  @Get('sessions')
+  listSessions(@CurrentUser() user: { id: string }) {
+    return this.service.listSessions(user.id);
+  }
+
   @Get('sessions/:id')
   getSession(@CurrentUser() user: { id: string }, @Param('id') id: string) {
     return this.service.getSession(user.id, id);

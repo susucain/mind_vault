@@ -17,6 +17,31 @@
   flex-direction: column;
 }
 
+.conversation-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-bottom: 12rpx;
+  padding: 12rpx;
+  border: 1rpx solid #dfe7e5;
+  background: #ffffff;
+}
+
+.conversation-option {
+  overflow: hidden;
+  padding: 16rpx;
+  color: #52636b;
+  font-size: 25rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-option-active {
+  color: #087f78;
+  background: #e7f5f1;
+  font-weight: 700;
+}
+
 .kicker {
   color: #087f78;
   font-size: 22rpx;
@@ -55,7 +80,7 @@
 .message-list {
   flex: 1;
   min-height: 0;
-  padding: 16rpx 0 220rpx;
+  padding: 16rpx 0;
 }
 
 .message {
@@ -84,7 +109,7 @@
 .message-content {
   font-size: 27rpx;
   line-height: 1.7;
-  white-space: pre-wrap;
+  /* white-space: pre-wrap; */
 }
 
 .markdown-content {
@@ -126,4 +151,18 @@
   gap: 12rpx;
   padding: 10rpx;
   box-shadow: 0 8rpx 28rpx rgba(27, 48, 53, 0.1);
+}
+
+.ask-input {
+  flex: 1;
+}
+
+.send-btn {
+  width: 100rpx !important;
+  min-width: 100rpx !important;
+  border-radius: 10rpx !important;
+}
+
+.send-icon {
+  transform: rotate(180deg);
 }
