@@ -13,7 +13,7 @@ const expectEqual = (actual: unknown, expected: unknown) => {
 test('converts Markdown into HTML for mp-html', () => {
   expectEqual(
     markdownToHtml('# Title\n\n**bold**').trim(),
-    '<h1>Title</h1>\n<p><strong>bold</strong></p>'
+    '<h1 id="title">Title</h1>\n<p><strong>bold</strong></p>'
   );
 });
 
