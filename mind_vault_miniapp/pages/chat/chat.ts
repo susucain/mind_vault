@@ -10,6 +10,7 @@ import { ChatCitation, ChatMessage } from '../../types/chat';
 import { Dataset } from '../../types/api';
 import { ensureAuthenticated } from '../../utils/auth-guard';
 import { showRequestError } from '../../utils/feedback';
+import { markdownToHtml } from '../../utils/markdown-render';
 import { sanitizeMarkdown } from '../../utils/markdown-safety';
 
 interface DisplayMessage extends ChatMessage {
@@ -62,7 +63,7 @@ function withMemoryFlag(message: ChatMessage): DisplayMessage {
     rendered: message.role === 'assistant',
     markdownContent:
       message.role === 'assistant'
-        ? sanitizeMarkdown(message.content)
+        ? markdownToHtml(sanitizeMarkdown(message.content))
         : undefined,
     stage:
       message.status === 'ABORTED'
@@ -234,7 +235,7 @@ Page({
     if (event === 'done') {
       target.streaming = false;
       target.rendered = true;
-      target.markdownContent = sanitizeMarkdown(target.content);
+      target.markdownContent = markdownToHtml(sanitizeMarkdown(target.content));
       target.confidence =
         typeof data.confidence === 'number' ? data.confidence : null;
     }
@@ -247,7 +248,7 @@ Page({
       }
       target.rendered = Boolean(target.content);
       target.markdownContent = target.rendered
-        ? sanitizeMarkdown(target.content)
+        ? markdownToHtml(sanitizeMarkdown(target.content))
         : undefined;
     }
     this.setData({ messages });

@@ -41,7 +41,6 @@
           wx:if="{{item.rendered}}"
           class="message-content markdown-content"
           content="{{item.markdownContent}}"
-          markdown="{{true}}"
           scroll-table="{{true}}"
           selectable="{{true}}"
         ></mp-html>
