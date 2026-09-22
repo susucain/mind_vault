@@ -25,6 +25,8 @@ export interface ChatMessage {
   model?: string | null;
   thinking: boolean;
   confidence?: number | null;
+  status?: 'COMPLETED' | 'ABORTED' | 'FAILED';
+  answerMode?: 'rag' | 'general';
   citations: ChatCitation[];
 }
 

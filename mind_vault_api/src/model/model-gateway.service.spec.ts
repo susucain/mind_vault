@@ -123,6 +123,28 @@ describe('ModelGatewayService', () => {
     });
   });
 
+  it('passes an AbortSignal to the model invocation', async () => {
+    const gateway = new ModelGatewayService({ get: jest.fn() } as never);
+    const invoke = jest.fn().mockResolvedValue({
+      content: '{"ok":true}',
+      usage_metadata: {},
+    });
+    jest.spyOn(gateway, 'getChatModel').mockReturnValue({ invoke } as never);
+    const controller = new AbortController();
+
+    await gateway.invokeJson(
+      'fast',
+      [new HumanMessage('test')],
+      false,
+      (raw) => raw as { ok: boolean },
+      { signal: controller.signal },
+    );
+
+    expect(invoke).toHaveBeenCalledWith(expect.any(Array), {
+      signal: controller.signal,
+    });
+  });
+
   it('输出不符合格式时带上错误反馈重试一次', async () => {
     const gateway = new ModelGatewayService({ get: jest.fn() } as never);
     const invoke = jest

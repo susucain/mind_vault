@@ -38,7 +38,7 @@ test('ignores traces that carry no meta or are not stream messages', () => {
     trace({ usedTools: [], answerMode: 'rag' }),
   ]);
 
-  expectEqual(summary.total, 1);
+  expectEqual(summary.total, 2);
   expectEqual(summary.memoryInjected, 0);
   expectEqual(summary.generalAnswers, 0);
 });
@@ -49,4 +49,17 @@ test('returns zeros when there is nothing recorded', () => {
   expectEqual(summary.total, 0);
   expectEqual(summary.memoryInjected, 0);
   expectEqual(summary.generalAnswers, 0);
+});
+
+test('summarizes completed, aborted, and failed stream outcomes', () => {
+  const summary = summarizeStreamUsage([
+    trace({ usedTools: [], finishReason: 'completed', durationMs: 100 }),
+    trace({ usedTools: [], finishReason: 'aborted', durationMs: 200 }),
+    trace({ usedTools: [], finishReason: 'failed', durationMs: 300 }),
+  ]);
+
+  expectEqual(summary.completed, 1);
+  expectEqual(summary.aborted, 1);
+  expectEqual(summary.failed, 1);
+  expectEqual(summary.averageDurationMs, 200);
 });

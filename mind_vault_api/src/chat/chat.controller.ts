@@ -55,12 +55,33 @@ export class ChatController {
     @Res() response: Response,
   ) {
     response.status(200);
-    response.setHeader('Content-Type', 'text/event-stream');
-    response.setHeader('Cache-Control', 'no-cache');
+    response.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    response.setHeader('Cache-Control', 'no-cache, no-transform');
     response.setHeader('Connection', 'keep-alive');
+    response.setHeader('X-Accel-Buffering', 'no');
     response.flushHeaders();
+    let connected = true;
+    const abortController = new AbortController();
+    const heartbeat = setInterval(() => {
+      if (!connected || response.writableEnded) return;
+      response.write(': ping\n\n');
+    }, 12_000);
+    response.once('close', () => {
+      connected = false;
+      clearInterval(heartbeat);
+      abortController.abort(new Error('客户端已断开连接'));
+    });
     try {
-      const result = await this.chat.ask(user.id, id, dto.content);
+      writeEvent(response, 'stage', { stage: 'preparing' });
+      const result = await this.chat.ask(user.id, id, dto.content, {
+        signal: abortController.signal,
+        emitStage: (stage) => {
+          if (connected && !response.writableEnded) {
+            writeEvent(response, 'stage', { stage });
+          }
+        },
+      });
+      if (!connected || response.writableEnded) return;
       writeEvent(response, 'meta', {
         messageId: result.message.id,
         usedTools: result.message.usedTools,
@@ -70,20 +91,25 @@ export class ChatController {
         answerMode: result.answerMode,
       });
       for (const text of splitText(result.message.content, 48)) {
+        if (!connected || response.writableEnded) return;
         writeEvent(response, 'token', { text });
       }
       for (const citation of result.citations) {
+        if (!connected || response.writableEnded) return;
         writeEvent(response, 'citation', citation);
       }
       writeEvent(response, 'done', {
         confidence: result.message.confidence,
       });
     } catch (error) {
-      writeEvent(response, 'error', {
-        message: error instanceof Error ? error.message : '问答失败',
-      });
+      if (connected && !response.writableEnded) {
+        writeEvent(response, 'error', {
+          message: error instanceof Error ? error.message : '问答失败',
+        });
+      }
     } finally {
-      response.end();
+      clearInterval(heartbeat);
+      if (!response.writableEnded) response.end();
     }
   }
 }

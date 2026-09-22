@@ -9,7 +9,8 @@
     "format:check": "prettier --check \"**/*.{ts,json,wxss}\""
   },
   "dependencies": {
-    "@vant/weapp": "^1.11.7"
+    "@vant/weapp": "^1.11.7",
+    "mp-html": "^2.5.2"
   },
   "devDependencies": {
     "miniprogram-api-typings": "^4.0.4",

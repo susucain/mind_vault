@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { nextSnowflakeId } from '../common/snowflake-id';
 import { MemoryService } from '../memory/memory.service';
 import { RagAgentService } from './agent/rag-agent.service';
-import { HistoryTurn, historyWindow } from './agent/rag-types';
+import { HistoryTurn, historyWindow, RagState } from './agent/rag-types';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ChatCitationEntity } from './entities/citation.entity';
 import { ConversationEntity } from './entities/conversation.entity';
@@ -67,28 +67,75 @@ export class ChatService {
     };
   }
 
-  async ask(ownerId: string, conversationId: string, question: string) {
+  async ask(
+    ownerId: string,
+    conversationId: string,
+    question: string,
+    options: {
+      signal?: AbortSignal;
+      emitStage?: (stage: string) => void;
+    } = {},
+  ) {
     const conversation = await this.findConversation(ownerId, conversationId);
-    // 在保存本轮用户消息之前读取记忆，避免把当前提问当成历史重复带入
-    const { history, summary } = await this.loadMemory(ownerId, conversation);
-    const userMessage = await this.messages.save(
-      this.messages.create({
-        id: nextSnowflakeId(),
+    let userMessage: ChatMessageEntity | undefined;
+    let result: RagState;
+    try {
+      // 在保存本轮用户消息之前读取记忆，避免把当前提问当成历史重复带入
+      const { history, summary } = await this.loadMemory(
         ownerId,
-        conversationId,
-        role: 'user',
-        content: question,
-        usedTools: [],
-        thinking: false,
-      }),
-    );
-    const result = await this.agent.invoke({
-      ownerId,
-      question,
-      datasetIds: conversation.datasetIds,
-      summary,
-      history,
-    });
+        conversation,
+        options.signal,
+      );
+      userMessage = await this.messages.save(
+        this.messages.create({
+          id: nextSnowflakeId(),
+          ownerId,
+          conversationId,
+          role: 'user',
+          content: question,
+          usedTools: [],
+          thinking: false,
+        }),
+      );
+      const agentInput = {
+        ownerId,
+        question,
+        datasetIds: conversation.datasetIds,
+        summary,
+        history,
+      };
+      result =
+        options.signal || options.emitStage
+          ? await this.agent.invoke(agentInput, options)
+          : await this.agent.invoke(agentInput);
+    } catch (error) {
+      if (!userMessage) {
+        userMessage = await this.messages.save(
+          this.messages.create({
+            id: nextSnowflakeId(),
+            ownerId,
+            conversationId,
+            role: 'user',
+            content: question,
+            usedTools: [],
+            thinking: false,
+          }),
+        );
+      }
+      await this.messages.save(
+        this.messages.create({
+          id: nextSnowflakeId(),
+          ownerId,
+          conversationId,
+          role: 'assistant',
+          content: '',
+          status: options.signal?.aborted ? 'ABORTED' : 'FAILED',
+          usedTools: [],
+          thinking: false,
+        }),
+      );
+      throw error;
+    }
     const assistantMessage = await this.messages.save(
       this.messages.create({
         id: nextSnowflakeId(),
@@ -137,6 +184,7 @@ export class ChatService {
   private async loadMemory(
     ownerId: string,
     conversation: ConversationEntity,
+    signal?: AbortSignal,
   ): Promise<{ history: HistoryTurn[]; summary?: string }> {
     const history = await this.recentHistory(ownerId, conversation.id);
     const summary = conversation.summary ?? undefined;
@@ -155,13 +203,16 @@ export class ChatService {
       // 历史积压（如旧会话首次启用摘要）时单次只压缩一批，游标按实际条数推进
       take: Math.min(pendingCount, historyWindow.summarizeBatch * 4),
     });
-    const nextSummary = await this.agent.summarize({
+    const summarizeInput = {
       previousSummary: summary,
       turns: pending.map((message) => ({
         role: message.role,
         content: message.content,
       })),
-    });
+    };
+    const nextSummary = signal
+      ? await this.agent.summarize(summarizeInput, { signal })
+      : await this.agent.summarize(summarizeInput);
     // 压缩失败时保留原摘要与游标，下次提问再重试
     if (!nextSummary) return { history, summary };
     conversation.summary = nextSummary;

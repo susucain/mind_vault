@@ -16,7 +16,10 @@ import { ModelGatewayService } from '../../model/model-gateway.service';
 export class RagModelService {
   constructor(private readonly gateway: ModelGatewayService) {}
 
-  async route(question: string): Promise<RagRoute> {
+  async route(
+    question: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<RagRoute> {
     const { data } = await this.gateway.invokeJson(
       'fast',
       [
@@ -27,6 +30,7 @@ export class RagModelService {
       ],
       false,
       (raw) => routeSchema.parse(raw),
+      options,
     );
     return data;
   }
@@ -35,11 +39,14 @@ export class RagModelService {
    * 结合短期记忆把追问改写成自洽查询，供向量检索与意图路由使用。
    * 无历史时由调用方直接跳过，不走模型。
    */
-  async rewriteQuery(input: {
-    question: string;
-    summary?: string;
-    history: HistoryTurn[];
-  }): Promise<string> {
+  async rewriteQuery(
+    input: {
+      question: string;
+      summary?: string;
+      history: HistoryTurn[];
+    },
+    options: { signal?: AbortSignal } = {},
+  ): Promise<string> {
     const { data } = await this.gateway.invokeJson(
       'fast',
       [
@@ -56,6 +63,7 @@ export class RagModelService {
       ],
       false,
       (raw) => rewriteSchema.parse(raw),
+      options,
     );
     return data.query.trim() || input.question;
   }
@@ -64,10 +72,13 @@ export class RagModelService {
    * 把滑出窗口的更早轮次压缩成摘要，作为后续提问的背景。
    * 传入旧摘要做增量压缩，避免摘要只覆盖最近一段历史。
    */
-  async summarize(input: {
-    previousSummary?: string;
-    turns: HistoryTurn[];
-  }): Promise<string> {
+  async summarize(
+    input: {
+      previousSummary?: string;
+      turns: HistoryTurn[];
+    },
+    options: { signal?: AbortSignal } = {},
+  ): Promise<string> {
     const { data } = await this.gateway.invokeJson(
       'fast',
       [
@@ -83,18 +94,22 @@ export class RagModelService {
       ],
       false,
       (raw) => summarySchema.parse(raw),
+      options,
     );
     return data.summary.trim();
   }
 
-  async answer(input: {
-    question: string;
-    summary?: string;
-    history: HistoryTurn[];
-    memories: MemoryItem[];
-    hits: RetrievalHit[];
-    useReasoning: boolean;
-  }) {
+  async answer(
+    input: {
+      question: string;
+      summary?: string;
+      history: HistoryTurn[];
+      memories: MemoryItem[];
+      hits: RetrievalHit[];
+      useReasoning: boolean;
+    },
+    options: { signal?: AbortSignal } = {},
+  ) {
     const evidence = input.hits.map((hit) => ({
       chunkId: hit.chunkId,
       documentId: hit.documentId,
@@ -119,6 +134,7 @@ export class RagModelService {
       ],
       input.useReasoning,
       (raw) => answerSchema.parse(raw),
+      options,
     );
     return {
       model: this.gateway.getModelName(
@@ -133,12 +149,15 @@ export class RagModelService {
    * 资料无依据时的通用知识补答：不提供任何证据，基于模型自身知识回答。
    * 来源声明由编排层在正文前统一加提示行，这里只产出正文。
    */
-  async answerGeneral(input: {
-    question: string;
-    summary?: string;
-    history: HistoryTurn[];
-    memories: MemoryItem[];
-  }) {
+  async answerGeneral(
+    input: {
+      question: string;
+      summary?: string;
+      history: HistoryTurn[];
+      memories: MemoryItem[];
+    },
+    options: { signal?: AbortSignal } = {},
+  ) {
     const { data } = await this.gateway.invokeJson(
       'fast',
       [
@@ -156,6 +175,7 @@ export class RagModelService {
       ],
       false,
       (raw) => answerSchema.parse(raw),
+      options,
     );
     return {
       model: this.gateway.getModelName('fast'),

@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 import { RetrievalService } from '../../retrieval/retrieval.service';
 import { RetrievalHit } from '../../retrieval/retrieval-hit';
 import { MemoryService } from '../../memory/memory.service';
@@ -13,72 +12,44 @@ import {
   RagState,
 } from './rag-types';
 
-const RagStateAnnotation = Annotation.Root({
-  ownerId: Annotation<string>,
-  question: Annotation<string>,
-  summary: Annotation<string | undefined>,
-  history: Annotation<HistoryTurn[]>,
-  memories: Annotation<MemoryItem[]>,
-  datasetIds: Annotation<string[]>,
-  route: Annotation<RagRoute | undefined>,
-  hits: Annotation<RetrievalHit[]>,
-  vectorHits: Annotation<RetrievalHit[]>,
-  hasEvidence: Annotation<boolean>,
-  usedTools: Annotation<string[]>,
-  answer: Annotation<string | undefined>,
-  citedChunkIds: Annotation<string[]>,
-  confidence: Annotation<number>,
-  model: Annotation<string | undefined>,
-  thinking: Annotation<boolean>,
-  answerMode: Annotation<AnswerMode>,
-});
+export type RagStage =
+  'rewrite' | 'recall' | 'classify' | 'gate' | 'retrieve' | 'answer';
 
 @Injectable()
 export class RagAgentService {
   private readonly logger = new Logger(RagAgentService.name);
-  private readonly graph: {
-    invoke(input: RagState): Promise<RagState>;
-  };
-
   constructor(
     private readonly models: RagModelService,
     private readonly retrieval: RetrievalService,
     private readonly memories: MemoryService,
-  ) {
-    this.graph = new StateGraph(RagStateAnnotation)
-      .addNode('rewrite', async (state) => this.rewrite(state))
-      .addNode('recall', async (state) => this.recall(state))
-      .addNode('classify', async (state) => ({
-        route: await this.models.route(state.question),
-      }))
-      .addNode('gate', async (state) => this.gate(state))
-      .addNode('retrieve', async (state) => this.retrieve(state))
-      .addNode('generateAnswer', async (state) => this.answer(state))
-      .addEdge(START, 'rewrite')
-      .addEdge('rewrite', 'recall')
-      .addEdge('recall', 'classify')
-      .addEdge('classify', 'gate')
-      // 门控未通过时跳过检索，直接产出无证据回答
-      .addConditionalEdges(
-        'gate',
-        (state) => (state.hasEvidence ? 'retrieve' : 'generateAnswer'),
-        { retrieve: 'retrieve', generateAnswer: 'generateAnswer' },
-      )
-      .addEdge('retrieve', 'generateAnswer')
-      .addEdge('generateAnswer', END)
-      .compile();
-  }
+  ) {}
 
   /** 编排入口：改写 → 长期记忆召回 → 意图路由 → 门控 →（命中则检索）→ 回答 */
-  async invoke(input: {
-    ownerId: string;
-    question: string;
-    datasetIds: string[];
-    summary?: string;
-    history?: HistoryTurn[];
-  }): Promise<RagState> {
+  async invoke(
+    input: {
+      ownerId: string;
+      question: string;
+      datasetIds: string[];
+      summary?: string;
+      history?: HistoryTurn[];
+    },
+    options: {
+      signal?: AbortSignal;
+      emitStage?: (stage: RagStage) => void;
+    } = {},
+  ): Promise<RagState> {
+    const runStage = async <T>(
+      stage: RagStage,
+      action: () => Promise<T>,
+    ): Promise<T> => {
+      throwIfAborted(options.signal);
+      options.emitStage?.(stage);
+      const result = await action();
+      throwIfAborted(options.signal);
+      return result;
+    };
     const history = this.windowHistory(input.history ?? []);
-    const state = await this.graph.invoke({
+    let state: RagState = {
       ownerId: input.ownerId,
       question: input.question,
       summary: input.summary,
@@ -93,8 +64,42 @@ export class RagAgentService {
       confidence: 0,
       thinking: false,
       answerMode: 'rag',
-    });
-    // 图内 usedTools 是覆盖语义（gate / retrieve 会整体替换），遗漏的记忆标记在这里补上
+    };
+    if (history.length > 0) {
+      state = {
+        ...state,
+        ...(await runStage('rewrite', () =>
+          this.rewrite(state, options.signal),
+        )),
+      };
+    }
+    state = {
+      ...state,
+      ...(await runStage('recall', () => this.recall(state))),
+    };
+    state = {
+      ...state,
+      ...(await runStage('classify', async () => ({
+        route: options.signal
+          ? await this.models.route(state.question, { signal: options.signal })
+          : await this.models.route(state.question),
+      }))),
+    };
+    state = {
+      ...state,
+      ...(await runStage('gate', () => this.gate(state))),
+    };
+    if (state.hasEvidence) {
+      state = {
+        ...state,
+        ...(await runStage('retrieve', () => this.retrieve(state))),
+      };
+    }
+    state = {
+      ...state,
+      ...(await runStage('answer', () => this.answer(state, options.signal))),
+    };
+    // 各节点的 usedTools 是覆盖语义（gate / retrieve 会整体替换），遗漏的记忆标记在这里补上
     return state.memories.length > 0
       ? { ...state, usedTools: [...state.usedTools, 'memory'] }
       : state;
@@ -104,11 +109,14 @@ export class RagAgentService {
    * 会话记忆压缩：把滑出窗口的更早轮次合并进摘要。
    * 由 chat.service 决定何时调用（攒够阈值才压缩），这里只负责模型侧。
    */
-  summarize(input: {
-    previousSummary?: string;
-    turns: HistoryTurn[];
-  }): Promise<string> {
-    return this.models.summarize(input);
+  summarize(
+    input: {
+      previousSummary?: string;
+      turns: HistoryTurn[];
+    },
+    options: { signal?: AbortSignal } = {},
+  ): Promise<string> {
+    return this.models.summarize(input, options);
   }
 
   /**
@@ -134,14 +142,20 @@ export class RagAgentService {
    * 所以先用历史把追问改写成自洽查询，否则"那它的缺点呢"会直接把代词送去检索。
    * 改写失败不影响主流程，回退原问题即可。
    */
-  private async rewrite(state: RagState): Promise<Partial<RagState>> {
+  private async rewrite(
+    state: RagState,
+    signal?: AbortSignal,
+  ): Promise<Partial<RagState>> {
     if (state.history.length === 0) return {};
     try {
-      const question = await this.models.rewriteQuery({
+      const input = {
         question: state.question,
         summary: state.summary,
         history: state.history,
-      });
+      };
+      const question = signal
+        ? await this.models.rewriteQuery(input, { signal })
+        : await this.models.rewriteQuery(input);
       return { question };
     } catch (error) {
       this.logger.warn(
@@ -220,15 +234,18 @@ export class RagAgentService {
     return { hits: hybrid.hits, usedTools: hybrid.usedTools };
   }
 
-  private async answer(state: RagState) {
+  private async answer(state: RagState, signal?: AbortSignal) {
     if (state.hits.length === 0) {
       // 资料无依据：先明确告知，再用模型通用知识补答，省去用户手动切模式
-      const fallback = await this.models.answerGeneral({
+      const input = {
         question: state.question,
         summary: state.summary,
         history: state.history,
         memories: state.memories,
-      });
+      };
+      const fallback = signal
+        ? await this.models.answerGeneral(input, { signal })
+        : await this.models.answerGeneral(input);
       return {
         answer: `未在资料中找到与问题相关的内容，以下为基于模型通用知识的回答：\n\n${fallback.result.answer}`,
         // 通用知识没有资料依据，不产出任何引用
@@ -243,14 +260,17 @@ export class RagAgentService {
       state.route?.complexity === 'high' ||
       state.route?.intent === 'compare' ||
       state.route?.intent === 'graph';
-    let response = await this.models.answer({
+    const input = {
       question: state.question,
       summary: state.summary,
       history: state.history,
       memories: state.memories,
       hits: state.hits,
       useReasoning,
-    });
+    };
+    let response = signal
+      ? await this.models.answer(input, { signal })
+      : await this.models.answer(input);
     const hitIds = new Set(state.hits.map((hit) => hit.chunkId));
     let citedChunkIds = response.result.citedChunkIds.filter((id) =>
       hitIds.has(id),
@@ -259,14 +279,17 @@ export class RagAgentService {
       !useReasoning &&
       (response.result.confidence < 0.45 || citedChunkIds.length === 0)
     ) {
-      response = await this.models.answer({
+      const retryInput = {
         question: state.question,
         summary: state.summary,
         history: state.history,
         memories: state.memories,
         hits: state.hits,
         useReasoning: true,
-      });
+      };
+      response = signal
+        ? await this.models.answer(retryInput, { signal })
+        : await this.models.answer(retryInput);
       citedChunkIds = response.result.citedChunkIds.filter((id) =>
         hitIds.has(id),
       );
@@ -280,4 +303,11 @@ export class RagAgentService {
       answerMode: 'rag' as AnswerMode,
     };
   }
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (!signal?.aborted) return;
+  throw signal.reason instanceof Error
+    ? signal.reason
+    : new Error('请求已取消');
 }

@@ -87,6 +87,18 @@
   white-space: pre-wrap;
 }
 
+.markdown-content {
+  display: block;
+  white-space: normal;
+}
+
+.message-stage {
+  display: block;
+  margin-top: 12rpx;
+  color: #8a8178;
+  font-size: 24rpx;
+}
+
 .message-meta {
   display: flex;
   flex-wrap: wrap;

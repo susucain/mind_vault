@@ -4,19 +4,40 @@ import {
   isMetaEvent,
   listMessages,
   streamMessage,
+  StreamHandle,
 } from '../../services/chat';
 import { ChatCitation, ChatMessage } from '../../types/chat';
 import { Dataset } from '../../types/api';
 import { ensureAuthenticated } from '../../utils/auth-guard';
 import { showRequestError } from '../../utils/feedback';
+import { sanitizeMarkdown } from '../../utils/markdown-safety';
 
 interface DisplayMessage extends ChatMessage {
   streaming?: boolean;
+  rendered?: boolean;
+  markdownContent?: string;
+  stage?: string;
+  toolLabels?: string[];
   /** 本轮是否注入了长期记忆，用于气泡下方提示，不展示原始 memory 工具名 */
   usedMemory?: boolean;
 }
 
 const MEMORY_TOOL = 'memory';
+let activeStream: StreamHandle | null = null;
+const STAGE_LABELS: Record<string, string> = {
+  preparing: '正在准备回答',
+  rewrite: '正在理解上下文',
+  recall: '正在检索你的记忆',
+  classify: '正在分析问题',
+  gate: '正在确认资料相关性',
+  retrieve: '正在检索资料',
+  answer: '正在生成回答',
+};
+const TOOL_LABELS: Record<string, string> = {
+  vector: '语义检索',
+  keyword: '关键词检索',
+  graph: '知识图谱',
+};
 
 /**
  * 把记忆工具名从展示列表里摘出来单独标记：
@@ -34,7 +55,23 @@ function splitMemoryTool(usedTools: string[]): {
 
 function withMemoryFlag(message: ChatMessage): DisplayMessage {
   const { tools, usedMemory } = splitMemoryTool(message.usedTools);
-  return { ...message, usedTools: tools, usedMemory };
+  return {
+    ...message,
+    usedTools: tools,
+    usedMemory,
+    rendered: message.role === 'assistant',
+    markdownContent:
+      message.role === 'assistant'
+        ? sanitizeMarkdown(message.content)
+        : undefined,
+    stage:
+      message.status === 'ABORTED'
+        ? '已停止生成'
+        : message.status === 'FAILED'
+          ? '生成失败'
+          : undefined,
+    toolLabels: tools.map((tool) => TOOL_LABELS[tool] ?? tool),
+  };
 }
 
 Page({
@@ -46,6 +83,7 @@ Page({
     conversationId: '',
     loading: true,
     sending: false,
+    stopping: false,
     error: '',
     scrollTo: '',
   },
@@ -110,11 +148,13 @@ Page({
       if (!this.data.conversationId) {
         await this.createNewConversation();
       }
+      const conversationId = this.data.conversationId;
       const userMessage: DisplayMessage = {
         id: `local-user-${Date.now()}`,
         role: 'user',
         content,
         usedTools: [],
+        toolLabels: [],
         thinking: false,
         citations: [],
       };
@@ -123,6 +163,7 @@ Page({
         role: 'assistant',
         content: '',
         usedTools: [],
+        toolLabels: [],
         thinking: false,
         citations: [],
         streaming: true,
@@ -131,26 +172,33 @@ Page({
         messages: [...this.data.messages, userMessage, assistantMessage],
         input: '',
         sending: true,
+        stopping: false,
       });
       this.scrollToBottom();
 
       let streamFailed = false;
-      await streamMessage(this.data.conversationId, content, (event) => {
+      const stream = streamMessage(conversationId, content, (event) => {
         if (event.event === 'error') streamFailed = true;
         this.handleStreamEvent(assistantMessage.id, event.event, event.data);
       });
+      activeStream = stream;
+      await stream.promise;
+      if (activeStream !== stream) return;
+      activeStream = null;
+      if (stream.isAborted()) return;
       if (streamFailed) {
         // 失败时后端没有落库助手消息，用服务端历史覆盖会抹掉刚渲染的错误提示
         this.scrollToBottom();
         return;
       }
-      const history = await listMessages(this.data.conversationId);
+      const history = await listMessages(conversationId);
+      if (this.data.conversationId !== conversationId) return;
       this.setData({ messages: history.items.map(withMemoryFlag) });
       this.scrollToBottom();
     } catch (error) {
       showRequestError(error);
     } finally {
-      this.setData({ sending: false });
+      this.setData({ sending: false, stopping: false });
     }
   },
 
@@ -167,31 +215,69 @@ Page({
       target.id = data.messageId;
       target.usedTools = tools;
       target.usedMemory = usedMemory;
+      target.toolLabels = tools.map((tool) => TOOL_LABELS[tool] ?? tool);
       target.model = data.model ?? null;
       target.thinking = data.thinking;
+      target.answerMode = data.answerMode;
     }
     if (event === 'token' && typeof data.text === 'string') {
       target.content += data.text;
+    }
+    if (event === 'stage' && typeof data.stage === 'string') {
+      if (!this.data.stopping) {
+        target.stage = STAGE_LABELS[data.stage] ?? '正在处理';
+      }
     }
     if (event === 'citation') {
       target.citations.push(data as unknown as ChatCitation);
     }
     if (event === 'done') {
       target.streaming = false;
+      target.rendered = true;
+      target.markdownContent = sanitizeMarkdown(target.content);
       target.confidence =
         typeof data.confidence === 'number' ? data.confidence : null;
     }
     if (event === 'error') {
       target.streaming = false;
-      target.content =
-        typeof data.message === 'string' ? data.message : '问答失败';
+      target.stage = '生成失败';
+      if (!target.content) {
+        target.content =
+          typeof data.message === 'string' ? data.message : '问答失败';
+      }
+      target.rendered = Boolean(target.content);
+      target.markdownContent = target.rendered
+        ? sanitizeMarkdown(target.content)
+        : undefined;
     }
     this.setData({ messages });
     this.scrollToBottom();
   },
 
   newConversation() {
+    activeStream?.abort();
+    activeStream = null;
     void this.createNewConversation();
+  },
+
+  stopGeneration() {
+    if (!activeStream || this.data.stopping) return;
+    const messages = this.data.messages.map((message) => ({ ...message }));
+    const target = [...messages]
+      .reverse()
+      .find((message) => message.role === 'assistant' && message.streaming);
+    if (target) {
+      target.streaming = false;
+      target.status = 'ABORTED';
+      target.stage = '已停止生成';
+    }
+    this.setData({ messages, stopping: true });
+    activeStream.abort();
+  },
+
+  onUnload() {
+    activeStream?.abort();
+    activeStream = null;
   },
 
   scrollToBottom() {

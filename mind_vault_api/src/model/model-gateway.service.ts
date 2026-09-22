@@ -36,13 +36,14 @@ export class ModelGatewayService {
     messages: BaseMessage[],
     thinking: boolean,
     parse: (raw: unknown) => S,
+    options: { signal?: AbortSignal } = {},
   ): Promise<{ data: S; usage: Record<string, unknown> }> {
     const model = this.getChatModel(kind, thinking);
     let lastError: unknown;
     let conversation = messages;
     // 首次调用 + 一次带错误反馈的重试
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const response = await model.invoke(conversation);
+      const response = await model.invoke(conversation, options);
       const content = jsonText(response.content);
       try {
         return {

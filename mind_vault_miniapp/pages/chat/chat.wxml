@@ -37,13 +37,24 @@
   <scroll-view wx:else class="message-list" scroll-y scroll-into-view="{{scrollTo}}">
     <view wx:for="{{messages}}" wx:key="id" id="message-{{index}}" class="message {{item.role}}">
       <view class="bubble">
-        <text class="message-content">{{item.content || (item.streaming ? '正在生成回答...' : '')}}</text>
+        <mp-html
+          wx:if="{{item.rendered}}"
+          class="message-content markdown-content"
+          content="{{item.markdownContent}}"
+          markdown="{{true}}"
+          scroll-table="{{true}}"
+          selectable="{{true}}"
+        ></mp-html>
+        <text wx:else class="message-content">{{item.content || (item.streaming ? '正在生成回答...' : '')}}</text>
+        <text wx:if="{{item.stage}}" class="message-stage">{{item.stage}}</text>
         <view
-          wx:if="{{item.role === 'assistant' && (item.usedMemory || item.usedTools.length || item.model || item.thinking)}}"
+          wx:if="{{item.role === 'assistant' && (item.usedMemory || item.toolLabels.length || item.model || item.thinking || item.answerMode)}}"
           class="message-meta"
         >
           <text wx:if="{{item.usedMemory}}" class="memory-hint">已参考你的记忆</text>
-          <text wx:if="{{item.usedTools.length}}">{{item.usedTools.join(' · ')}}</text>
+          <text wx:if="{{item.answerMode === 'rag'}}">已基于资料检索</text>
+          <text wx:if="{{item.answerMode === 'general'}}">使用通用知识补答</text>
+          <text wx:if="{{item.toolLabels.length}}">{{item.toolLabels.join(' · ')}}</text>
           <text wx:if="{{item.model}}">{{item.model}}</text>
           <text wx:if="{{item.thinking}}">thinking</text>
         </view>
@@ -65,6 +76,7 @@
       maxlength="4000"
       bind:change="updateInput"
     />
-    <van-button type="primary" size="small" loading="{{sending}}" bind:click="sendMessage">发送</van-button>
+    <van-button wx:if="{{sending}}" type="danger" size="small" plain loading="{{stopping}}" bind:click="stopGeneration">停止</van-button>
+    <van-button wx:else type="primary" size="small" bind:click="sendMessage">发送</van-button>
   </view>
 </view>

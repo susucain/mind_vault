@@ -161,4 +161,62 @@ describe('ChatService', () => {
 
     expect(result.message.content).toBe('答案');
   });
+
+  it('persists an aborted assistant message when the request signal aborts', async () => {
+    const { service, messages, agent } = buildService({ messageCount: 0 });
+    const controller = new AbortController();
+    controller.abort(new Error('客户端已取消'));
+    agent.invoke.mockRejectedValue(controller.signal.reason);
+
+    await expect(
+      service.ask('user_1', 'conversation_1', '停止', {
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow('客户端已取消');
+
+    expect(messages.save).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        role: 'assistant',
+        content: '',
+        status: 'ABORTED',
+      }),
+    );
+  });
+
+  it('persists an aborted assistant message when cancellation happens during memory loading', async () => {
+    const { service, messages, agent } = buildService({ messageCount: 12 });
+    const controller = new AbortController();
+    agent.summarize.mockRejectedValue(new Error('客户端已取消'));
+    controller.abort(new Error('客户端已取消'));
+
+    await expect(
+      service.ask('user_1', 'conversation_1', '停止', {
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow('客户端已取消');
+
+    expect(messages.save).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        role: 'assistant',
+        status: 'ABORTED',
+      }),
+    );
+  });
+
+  it('persists a failed assistant message when generation throws', async () => {
+    const { service, messages, agent } = buildService({ messageCount: 0 });
+    agent.invoke.mockRejectedValue(new Error('模型不可用'));
+
+    await expect(
+      service.ask('user_1', 'conversation_1', '失败'),
+    ).rejects.toThrow('模型不可用');
+
+    expect(messages.save).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        role: 'assistant',
+        content: '',
+        status: 'FAILED',
+      }),
+    );
+  });
 });

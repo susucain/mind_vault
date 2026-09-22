@@ -12,6 +12,50 @@ function buildAgent(models: unknown, retrieval: unknown, memories?: unknown) {
 }
 
 describe('RagAgentService', () => {
+  it('emits stages as each RAG node actually starts', async () => {
+    const models = {
+      route: jest.fn().mockResolvedValue({
+        intent: 'semantic',
+        complexity: 'low',
+        entityNames: [],
+      }),
+      answer: jest.fn().mockResolvedValue({
+        model: 'fast-model',
+        thinking: false,
+        result: {
+          answer: '回答',
+          citedChunkIds: [],
+          confidence: 0.9,
+        },
+      }),
+      answerGeneral: jest.fn().mockResolvedValue({
+        model: 'fast-model',
+        thinking: false,
+        result: {
+          answer: '回答',
+          citedChunkIds: [],
+          confidence: 0.9,
+        },
+      }),
+    };
+    const retrieval = {
+      assessEvidence: jest.fn().mockResolvedValue({
+        hits: [],
+        hasEvidence: false,
+      }),
+    };
+    const memories = { recallMemories: jest.fn().mockResolvedValue([]) };
+    const agent = buildAgent(models, retrieval, memories);
+    const stages: string[] = [];
+
+    await agent.invoke(
+      { ownerId: 'user_1', question: '问题', datasetIds: [] },
+      { emitStage: (stage) => stages.push(stage) },
+    );
+
+    expect(stages).toEqual(['recall', 'classify', 'gate', 'answer']);
+  });
+
   it('routes a lookup question to keyword retrieval and removes unsupported citations', async () => {
     const models = {
       route: jest.fn().mockResolvedValue({
