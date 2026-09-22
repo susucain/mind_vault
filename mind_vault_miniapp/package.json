@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@vant/weapp": "^1.11.7",
+    "marked": "16.3.0",
     "mp-html": "^2.5.2"
   },
   "devDependencies": {
