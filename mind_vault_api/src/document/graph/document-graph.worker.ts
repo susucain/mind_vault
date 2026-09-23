@@ -1,0 +1,214 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Channel, ChannelModel, connect, ConsumeMessage } from 'amqplib';
+import { Repository } from 'typeorm';
+import { DocumentEntity } from '../entities/document.entity';
+import { GraphExtractionService } from '../../graph/graph-extraction.service';
+import { KnowledgeGraphService } from '../../graph/knowledge-graph.service';
+import {
+  DocumentGraphTaskEntity,
+  GraphTaskStatus,
+} from './entities/document-graph-task.entity';
+
+const RECONNECT_DELAY_MS = 5_000;
+
+interface GraphTaskMessage {
+  taskId: string;
+}
+
+@Injectable()
+export class DocumentGraphWorker {
+  private readonly logger = new Logger(DocumentGraphWorker.name);
+  private connection?: ChannelModel;
+  private channel?: Channel;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private shuttingDown = false;
+
+  constructor(
+    @InjectRepository(DocumentGraphTaskEntity)
+    private readonly tasks: Repository<DocumentGraphTaskEntity>,
+    @InjectRepository(DocumentEntity)
+    private readonly documents: Repository<DocumentEntity>,
+    private readonly extraction: GraphExtractionService,
+    private readonly graph: KnowledgeGraphService,
+    private readonly config: ConfigService,
+  ) {}
+
+  async onModuleInit() {
+    if (!this.config.get<boolean>('INGESTION_WORKER_ENABLED', false)) return;
+    this.shuttingDown = false;
+    await this.connectAndConsume();
+  }
+
+  async onModuleDestroy() {
+    this.shuttingDown = true;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    await this.channel?.close();
+    await this.connection?.close();
+  }
+
+  private async connectAndConsume() {
+    if (this.shuttingDown) return;
+    try {
+      const connection = await connect(
+        this.config.get<string>(
+          'RABBITMQ_URL',
+          'amqp://guest:guest@localhost:5672',
+        ),
+      );
+      const channel = await connection.createChannel();
+      connection.on('error', (error) => {
+        this.logger.error(`RabbitMQ 图谱连接错误: ${error.message}`);
+      });
+      connection.on('close', () => {
+        this.handleDisconnect(connection, channel, '连接已关闭');
+      });
+      channel.on('error', (error) => {
+        this.logger.error(`RabbitMQ 图谱 channel 错误: ${error.message}`);
+      });
+      channel.on('close', () => {
+        this.handleDisconnect(connection, channel, 'channel 已关闭');
+      });
+      await channel.assertExchange('mind-vault.ingestion', 'topic', {
+        durable: true,
+      });
+      await channel.assertQueue('mind-vault.graph.worker', {
+        durable: true,
+      });
+      await channel.bindQueue(
+        'mind-vault.graph.worker',
+        'mind-vault.ingestion',
+        'graph.extract',
+      );
+      await channel.prefetch(this.concurrency());
+      await channel.consume('mind-vault.graph.worker', (message) =>
+        void this.handleMessage(channel, message),
+      );
+      this.connection = connection;
+      this.channel = channel;
+      this.logger.log(
+        `RabbitMQ 图谱消费已连接: concurrency=${this.concurrency()}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `RabbitMQ 图谱消费连接失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      this.scheduleReconnect();
+    }
+  }
+
+  private handleDisconnect(
+    connection: ChannelModel,
+    channel: Channel,
+    reason: string,
+  ) {
+    if (this.shuttingDown) return;
+    if (this.channel && this.channel !== channel) return;
+    if (this.connection === connection) {
+      this.connection = undefined;
+      this.channel = undefined;
+    }
+    this.logger.warn(`RabbitMQ 图谱${reason}，将在 5 秒后重连`);
+    void connection.close().catch(() => undefined);
+    this.scheduleReconnect();
+  }
+
+  private scheduleReconnect() {
+    if (this.shuttingDown || this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined;
+      void this.connectAndConsume();
+    }, RECONNECT_DELAY_MS);
+  }
+
+  async process(message: GraphTaskMessage) {
+    const task = await this.tasks.findOne({ where: { id: message.taskId } });
+    if (
+      !task ||
+      task.status === GraphTaskStatus.Ready ||
+      task.status === GraphTaskStatus.Cancelled
+    ) {
+      return;
+    }
+
+    if (!(await this.findActiveDocument(task))) {
+      task.status = GraphTaskStatus.Cancelled;
+      await this.tasks.save(task);
+      return;
+    }
+
+    task.status = GraphTaskStatus.Processing;
+    task.errorMessage = null;
+    await this.tasks.save(task);
+    try {
+      const extraction = await this.extraction.extract({
+        chunkId: task.chunkId,
+        ownerId: task.ownerId,
+        documentId: task.documentId,
+        documentVersion: task.documentVersion,
+        text: task.text,
+        datasetIds: task.datasetIds,
+      } as never);
+      if (!(await this.findActiveDocument(task))) {
+        task.status = GraphTaskStatus.Cancelled;
+        await this.tasks.save(task);
+        return;
+      }
+      const activeTask = await this.tasks.findOne({
+        where: { id: task.id, status: GraphTaskStatus.Processing },
+      });
+      if (!activeTask) return;
+      await this.graph.indexChunk({
+        ownerId: task.ownerId,
+        documentId: task.documentId,
+        documentVersion: task.documentVersion,
+        chunkId: task.chunkId,
+        datasetIds: task.datasetIds,
+        ...extraction,
+      });
+      task.status = GraphTaskStatus.Ready;
+      task.errorMessage = null;
+      await this.tasks.save(task);
+    } catch (error) {
+      task.status = GraphTaskStatus.Failed;
+      task.retryCount += 1;
+      task.errorMessage = error instanceof Error ? error.message : String(error);
+      await this.tasks.save(task);
+      throw error;
+    }
+  }
+
+  private async handleMessage(
+    channel: Channel,
+    message: ConsumeMessage | null,
+  ) {
+    if (!message) return;
+    try {
+      await this.process(JSON.parse(message.content.toString()) as GraphTaskMessage);
+      if (this.channel === channel) channel.ack(message);
+    } catch (error) {
+      this.logger.error(
+        `图谱任务失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      if (this.channel === channel) channel.nack(message, false, false);
+    }
+  }
+
+  private async findActiveDocument(task: DocumentGraphTaskEntity) {
+    return this.documents.findOne({
+      where: {
+        id: task.documentId,
+        ownerId: task.ownerId,
+        deleted: false,
+      },
+    });
+  }
+
+  private concurrency() {
+    const configured = Number(
+      this.config.get<string | number>('GRAPH_WORKER_CONCURRENCY', 3),
+    );
+    return Number.isInteger(configured) && configured > 0 ? configured : 3;
+  }
+}

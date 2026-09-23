@@ -1,8 +1,90 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await */
 import { DocumentIngestionWorker } from './document-ingestion.worker';
 import { IngestionJobStatus } from '../entities/document-ingestion-job.entity';
+import { connect } from 'amqplib';
+
+jest.mock('amqplib', () => ({
+  connect: jest.fn(),
+}));
 
 describe('DocumentIngestionWorker', () => {
+  beforeEach(() => {
+    jest.useRealTimers();
+    jest.clearAllMocks();
+  });
+
+  it('reconnects and resumes consumption after its channel closes', async () => {
+    jest.useFakeTimers();
+    const firstConnectionHandlers = new Map<string, () => void>();
+    const firstChannelHandlers = new Map<string, () => void>();
+    const firstChannel = {
+      assertExchange: jest.fn().mockResolvedValue(undefined),
+      assertQueue: jest.fn().mockResolvedValue(undefined),
+      bindQueue: jest.fn().mockResolvedValue(undefined),
+      consume: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn((event: string, handler: () => void) => {
+        firstChannelHandlers.set(event, handler);
+      }),
+    };
+    const firstConnection = {
+      createChannel: jest.fn().mockResolvedValue(firstChannel),
+      on: jest.fn((event: string, handler: () => void) => {
+        firstConnectionHandlers.set(event, handler);
+      }),
+      close: jest.fn().mockResolvedValue(undefined),
+    };
+    const secondChannel = {
+      assertExchange: jest.fn().mockResolvedValue(undefined),
+      assertQueue: jest.fn().mockResolvedValue(undefined),
+      bindQueue: jest.fn().mockResolvedValue(undefined),
+      consume: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    };
+    const secondConnection = {
+      createChannel: jest.fn().mockResolvedValue(secondChannel),
+      on: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    };
+    const connectMock = connect as jest.MockedFunction<typeof connect>;
+    connectMock
+      .mockResolvedValueOnce(firstConnection as never)
+      .mockResolvedValueOnce(secondConnection as never);
+    const worker = new DocumentIngestionWorker(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {
+        get: jest.fn((key: string) =>
+          key === 'INGESTION_WORKER_ENABLED'
+            ? true
+            : 'amqp://guest:guest@localhost:5672',
+        ),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await worker.onModuleInit();
+    firstChannelHandlers.get('close')?.();
+    await jest.advanceTimersByTimeAsync(5_000);
+
+    expect(connectMock).toHaveBeenCalledTimes(2);
+    expect(secondConnection.createChannel).toHaveBeenCalledTimes(1);
+    expect(secondChannel.consume).toHaveBeenCalledWith(
+      'mind-vault.ingestion.worker',
+      expect.any(Function),
+    );
+    expect(firstConnectionHandlers.get('close')).toBeDefined();
+    await worker.onModuleDestroy();
+  });
+
   it('parses the uploaded source and marks the job as parsed', async () => {
     const jobs = {
       findOne: jest.fn().mockResolvedValue({
@@ -297,6 +379,10 @@ describe('DocumentIngestionWorker', () => {
       deleteDocument: jest.fn().mockResolvedValue(undefined),
       indexChunk: jest.fn().mockResolvedValue(undefined),
     };
+    const graphTasks = {
+      cancelActiveTasks: jest.fn().mockResolvedValue(undefined),
+      enqueue: jest.fn().mockResolvedValue(undefined),
+    };
     const worker = new DocumentIngestionWorker(
       jobs as never,
       {
@@ -350,6 +436,7 @@ describe('DocumentIngestionWorker', () => {
       } as never,
       graph as never,
       { find: jest.fn().mockResolvedValue([]) } as never,
+      graphTasks as never,
     );
 
     await expect(
@@ -364,6 +451,12 @@ describe('DocumentIngestionWorker', () => {
 
     expect(index.deleteByDocument).toHaveBeenCalledWith('user_1', 'doc_1');
     expect(graph.deleteDocument).toHaveBeenCalledWith('user_1', 'doc_1');
+    expect(graphTasks.cancelActiveTasks).toHaveBeenCalledWith('user_1', 'doc_1');
+    expect(graphTasks.enqueue).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ chunkId: 'chunk_1', documentId: 'doc_1' }),
+      ]),
+    );
     expect(index.deleteByDocument.mock.invocationCallOrder[0]).toBeLessThan(
       index.indexChunks.mock.invocationCallOrder[0],
     );

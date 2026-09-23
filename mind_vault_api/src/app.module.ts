@@ -12,6 +12,7 @@ import { DatasetModule } from './dataset/dataset.module';
 import { DatasetEntity } from './dataset/entities/dataset.entity';
 import { DatasetDocumentEntity } from './dataset/entities/dataset-document.entity';
 import { DocumentIngestionJobEntity } from './document/entities/document-ingestion-job.entity';
+import { DocumentGraphTaskEntity } from './document/graph/entities/document-graph-task.entity';
 import { GraphModule } from './graph/graph.module';
 import { RetrievalModule } from './retrieval/retrieval.module';
 import { ChatModule } from './chat/chat.module';
@@ -62,6 +63,7 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
                 DatasetEntity,
                 DatasetDocumentEntity,
                 DocumentIngestionJobEntity,
+                DocumentGraphTaskEntity,
                 ConversationEntity,
                 ChatMessageEntity,
                 ChatCitationEntity,

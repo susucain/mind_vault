@@ -12,6 +12,7 @@ import { AuthModule } from '../auth/auth.module';
 import { DatasetModule } from '../dataset/dataset.module';
 import { DocumentEntity } from './entities/document.entity';
 import { DocumentIngestionJobEntity } from './entities/document-ingestion-job.entity';
+import { DocumentGraphTaskEntity } from './graph/entities/document-graph-task.entity';
 import { DatasetDocumentEntity } from '../dataset/entities/dataset-document.entity';
 import { DocumentUploadService } from './document-upload.service';
 import { DocumentUploadController } from './document-upload.controller';
@@ -29,6 +30,8 @@ import {
 import { Client } from '@elastic/elasticsearch';
 import { ConfigService } from '@nestjs/config';
 import { GraphModule } from '../graph/graph.module';
+import { DocumentGraphTaskService } from './graph/document-graph-task.service';
+import { DocumentGraphWorker } from './graph/document-graph.worker';
 
 @Module({
   imports: [
@@ -38,6 +41,7 @@ import { GraphModule } from '../graph/graph.module';
     TypeOrmModule.forFeature([
       DocumentEntity,
       DocumentIngestionJobEntity,
+      DocumentGraphTaskEntity,
       DatasetDocumentEntity,
     ]),
     MongooseModule.forFeature([
@@ -57,6 +61,8 @@ import { GraphModule } from '../graph/graph.module';
     DocumentCatalogService,
     DocumentLifecycleService,
     DocumentIngestionWorker,
+    DocumentGraphTaskService,
+    DocumentGraphWorker,
     DocumentChunkingService,
     EmbeddingService,
     ElasticsearchIndexService,

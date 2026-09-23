@@ -39,6 +39,24 @@ export class DocumentPipelinePublisher {
     return this.publishIndex(message);
   }
 
+  async publishGraph(message: {
+    taskId: string;
+    ownerId: string;
+    documentId: string;
+    documentVersion: number;
+  }): Promise<void> {
+    const channel = await this.getChannel();
+    channel.publish(
+      'mind-vault.ingestion',
+      'graph.extract',
+      Buffer.from(JSON.stringify(message)),
+      { persistent: true, contentType: 'application/json' },
+    );
+    this.logger.debug(
+      `Graph task message published: taskId=${message.taskId}, documentId=${message.documentId}`,
+    );
+  }
+
   private async getChannel(): Promise<Channel> {
     if (this.channel) return this.channel;
     this.connection = await connect(

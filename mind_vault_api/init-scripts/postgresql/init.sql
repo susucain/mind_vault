@@ -70,6 +70,23 @@ CREATE TABLE IF NOT EXISTS kh_document_ingestion_job (
 CREATE INDEX IF NOT EXISTS idx_kh_ingestion_job_owner_document
     ON kh_document_ingestion_job(owner_id, document_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS kh_document_graph_task (
+    id VARCHAR PRIMARY KEY,
+    owner_id BIGINT NOT NULL,
+    document_id BIGINT NOT NULL,
+    document_version INT NOT NULL,
+    chunk_id VARCHAR NOT NULL,
+    text TEXT NOT NULL,
+    dataset_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status VARCHAR NOT NULL,
+    retry_count INT NOT NULL DEFAULT 0,
+    error_message VARCHAR,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kh_graph_task_document
+    ON kh_document_graph_task(owner_id, document_id, status);
+
 CREATE TABLE IF NOT EXISTS kh_conversation (
     id VARCHAR PRIMARY KEY,
     owner_id BIGINT NOT NULL,

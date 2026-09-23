@@ -28,6 +28,7 @@ describe('DocumentLifecycleService', () => {
     const index = {
       markDocumentDeleted: jest.fn().mockResolvedValue(undefined),
     };
+    const graphTasks = { cancelActiveTasks: jest.fn().mockResolvedValue(undefined) };
     const service = new DocumentLifecycleService(
       documents as never,
       contents as never,
@@ -35,6 +36,7 @@ describe('DocumentLifecycleService', () => {
       publisher as never,
       storage as never,
       index as never,
+      graphTasks as never,
     );
 
     await expect(service.remove('user_1', 'doc_1')).resolves.toMatchObject({
@@ -51,6 +53,10 @@ describe('DocumentLifecycleService', () => {
     );
     expect(publisher.publishDelete).toHaveBeenCalledWith(
       expect.objectContaining({ ownerId: 'user_1', documentId: 'doc_1' }),
+    );
+    expect(graphTasks.cancelActiveTasks).toHaveBeenCalledWith(
+      'user_1',
+      'doc_1',
     );
   });
 
@@ -70,6 +76,7 @@ describe('DocumentLifecycleService', () => {
       save: jest.fn(async (input) => ({ ...input, id: 'job_new' })),
     };
     const publisher = { publishIndex: jest.fn().mockResolvedValue(undefined) };
+    const graphTasks = { cancelActiveTasks: jest.fn().mockResolvedValue(undefined) };
     const service = new DocumentLifecycleService(
       documents as never,
       {} as never,
@@ -77,6 +84,7 @@ describe('DocumentLifecycleService', () => {
       publisher as never,
       {} as never,
       {} as never,
+      graphTasks as never,
     );
 
     await expect(service.reindex('user_1', 'doc_1')).resolves.toMatchObject({
@@ -87,7 +95,7 @@ describe('DocumentLifecycleService', () => {
     expect(jobs.create).toHaveBeenCalledWith(
       expect.objectContaining({
         operation: 'reindex',
-        documentVersion: 1,
+        documentVersion: 2,
         status: 'UPLOADED',
       }),
     );
@@ -95,9 +103,13 @@ describe('DocumentLifecycleService', () => {
       jobId: 'job_new',
       ownerId: 'user_1',
       documentId: 'doc_1',
-      documentVersion: 1,
+      documentVersion: 2,
       operation: 'reindex',
     });
+    expect(graphTasks.cancelActiveTasks).toHaveBeenCalledWith(
+      'user_1',
+      'doc_1',
+    );
   });
 
   it('rejects a reindex while the document is still being processed', async () => {

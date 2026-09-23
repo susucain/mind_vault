@@ -21,6 +21,7 @@ import {
 } from './schemas/document-content.schema';
 import { RustfsService } from '../storage/rustfs.service';
 import { ElasticsearchIndexService } from '../retrieval/es/elasticsearch-index.service';
+import { DocumentGraphTaskService } from './graph/document-graph-task.service';
 
 @Injectable()
 export class DocumentLifecycleService {
@@ -34,6 +35,7 @@ export class DocumentLifecycleService {
     private readonly publisher: DocumentPipelinePublisher,
     private readonly storage: RustfsService,
     private readonly index: ElasticsearchIndexService,
+    private readonly graphTasks?: DocumentGraphTaskService,
   ) {}
 
   async remove(ownerId: string, documentId: string) {
@@ -43,6 +45,7 @@ export class DocumentLifecycleService {
     if (!document)
       throw new NotFoundException(`Document ${documentId} not found`);
 
+    await this.graphTasks?.cancelActiveTasks(ownerId, documentId);
     document.deleted = true;
     await this.documents.save(document);
     await this.contents.updateOne(
@@ -100,13 +103,14 @@ export class DocumentLifecycleService {
         id: nextSnowflakeId(),
         ownerId,
         documentId,
-        documentVersion: previous?.documentVersion ?? 1,
+        documentVersion: (previous?.documentVersion ?? 0) + 1,
         operation: IngestionJobOperation.Reindex,
         status: IngestionJobStatus.Uploaded,
         currentStage: 'reindex_pending',
         retryCount: 0,
       }),
     );
+    await this.graphTasks?.cancelActiveTasks(ownerId, documentId);
     await this.publisher.publishIndex({
       jobId: job.id,
       ownerId,

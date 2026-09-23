@@ -22,6 +22,7 @@ import { ElasticsearchIndexService } from '../../retrieval/es/elasticsearch-inde
 import { GraphExtractionService } from '../../graph/graph-extraction.service';
 import { KnowledgeGraphService } from '../../graph/knowledge-graph.service';
 import { DatasetDocumentEntity } from '../../dataset/entities/dataset-document.entity';
+import { DocumentGraphTaskService } from '../graph/document-graph-task.service';
 
 interface IndexMessage {
   jobId: string;
@@ -31,11 +32,15 @@ interface IndexMessage {
   operation: 'index' | 'delete' | 'reindex';
 }
 
+const RECONNECT_DELAY_MS = 5_000;
+
 @Injectable()
 export class DocumentIngestionWorker {
   private readonly logger = new Logger(DocumentIngestionWorker.name);
   private connection?: ChannelModel;
   private channel?: Channel;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private shuttingDown = false;
 
   constructor(
     @InjectRepository(DocumentIngestionJobEntity)
@@ -54,51 +59,109 @@ export class DocumentIngestionWorker {
     private readonly graph: KnowledgeGraphService,
     @InjectRepository(DatasetDocumentEntity)
     private readonly datasetDocuments: Repository<DatasetDocumentEntity>,
+    private readonly graphTasks?: DocumentGraphTaskService,
   ) {}
 
   async onModuleInit() {
     if (!this.config.get<boolean>('INGESTION_WORKER_ENABLED', false)) return;
-    this.connection = await connect(
-      this.config.get<string>(
-        'RABBITMQ_URL',
-        'amqp://guest:guest@localhost:5672',
-      ),
-    );
-    this.channel = await this.connection.createChannel();
-    await this.channel.assertExchange('mind-vault.ingestion', 'topic', {
-      durable: true,
-    });
-    await this.channel.assertQueue('mind-vault.ingestion.worker', {
-      durable: true,
-    });
-    await this.channel.bindQueue(
-      'mind-vault.ingestion.worker',
-      'mind-vault.ingestion',
-      // 通配绑定，避免新增 operation 时漏绑导致消息被交换器丢弃
-      'document.*',
-    );
-    await this.channel.consume(
-      'mind-vault.ingestion.worker',
-      (message) => void this.handleMessage(message),
-    );
+    this.shuttingDown = false;
+    await this.connectAndConsume();
   }
 
   async onModuleDestroy() {
+    this.shuttingDown = true;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     await this.channel?.close();
     await this.connection?.close();
   }
 
-  private async handleMessage(message: ConsumeMessage | null) {
+  private async connectAndConsume() {
+    if (this.shuttingDown) return;
+    try {
+      const connection = await connect(
+        this.config.get<string>(
+          'RABBITMQ_URL',
+          'amqp://guest:guest@localhost:5672',
+        ),
+      );
+      const channel = await connection.createChannel();
+      connection.on('error', (error) => {
+        this.logger.error(`RabbitMQ 连接错误: ${error.message}`);
+      });
+      connection.on('close', () => {
+        this.handleDisconnect(connection, channel, '连接已关闭');
+      });
+      channel.on('error', (error) => {
+        this.logger.error(`RabbitMQ channel 错误: ${error.message}`);
+      });
+      channel.on('close', () => {
+        this.handleDisconnect(connection, channel, 'channel 已关闭');
+      });
+
+      await channel.assertExchange('mind-vault.ingestion', 'topic', {
+        durable: true,
+      });
+      await channel.assertQueue('mind-vault.ingestion.worker', {
+        durable: true,
+      });
+      await channel.bindQueue(
+        'mind-vault.ingestion.worker',
+        'mind-vault.ingestion',
+        // 通配绑定，避免新增 operation 时漏绑导致消息被交换器丢弃
+        'document.*',
+      );
+      await channel.consume('mind-vault.ingestion.worker', (message) =>
+        void this.handleMessage(channel, message),
+      );
+      this.connection = connection;
+      this.channel = channel;
+      this.logger.log('RabbitMQ 文档消费已连接');
+    } catch (error) {
+      this.logger.error(
+        `RabbitMQ 消费连接失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      this.scheduleReconnect();
+    }
+  }
+
+  private handleDisconnect(
+    connection: ChannelModel,
+    channel: Channel,
+    reason: string,
+  ) {
+    if (this.shuttingDown) return;
+    if (this.channel && this.channel !== channel) return;
+    if (this.connection === connection) {
+      this.connection = undefined;
+      this.channel = undefined;
+    }
+    this.logger.warn(`RabbitMQ ${reason}，将在 5 秒后重连`);
+    void connection.close().catch(() => undefined);
+    this.scheduleReconnect();
+  }
+
+  private scheduleReconnect() {
+    if (this.shuttingDown || this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined;
+      void this.connectAndConsume();
+    }, RECONNECT_DELAY_MS);
+  }
+
+  private async handleMessage(
+    channel: Channel,
+    message: ConsumeMessage | null,
+  ) {
     if (!message) return;
     try {
       const payload = JSON.parse(message.content.toString()) as IndexMessage;
       await this.process(payload);
-      this.channel?.ack(message);
+      if (this.channel === channel) channel.ack(message);
     } catch (error) {
       this.logger.error(
         `文档索引任务失败: ${error instanceof Error ? error.message : String(error)}`,
       );
-      this.channel?.nack(message, false, false);
+      if (this.channel === channel) channel.nack(message, false, false);
     }
   }
 
@@ -204,21 +267,15 @@ export class DocumentIngestionWorker {
       if (message.operation === 'reindex') {
         // 重建前清空旧数据：分块策略或 embedding 模型变化后 chunkId 会变，
         // 不清空会导致新旧 chunk 同时留在索引里被重复召回
+        await this.graphTasks?.cancelActiveTasks(
+          message.ownerId,
+          message.documentId,
+        );
         await this.index.deleteByDocument(message.ownerId, message.documentId);
         await this.graph.deleteDocument(message.ownerId, message.documentId);
       }
       await this.index.indexChunks(chunks);
-      for (const chunk of chunks) {
-        const extraction = await this.graphExtraction.extract(chunk);
-        await this.graph.indexChunk({
-          ownerId: message.ownerId,
-          documentId: document.id,
-          documentVersion: message.documentVersion,
-          chunkId: chunk.chunkId,
-          datasetIds,
-          ...extraction,
-        });
-      }
+      await this.graphTasks?.enqueue(chunks);
       await this.updateJob(job, IngestionJobStatus.Ready, 'ready');
       return {
         jobId: job.id,
