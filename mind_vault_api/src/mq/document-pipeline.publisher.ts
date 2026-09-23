@@ -57,6 +57,17 @@ export class DocumentPipelinePublisher {
     );
   }
 
+  async publishProgress(message: Record<string, unknown>): Promise<void> {
+    const channel = await this.getChannel();
+    await channel.assertExchange('mind-vault.events', 'topic', { durable: true });
+    channel.publish(
+      'mind-vault.events',
+      'document.progress',
+      Buffer.from(JSON.stringify(message)),
+      { contentType: 'application/json' },
+    );
+  }
+
   private async getChannel(): Promise<Channel> {
     if (this.channel) return this.channel;
     this.connection = await connect(

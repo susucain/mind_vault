@@ -24,6 +24,7 @@ import { KnowledgeGraphService } from '../../graph/knowledge-graph.service';
 import { DatasetDocumentEntity } from '../../dataset/entities/dataset-document.entity';
 import { DocumentGraphTaskService } from '../graph/document-graph-task.service';
 import { DocumentStatus } from '../document-status';
+import { DocumentPipelinePublisher } from '../../mq/document-pipeline.publisher';
 
 interface IndexMessage {
   jobId: string;
@@ -61,6 +62,7 @@ export class DocumentIngestionWorker {
     @InjectRepository(DatasetDocumentEntity)
     private readonly datasetDocuments: Repository<DatasetDocumentEntity>,
     private readonly graphTasks?: DocumentGraphTaskService,
+    private readonly publisher?: DocumentPipelinePublisher,
   ) {}
 
   async onModuleInit() {
@@ -359,6 +361,15 @@ export class DocumentIngestionWorker {
     job.errorCode = null;
     job.errorMessage = null;
     const saved = await this.jobs.save(job);
+    await this.publisher?.publishProgress({
+      ownerId: job.ownerId,
+      documentId: job.documentId,
+      stage,
+      status,
+      completed,
+      total,
+      percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+    });
     this.logger.log(
       `文档索引阶段: jobId=${job.id} documentId=${job.documentId} stage=${stage} status=${status} progress=${completed}/${total}`,
     );

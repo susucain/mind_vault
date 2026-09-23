@@ -4,6 +4,7 @@ import {
   getDocumentProcess,
   listDocuments,
   retryDocumentProcess,
+  streamDocumentProgress,
   uploadDocument,
 } from '../../services/documents';
 import {
@@ -23,6 +24,8 @@ import {
 } from '../../utils/document-ingestion';
 
 let pollingTimer: ReturnType<typeof setTimeout> | null = null;
+let progressStream: { abort: () => void } | null = null;
+let progressReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 type LibraryDocumentItem = DocumentItem & {
   ingestionStatusLabel: string;
@@ -64,15 +67,18 @@ Page({
         this.data.uploadGraph?.status === 'PROCESSING')
     ) {
       void this.pollDocumentStatus(this.data.uploadDocumentId);
+      this.subscribeProgress(this.data.uploadDocumentId);
     }
   },
 
   onHide() {
     this.stopPolling();
+    this.stopProgressStream();
   },
 
   onUnload() {
     this.stopPolling();
+    this.stopProgressStream();
   },
 
   async loadLibrary() {
@@ -200,6 +206,7 @@ Page({
         uploadStatus: result.status,
       });
       void this.pollDocumentStatus(result.documentId);
+      this.subscribeProgress(result.documentId);
       await this.loadLibrary();
     } catch (error) {
       this.setData({
@@ -280,6 +287,32 @@ Page({
     if (!pollingTimer) return;
     clearTimeout(pollingTimer);
     pollingTimer = null;
+  },
+
+  subscribeProgress(documentId: string) {
+    this.stopProgressStream();
+    progressStream = streamDocumentProgress(documentId, (event) => {
+      if (event.event !== 'progress') return;
+      void this.pollDocumentStatus(documentId);
+    }, () => {
+      if (
+        this.data.uploadDocumentId !== documentId ||
+        ['FAILED', 'DELETED'].includes(this.data.uploadStatus)
+      ) {
+        return;
+      }
+      progressReconnectTimer = setTimeout(() => {
+        progressReconnectTimer = null;
+        this.subscribeProgress(documentId);
+      }, 5_000);
+    });
+  },
+
+  stopProgressStream() {
+    progressStream?.abort();
+    progressStream = null;
+    if (progressReconnectTimer) clearTimeout(progressReconnectTimer);
+    progressReconnectTimer = null;
   },
 });
 

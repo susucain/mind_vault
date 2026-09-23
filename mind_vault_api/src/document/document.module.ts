@@ -32,6 +32,7 @@ import { ConfigService } from '@nestjs/config';
 import { GraphModule } from '../graph/graph.module';
 import { DocumentGraphTaskService } from './graph/document-graph-task.service';
 import { DocumentGraphWorker } from './graph/document-graph.worker';
+import { DocumentProgressService } from './document-progress.service';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { DocumentGraphWorker } from './graph/document-graph.worker';
     DocumentIngestionWorker,
     DocumentGraphTaskService,
     DocumentGraphWorker,
+    DocumentProgressService,
     DocumentChunkingService,
     EmbeddingService,
     ElasticsearchIndexService,

@@ -4,22 +4,29 @@ import {
   Get,
   Param,
   Post,
+  Sse,
   UploadedFile,
   UseGuards,
   UseInterceptors,
   Body,
 } from '@nestjs/common';
+import { MessageEvent } from '@nestjs/common';
+import { Observable } from 'rxjs';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { DocumentUploadService } from './document-upload.service';
 import { RateLimitGuard } from '../common/guards/rate-limit.guard';
+import { DocumentProgressEvent, DocumentProgressService } from './document-progress.service';
 
 @Controller('documents')
 @UseGuards(AuthGuard, RateLimitGuard)
 export class DocumentUploadController {
-  constructor(private readonly service: DocumentUploadService) {}
+  constructor(
+    private readonly service: DocumentUploadService,
+    private readonly progress: DocumentProgressService,
+  ) {}
 
   @Post('upload')
   @UseInterceptors(
@@ -43,6 +50,20 @@ export class DocumentUploadController {
   @Get(':id/status')
   status(@CurrentUser() user: { id: string }, @Param('id') documentId: string) {
     return this.service.status(user.id, documentId);
+  }
+
+  @Sse(':id/events')
+  events(
+    @CurrentUser() user: { id: string },
+    @Param('id') documentId: string,
+  ): Observable<MessageEvent> {
+    return new Observable((subscriber) => {
+      const subscription = this.progress.stream(user.id, documentId).subscribe({
+        next: (event: DocumentProgressEvent) =>
+          subscriber.next({ type: 'progress', data: event }),
+      });
+      return () => subscription.unsubscribe();
+    });
   }
 
   @Post(':id/retry')

@@ -10,6 +10,7 @@ import {
   DocumentGraphTaskEntity,
   GraphTaskStatus,
 } from './entities/document-graph-task.entity';
+import { DocumentPipelinePublisher } from '../../mq/document-pipeline.publisher';
 
 const RECONNECT_DELAY_MS = 5_000;
 
@@ -33,6 +34,7 @@ export class DocumentGraphWorker {
     private readonly extraction: GraphExtractionService,
     private readonly graph: KnowledgeGraphService,
     private readonly config: ConfigService,
+    private readonly publisher?: DocumentPipelinePublisher,
   ) {}
 
   async onModuleInit() {
@@ -135,6 +137,7 @@ export class DocumentGraphWorker {
     if (!(await this.findActiveDocument(task))) {
       task.status = GraphTaskStatus.Cancelled;
       await this.tasks.save(task);
+      await this.publishProgress(task);
       return;
     }
 
@@ -176,6 +179,7 @@ export class DocumentGraphWorker {
       task.errorMessage = null;
       task.finishedAt = new Date();
       await this.tasks.save(task);
+      await this.publishProgress(task);
       this.logger.log(
         `图谱任务完成: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} elapsedMs=${task.finishedAt.getTime() - startedAt!.getTime()}`,
       );
@@ -185,6 +189,7 @@ export class DocumentGraphWorker {
       task.errorMessage = error instanceof Error ? error.message : String(error);
       task.finishedAt = new Date();
       await this.tasks.save(task);
+      await this.publishProgress(task);
       this.logger.error(
         `图谱任务失败: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} elapsedMs=${task.finishedAt.getTime() - startedAt!.getTime()} error=${task.errorMessage}`,
       );
@@ -223,5 +228,16 @@ export class DocumentGraphWorker {
       this.config.get<string | number>('GRAPH_WORKER_CONCURRENCY', 3),
     );
     return Number.isInteger(configured) && configured > 0 ? configured : 3;
+  }
+
+  private async publishProgress(task: DocumentGraphTaskEntity) {
+    await this.publisher?.publishProgress({
+      ownerId: task.ownerId,
+      documentId: task.documentId,
+      stage: 'graph',
+      status: task.status,
+      completed: 0,
+      total: 0,
+    });
   }
 }

@@ -10,6 +10,7 @@ import { request } from './request';
 import { loadSession } from '../utils/session';
 import { SelectedFile } from '../utils/file-picker';
 import { recordRequestTrace } from '../utils/telemetry';
+import { SseEvent, SseParser } from '../utils/sse';
 
 export interface DocumentDetail extends DocumentItem {
   content: string;
@@ -117,4 +118,38 @@ export function retryDocumentProcess(id: string) {
     path: `/documents/${id}/retry`,
     method: 'POST',
   });
+}
+
+export function streamDocumentProgress(
+  id: string,
+  onEvent: (event: SseEvent) => void,
+  onClosed: () => void,
+) {
+  const session = loadSession();
+  if (!session) return { abort: () => undefined };
+  const parser = new SseParser();
+  let aborted = false;
+  const task = wx.request({
+    url: `${environment.apiBaseUrl}/documents/${id}/events`,
+    method: 'GET',
+    enableChunked: true,
+    dataType: 'other',
+    timeout: environment.streamTimeout,
+    header: { Authorization: `Bearer ${session.accessToken}` },
+    success: () => {
+      if (!aborted) onClosed();
+    },
+    fail: () => {
+      if (!aborted) onClosed();
+    },
+  });
+  task.onChunkReceived((chunk) => {
+    for (const event of parser.push(chunk.data)) onEvent(event);
+  });
+  return {
+    abort: () => {
+      aborted = true;
+      task.abort();
+    },
+  };
 }
