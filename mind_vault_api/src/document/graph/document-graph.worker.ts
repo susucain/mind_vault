@@ -140,7 +140,12 @@ export class DocumentGraphWorker {
 
     task.status = GraphTaskStatus.Processing;
     task.errorMessage = null;
+    task.startedAt = new Date();
     await this.tasks.save(task);
+    const startedAt = task.startedAt;
+    this.logger.log(
+      `图谱任务开始: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} retry=${task.retryCount}`,
+    );
     try {
       const extraction = await this.extraction.extract({
         chunkId: task.chunkId,
@@ -169,12 +174,20 @@ export class DocumentGraphWorker {
       });
       task.status = GraphTaskStatus.Ready;
       task.errorMessage = null;
+      task.finishedAt = new Date();
       await this.tasks.save(task);
+      this.logger.log(
+        `图谱任务完成: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} elapsedMs=${task.finishedAt.getTime() - startedAt!.getTime()}`,
+      );
     } catch (error) {
       task.status = GraphTaskStatus.Failed;
       task.retryCount += 1;
       task.errorMessage = error instanceof Error ? error.message : String(error);
+      task.finishedAt = new Date();
       await this.tasks.save(task);
+      this.logger.error(
+        `图谱任务失败: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} elapsedMs=${task.finishedAt.getTime() - startedAt!.getTime()} error=${task.errorMessage}`,
+      );
       throw error;
     }
   }

@@ -53,6 +53,24 @@ export class DocumentIngestionJobEntity {
   @Column({ name: 'current_stage', type: 'varchar', nullable: true })
   currentStage?: string | null;
 
+  @Column({ name: 'started_at', type: 'timestamp', nullable: true })
+  startedAt?: Date | null;
+
+  @Column({ name: 'stage_started_at', type: 'timestamp', nullable: true })
+  stageStartedAt?: Date | null;
+
+  @Column({ name: 'finished_at', type: 'timestamp', nullable: true })
+  finishedAt?: Date | null;
+
+  @Column({ name: 'stage_completed', type: 'int', default: 0 })
+  stageCompleted: number;
+
+  @Column({ name: 'stage_total', type: 'int', default: 0 })
+  stageTotal: number;
+
+  @Column({ name: 'last_heartbeat_at', type: 'timestamp', nullable: true })
+  lastHeartbeatAt?: Date | null;
+
   @Column({ name: 'retry_count', type: 'int', default: 0 })
   retryCount: number;
 

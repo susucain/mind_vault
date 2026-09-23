@@ -173,7 +173,7 @@ describe('DocumentUploadService', () => {
     };
     const publisher = { publishIndex: jest.fn().mockResolvedValue(undefined) };
     const service = new DocumentUploadService(
-      {} as never,
+      { update: jest.fn().mockResolvedValue({ affected: 1 }) } as never,
       {} as never,
       jobs as never,
       {} as never,
@@ -212,7 +212,7 @@ describe('DocumentUploadService', () => {
     };
     const publisher = { publishIndex: jest.fn().mockResolvedValue(undefined) };
     const service = new DocumentUploadService(
-      {} as never,
+      { update: jest.fn().mockResolvedValue({ affected: 1 }) } as never,
       {} as never,
       jobs as never,
       {} as never,
@@ -270,5 +270,61 @@ describe('DocumentUploadService', () => {
       documentVersion: 1,
       operation: 'delete',
     });
+  });
+
+  it('returns stage progress and graph progress for a document', async () => {
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'job_1',
+        documentId: 'doc_1',
+        status: 'EMBEDDING',
+        currentStage: 'embedding',
+        retryCount: 0,
+        stageCompleted: 4,
+        stageTotal: 10,
+        stageStartedAt: new Date(Date.now() - 5_000),
+        updatedAt: new Date(),
+      }),
+    };
+    const graphTasks = {
+      getProgress: jest.fn().mockResolvedValue({
+        status: 'PROCESSING',
+        completed: 2,
+        total: 8,
+        failed: 0,
+        estimatedRemainingSeconds: 12,
+      }),
+    };
+    const service = new DocumentUploadService(
+      {} as never,
+      {} as never,
+      jobs as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      graphTasks as never,
+    );
+
+    await expect(service.status('user_1', 'doc_1')).resolves.toMatchObject({
+      status: 'EMBEDDING',
+      currentStage: 'embedding',
+      stageProgress: expect.objectContaining({
+        completed: 4,
+        total: 10,
+        percent: 40,
+      }),
+      graph: {
+        status: 'PROCESSING',
+        completed: 2,
+        total: 8,
+        failed: 0,
+        estimatedRemainingSeconds: 12,
+      },
+    });
+    expect(graphTasks.getProgress).toHaveBeenCalledWith(
+      'user_1',
+      'doc_1',
+      undefined,
+    );
   });
 });

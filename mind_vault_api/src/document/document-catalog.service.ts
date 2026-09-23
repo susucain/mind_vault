@@ -10,6 +10,7 @@ import {
   DocumentContent,
   DocumentContentDocument,
 } from './schemas/document-content.schema';
+import { DocumentGraphTaskService } from './graph/document-graph-task.service';
 
 @Injectable()
 export class DocumentCatalogService {
@@ -20,6 +21,7 @@ export class DocumentCatalogService {
     private readonly contents: Model<DocumentContentDocument>,
     @InjectRepository(DocumentIngestionJobEntity)
     private readonly jobs: Repository<DocumentIngestionJobEntity>,
+    private readonly graphTasks?: DocumentGraphTaskService,
   ) {}
 
   async findAll(ownerId: string, query: QueryDocumentDto) {
@@ -60,15 +62,24 @@ export class DocumentCatalogService {
       }
     }
     return {
-      items: items.map((item) => {
+      items: await Promise.all(items.map(async (item) => {
         const job = latestJobs.get(item.id);
+        const graph = this.graphTasks
+          ? await this.graphTasks.getProgress(
+              ownerId,
+              item.id,
+              job?.documentVersion,
+            )
+          : null;
         return {
           ...item,
           ingestionStatus: job?.status ?? null,
           ingestionStage: job?.currentStage ?? null,
           ingestionErrorMessage: job?.errorMessage ?? null,
+          ingestionProgress: job ? progressOf(job) : null,
+          graph,
         };
-      }),
+      })),
       total,
       page: query.page ?? 1,
       pageSize: query.pageSize ?? 20,
@@ -90,4 +101,22 @@ export class DocumentCatalogService {
       pageCount: content?.pageCount ?? 0,
     };
   }
+}
+
+function progressOf(job: DocumentIngestionJobEntity) {
+  const completed = job.stageCompleted ?? 0;
+  const total = job.stageTotal ?? 0;
+  return {
+    completed,
+    total,
+    percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+    estimatedRemainingSeconds:
+      job.stageStartedAt && completed > 0 && total > completed
+        ? Math.ceil(
+            ((Date.now() - job.stageStartedAt.getTime()) / completed) *
+              (total - completed) /
+              1000,
+          )
+        : null,
+  };
 }

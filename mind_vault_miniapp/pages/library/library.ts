@@ -6,11 +6,18 @@ import {
   retryDocumentProcess,
   uploadDocument,
 } from '../../services/documents';
-import { Dataset, DocumentItem, DocumentProcessStatus } from '../../types/api';
+import {
+  Dataset,
+  DocumentItem,
+  DocumentProcess,
+  DocumentProcessStatus,
+} from '../../types/api';
 import { showRequestError } from '../../utils/feedback';
 import { chooseKnowledgeFile, SelectedFile } from '../../utils/file-picker';
 import { selectAvailableDatasetId } from '../../utils/dataset-selection';
 import {
+  formatRemainingSeconds,
+  graphStatusLabel,
   ingestionStatusLabel,
   isRetryableIngestionStatus,
 } from '../../utils/document-ingestion';
@@ -20,6 +27,8 @@ let pollingTimer: ReturnType<typeof setTimeout> | null = null;
 type LibraryDocumentItem = DocumentItem & {
   ingestionStatusLabel: string;
   canRetryIngestion: boolean;
+  graphStatusLabel: string;
+  graphProgressLabel: string;
 };
 
 Page({
@@ -38,6 +47,10 @@ Page({
     uploadFileName: '',
     uploadDocumentId: '',
     uploadStatus: '' as DocumentProcessStatus | '',
+    uploadStageProgress: null as DocumentProcess['stageProgress'] | null,
+    uploadGraph: null as DocumentProcess['graph'] | null,
+    uploadEta: '',
+    uploadGraphLabel: '',
     uploadError: '',
     retryingDocumentId: '',
   },
@@ -47,7 +60,8 @@ Page({
     void this.loadLibrary();
     if (
       this.data.uploadDocumentId &&
-      !['READY', 'FAILED', 'DELETED'].includes(this.data.uploadStatus)
+      (!['READY', 'FAILED', 'DELETED'].includes(this.data.uploadStatus) ||
+        this.data.uploadGraph?.status === 'PROCESSING')
     ) {
       void this.pollDocumentStatus(this.data.uploadDocumentId);
     }
@@ -235,12 +249,21 @@ Page({
       this.setData({
         uploadStatus: process.status,
         uploadError: process.errorMessage ?? '',
+        uploadStageProgress: process.stageProgress,
+        uploadGraph: process.graph ?? null,
+        uploadEta: formatRemainingSeconds(
+          process.graph?.estimatedRemainingSeconds ??
+            process.stageProgress.estimatedRemainingSeconds,
+        ),
+        uploadGraphLabel: graphStatusLabel(process.graph?.status),
       });
-      if (process.status === 'READY') {
+      const graphProcessing = process.graph?.status === 'PROCESSING';
+      if (process.status === 'READY' && !graphProcessing) {
         await this.loadLibrary();
         return;
       }
       if (process.status === 'FAILED' || process.status === 'DELETED') return;
+      if (process.status === 'READY') await this.loadLibrary();
       pollingTimer = setTimeout(() => {
         void this.pollDocumentStatus(documentId);
       }, 1500);
@@ -278,5 +301,9 @@ function withIngestionState(documents: DocumentItem[]): LibraryDocumentItem[] {
     ...document,
     ingestionStatusLabel: ingestionStatusLabel(document.ingestionStatus),
     canRetryIngestion: isRetryableIngestionStatus(document.ingestionStatus),
+    graphStatusLabel: graphStatusLabel(document.graph?.status),
+    graphProgressLabel: document.graph
+      ? `${document.graph.completed}/${document.graph.total}`
+      : '',
   }));
 }

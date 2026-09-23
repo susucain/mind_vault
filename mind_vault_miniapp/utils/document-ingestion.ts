@@ -32,3 +32,26 @@ export function ingestionStatusLabel(
       return '等待解析';
   }
 }
+
+export function graphStatusLabel(
+  status: 'NOT_STARTED' | 'PROCESSING' | 'READY' | 'FAILED' | null | undefined,
+): string {
+  switch (status) {
+    case 'PROCESSING':
+      return '图谱增强中';
+    case 'READY':
+      return '图谱完成';
+    case 'FAILED':
+      return '图谱部分失败';
+    default:
+      return '';
+  }
+}
+
+export function formatRemainingSeconds(
+  seconds: number | null | undefined,
+): string {
+  if (seconds === null || seconds === undefined) return '正在估算';
+  if (seconds < 60) return `预计 ${seconds} 秒`;
+  return `预计 ${Math.ceil(seconds / 60)} 分钟`;
+}

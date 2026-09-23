@@ -19,7 +19,7 @@
       </view>
       <view class="meta-row">
         <text class="label">状态</text>
-        <text class="value">{{document.status === 0 ? '处理中或草稿' : '可用'}}</text>
+        <text class="value">{{documentStatusLabel}}</text>
       </view>
     </view>
 

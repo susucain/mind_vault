@@ -23,6 +23,7 @@ import { GraphExtractionService } from '../../graph/graph-extraction.service';
 import { KnowledgeGraphService } from '../../graph/knowledge-graph.service';
 import { DatasetDocumentEntity } from '../../dataset/entities/dataset-document.entity';
 import { DocumentGraphTaskService } from '../graph/document-graph-task.service';
+import { DocumentStatus } from '../document-status';
 
 interface IndexMessage {
   jobId: string;
@@ -193,7 +194,7 @@ export class DocumentIngestionWorker {
     }
 
     try {
-      await this.updateJob(job, IngestionJobStatus.Parsing, 'parsing');
+      await this.updateJob(job, IngestionJobStatus.Parsing, 'parsing', 0, 1);
       const document = await this.documents.findOne({
         where: {
           id: message.documentId,
@@ -239,22 +240,35 @@ export class DocumentIngestionWorker {
           $inc: { version: 1 },
         },
       );
-      await this.updateJob(job, IngestionJobStatus.Parsed, 'parsed');
+      await this.updateJob(job, IngestionJobStatus.Parsed, 'parsed', 1, 1);
       const chunks = this.chunking.chunk(
         message.ownerId,
         document.id,
         message.documentVersion,
         parsed,
       );
-      await this.updateJob(job, IngestionJobStatus.Chunking, 'chunking');
+      await this.updateJob(job, IngestionJobStatus.Chunking, 'chunking', 1, 1);
       stage = 'embedding';
-      await this.updateJob(job, IngestionJobStatus.Embedding, 'embedding');
+      await this.updateJob(
+        job,
+        IngestionJobStatus.Embedding,
+        'embedding',
+        0,
+        chunks.length,
+      );
       const vectors = await this.embedding.embedDocuments(
         chunks.map((chunk) => chunk.text),
       );
       chunks.forEach((chunk, index) => {
         chunk.embedding = vectors[index];
       });
+      await this.updateJob(
+        job,
+        IngestionJobStatus.Embedding,
+        'embedding',
+        chunks.length,
+        chunks.length,
+      );
       const datasetRows = await this.datasetDocuments.find({
         where: { ownerId: message.ownerId, documentId: document.id },
       });
@@ -263,7 +277,13 @@ export class DocumentIngestionWorker {
         chunk.datasetIds = datasetIds;
       });
       stage = 'indexing';
-      await this.updateJob(job, IngestionJobStatus.Indexing, 'indexing');
+      await this.updateJob(
+        job,
+        IngestionJobStatus.Indexing,
+        'indexing',
+        0,
+        chunks.length,
+      );
       if (message.operation === 'reindex') {
         // 重建前清空旧数据：分块策略或 embedding 模型变化后 chunkId 会变，
         // 不清空会导致新旧 chunk 同时留在索引里被重复召回
@@ -275,8 +295,22 @@ export class DocumentIngestionWorker {
         await this.graph.deleteDocument(message.ownerId, message.documentId);
       }
       await this.index.indexChunks(chunks);
+      await this.updateJob(
+        job,
+        IngestionJobStatus.Indexing,
+        'indexing',
+        chunks.length,
+        chunks.length,
+      );
       await this.graphTasks?.enqueue(chunks);
-      await this.updateJob(job, IngestionJobStatus.Ready, 'ready');
+      await this.updateJob(job, IngestionJobStatus.Ready, 'ready', 1, 1, true);
+      await this.documents.update(
+        { id: document.id, ownerId: message.ownerId, deleted: false },
+        { status: DocumentStatus.Available },
+      );
+      this.logger.log(
+        `文档索引完成: jobId=${job.id} documentId=${document.id} chunks=${chunks.length}`,
+      );
       return {
         jobId: job.id,
         documentId: document.id,
@@ -290,7 +324,16 @@ export class DocumentIngestionWorker {
       job.retryCount += 1;
       job.errorCode = 'PARSE_FAILED';
       job.errorMessage = error instanceof Error ? error.message : String(error);
+      job.finishedAt = new Date();
+      job.lastHeartbeatAt = job.finishedAt;
       await this.jobs.save(job);
+      await this.documents.update(
+        { id: message.documentId, ownerId: message.ownerId, deleted: false },
+        { status: DocumentStatus.Failed },
+      );
+      this.logger.error(
+        `文档索引失败: jobId=${job.id} documentId=${message.documentId} stage=${stage} retry=${job.retryCount} error=${job.errorMessage}`,
+      );
       throw error;
     }
   }
@@ -299,12 +342,27 @@ export class DocumentIngestionWorker {
     job: DocumentIngestionJobEntity,
     status: IngestionJobStatus,
     stage: string,
+    completed = 0,
+    total = 0,
+    finished = false,
   ) {
+    const now = new Date();
+    const stageChanged = job.currentStage !== stage;
+    job.startedAt ??= now;
+    if (stageChanged) job.stageStartedAt = now;
     job.status = status;
     job.currentStage = stage;
+    job.stageCompleted = completed;
+    job.stageTotal = total;
+    job.lastHeartbeatAt = now;
+    if (finished) job.finishedAt = now;
     job.errorCode = null;
     job.errorMessage = null;
-    return this.jobs.save(job);
+    const saved = await this.jobs.save(job);
+    this.logger.log(
+      `文档索引阶段: jobId=${job.id} documentId=${job.documentId} stage=${stage} status=${status} progress=${completed}/${total}`,
+    );
+    return saved;
   }
 
   private async deleteDocument(

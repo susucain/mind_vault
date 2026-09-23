@@ -36,6 +36,20 @@
       <text class="upload-stage">{{uploadStatus || 'UPLOADED'}}</text>
     </view>
     <van-progress percentage="{{uploadProgress}}" color="#087f78" stroke-width="6" />
+    <view wx:if="{{uploadStageProgress && uploadStatus !== 'READY'}}" class="upload-process">
+      <text>{{uploadStageProgress.completed}}/{{uploadStageProgress.total}}</text>
+      <text>{{uploadEta}}</text>
+    </view>
+    <van-progress
+      wx:if="{{uploadStageProgress && uploadStatus !== 'READY'}}"
+      percentage="{{uploadStageProgress.percent}}"
+      color="#4d8fba"
+      stroke-width="4"
+    />
+    <view wx:if="{{uploadGraph}}" class="upload-process">
+      <text>{{uploadGraphLabel}} {{uploadGraph.completed}}/{{uploadGraph.total}}</text>
+      <text>{{uploadGraph.estimatedRemainingSeconds === null ? '正在估算' : uploadEta}}</text>
+    </view>
     <text wx:if="{{uploadError}}" class="upload-error">{{uploadError}}</text>
     <van-button
       wx:if="{{uploadStatus === 'FAILED'}}"
@@ -86,6 +100,9 @@
             class="document-ingestion {{item.ingestionStatus === 'FAILED' ? 'document-ingestion-failed' : ''}}"
           >
             {{item.ingestionStatusLabel}}
+          </text>
+          <text wx:if="{{item.graphStatusLabel}}" class="document-ingestion">
+            {{item.graphStatusLabel}} {{item.graphProgressLabel}}
           </text>
           <van-button
             wx:if="{{item.canRetryIngestion}}"

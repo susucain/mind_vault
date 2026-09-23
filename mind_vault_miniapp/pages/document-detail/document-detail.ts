@@ -16,6 +16,7 @@ Page({
     targetSectionId: '',
     quote: '',
     locatorLabel: '',
+    documentStatusLabel: '',
   },
 
   onLoad(query: Record<string, string | undefined>) {
@@ -40,6 +41,7 @@ Page({
       this.setData({
         document,
         targetSectionId: findSection(document.sections, locator),
+        documentStatusLabel: formatDocumentStatus(document.status),
       });
       wx.setNavigationBarTitle({ title: document.title });
     } catch (error) {
@@ -109,4 +111,17 @@ function formatLocator(locator: DocumentLocator) {
   if (locator.jsonPath) return `定位到 ${locator.jsonPath}`;
   if (locator.lineStart) return `定位到第 ${locator.lineStart} 行`;
   return '';
+}
+
+function formatDocumentStatus(status: number) {
+  switch (status) {
+    case 1:
+      return '可用';
+    case 2:
+      return '已归档';
+    case 3:
+      return '索引失败';
+    default:
+      return '处理中';
+  }
 }

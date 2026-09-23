@@ -65,6 +65,7 @@ describe('DocumentLifecycleService', () => {
       findOne: jest
         .fn()
         .mockResolvedValue({ id: 'doc_1', ownerId: 'user_1', deleted: false }),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
     };
     const jobs = {
       findOne: jest.fn().mockResolvedValue({
@@ -98,6 +99,10 @@ describe('DocumentLifecycleService', () => {
         documentVersion: 2,
         status: 'UPLOADED',
       }),
+    );
+    expect(documents.update).toHaveBeenCalledWith(
+      { id: 'doc_1', ownerId: 'user_1', deleted: false },
+      { status: 0 },
     );
     expect(publisher.publishIndex).toHaveBeenCalledWith({
       jobId: 'job_new',

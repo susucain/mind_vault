@@ -69,6 +69,45 @@ CREATE TABLE IF NOT EXISTS kh_document_ingestion_job (
 );
 CREATE INDEX IF NOT EXISTS idx_kh_ingestion_job_owner_document
     ON kh_document_ingestion_job(owner_id, document_id, created_at DESC);
+ALTER TABLE kh_document_ingestion_job
+    ADD COLUMN IF NOT EXISTS started_at TIMESTAMP;
+ALTER TABLE kh_document_ingestion_job
+    ADD COLUMN IF NOT EXISTS stage_started_at TIMESTAMP;
+ALTER TABLE kh_document_ingestion_job
+    ADD COLUMN IF NOT EXISTS finished_at TIMESTAMP;
+ALTER TABLE kh_document_ingestion_job
+    ADD COLUMN IF NOT EXISTS stage_completed INT NOT NULL DEFAULT 0;
+ALTER TABLE kh_document_ingestion_job
+    ADD COLUMN IF NOT EXISTS stage_total INT NOT NULL DEFAULT 0;
+ALTER TABLE kh_document_ingestion_job
+    ADD COLUMN IF NOT EXISTS last_heartbeat_at TIMESTAMP;
+
+WITH latest_job AS (
+    SELECT DISTINCT ON (owner_id, document_id)
+        owner_id,
+        document_id,
+        status
+    FROM kh_document_ingestion_job
+    ORDER BY owner_id, document_id, created_at DESC
+)
+UPDATE kh_document AS document
+SET status = CASE
+    WHEN latest_job.status = 'READY' THEN 1
+    WHEN latest_job.status = 'FAILED' THEN 3
+    WHEN latest_job.status IN (
+        'UPLOADED',
+        'PARSING',
+        'PARSED',
+        'CHUNKING',
+        'EMBEDDING',
+        'INDEXING'
+    ) THEN 0
+    ELSE document.status
+END
+FROM latest_job
+WHERE document.owner_id = latest_job.owner_id
+  AND document.id = latest_job.document_id
+  AND document.deleted = false;
 
 CREATE TABLE IF NOT EXISTS kh_document_graph_task (
     id VARCHAR PRIMARY KEY,
@@ -86,6 +125,10 @@ CREATE TABLE IF NOT EXISTS kh_document_graph_task (
 );
 CREATE INDEX IF NOT EXISTS idx_kh_graph_task_document
     ON kh_document_graph_task(owner_id, document_id, status);
+ALTER TABLE kh_document_graph_task
+    ADD COLUMN IF NOT EXISTS started_at TIMESTAMP;
+ALTER TABLE kh_document_graph_task
+    ADD COLUMN IF NOT EXISTS finished_at TIMESTAMP;
 
 CREATE TABLE IF NOT EXISTS kh_conversation (
     id VARCHAR PRIMARY KEY,

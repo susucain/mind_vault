@@ -22,6 +22,7 @@ import {
 import { RustfsService } from '../storage/rustfs.service';
 import { ElasticsearchIndexService } from '../retrieval/es/elasticsearch-index.service';
 import { DocumentGraphTaskService } from './graph/document-graph-task.service';
+import { DocumentStatus } from './document-status';
 
 @Injectable()
 export class DocumentLifecycleService {
@@ -111,6 +112,10 @@ export class DocumentLifecycleService {
       }),
     );
     await this.graphTasks?.cancelActiveTasks(ownerId, documentId);
+    await this.documents.update(
+      { id: documentId, ownerId, deleted: false },
+      { status: DocumentStatus.Processing },
+    );
     await this.publisher.publishIndex({
       jobId: job.id,
       ownerId,

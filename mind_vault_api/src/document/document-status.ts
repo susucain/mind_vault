@@ -1,10 +1,10 @@
 export enum DocumentStatus {
-  /** 草稿 */
-  Draft = 0,
-  /** 已发布 */
-  Published = 1,
-  /** 已归档 */
+  /** 主索引任务排队或处理中 */
+  Processing = 0,
+  /** 主索引已完成，文档可问答 */
+  Available = 1,
+  /** 保留但不参与检索 */
   Archived = 2,
-  /** 待审核（提交发布后、审核完成前） */
-  PendingReview = 3,
+  /** 最近一次主索引失败 */
+  Failed = 3,
 }

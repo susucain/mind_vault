@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { nextSnowflakeId } from '../../common/snowflake-id';
@@ -9,12 +10,21 @@ import {
   GraphTaskStatus,
 } from './entities/document-graph-task.entity';
 
+export interface GraphProgress {
+  status: 'NOT_STARTED' | 'PROCESSING' | 'READY' | 'FAILED';
+  completed: number;
+  total: number;
+  failed: number;
+  estimatedRemainingSeconds: number | null;
+}
+
 @Injectable()
 export class DocumentGraphTaskService {
   constructor(
     @InjectRepository(DocumentGraphTaskEntity)
     private readonly tasks: Repository<DocumentGraphTaskEntity>,
     private readonly publisher: DocumentPipelinePublisher,
+    private readonly config?: ConfigService,
   ) {}
 
   async enqueue(chunks: DocumentChunk[]) {
@@ -54,5 +64,79 @@ export class DocumentGraphTaskService {
       },
       { status: GraphTaskStatus.Cancelled },
     );
+  }
+
+  async getProgress(
+    ownerId: string,
+    documentId: string,
+    documentVersion?: number,
+  ): Promise<GraphProgress> {
+    const tasks = await this.tasks.find({
+      where: {
+        ownerId,
+        documentId,
+        ...(documentVersion === undefined ? {} : { documentVersion }),
+      },
+      select: {
+        status: true,
+        startedAt: true,
+        finishedAt: true,
+      },
+    });
+    const total = tasks.length;
+    const completed = tasks.filter(
+      (task) => task.status === GraphTaskStatus.Ready,
+    ).length;
+    const failed = tasks.filter(
+      (task) => task.status === GraphTaskStatus.Failed,
+    ).length;
+    const active = tasks.filter(
+      (task) =>
+        task.status === GraphTaskStatus.Pending ||
+        task.status === GraphTaskStatus.Processing,
+    ).length;
+    const terminal = completed + failed;
+    const status =
+      total === 0
+        ? 'NOT_STARTED'
+        : terminal === total && failed > 0
+          ? 'FAILED'
+          : terminal === total
+            ? 'READY'
+            : active > 0
+              ? 'PROCESSING'
+              : 'PROCESSING';
+    const durations = tasks
+      .filter(
+        (task) => task.startedAt && task.finishedAt,
+      )
+      .map(
+        (task) =>
+          task.finishedAt!.getTime() - task.startedAt!.getTime(),
+      );
+    const remaining = Math.max(total - terminal, 0);
+    const averageDuration =
+      durations.length > 0
+        ? durations.reduce((sum, duration) => sum + duration, 0) /
+          durations.length
+        : null;
+    const concurrency = this.concurrency();
+    return {
+      status,
+      completed,
+      total,
+      failed,
+      estimatedRemainingSeconds:
+        averageDuration === null || remaining === 0
+          ? null
+          : Math.ceil((averageDuration * remaining) / concurrency / 1000),
+    };
+  }
+
+  private concurrency() {
+    const configured = Number(
+      this.config?.get<string | number>('GRAPH_WORKER_CONCURRENCY', 3) ?? 3,
+    );
+    return Number.isInteger(configured) && configured > 0 ? configured : 3;
   }
 }

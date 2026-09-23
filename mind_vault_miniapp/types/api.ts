@@ -37,6 +37,8 @@ export interface DocumentItem {
   ingestionStatus?: DocumentProcessStatus | null;
   ingestionStage?: string | null;
   ingestionErrorMessage?: string | null;
+  ingestionProgress?: DocumentProgress | null;
+  graph?: GraphProgress | null;
 }
 
 export interface DocumentLocator {
@@ -88,6 +90,24 @@ export interface DocumentProcess {
   retryCount: number;
   errorCode?: string | null;
   errorMessage?: string | null;
+  stageProgress: DocumentProgress;
+  graph?: GraphProgress | null;
+}
+
+export interface DocumentProgress {
+  completed: number;
+  total: number;
+  percent: number;
+  estimatedRemainingSeconds: number | null;
+  stageStartedAt?: string | null;
+}
+
+export interface GraphProgress {
+  status: 'NOT_STARTED' | 'PROCESSING' | 'READY' | 'FAILED';
+  completed: number;
+  total: number;
+  failed: number;
+  estimatedRemainingSeconds: number | null;
 }
 
 export interface PaginatedResponse<T> {

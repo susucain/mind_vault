@@ -51,6 +51,12 @@ export class DocumentGraphTaskEntity {
   @Column({ name: 'error_message', type: 'varchar', nullable: true })
   errorMessage?: string | null;
 
+  @Column({ name: 'started_at', type: 'timestamp', nullable: true })
+  startedAt?: Date | null;
+
+  @Column({ name: 'finished_at', type: 'timestamp', nullable: true })
+  finishedAt?: Date | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 

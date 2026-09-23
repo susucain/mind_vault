@@ -77,8 +77,8 @@ export class DocumentEntity {
   @Column({ type: 'varchar', nullable: true })
   tags?: string | null;
 
-  /** 状态：0 草稿 / 1 已发布 / 2 已归档 / 3 待审核 */
-  @Column({ type: 'smallint', default: DocumentStatus.Draft })
+  /** 聚合状态：0 处理中 / 1 可用 / 2 已归档 / 3 索引失败 */
+  @Column({ type: 'smallint', default: DocumentStatus.Processing })
   status: DocumentStatus;
 
   /** 备注 */

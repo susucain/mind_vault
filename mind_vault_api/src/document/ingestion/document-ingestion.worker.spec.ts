@@ -107,6 +107,7 @@ describe('DocumentIngestionWorker', () => {
         sourceFileKey: null,
         contentId: 'content_1',
       }),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
     };
     const contents = {
       findOne: jest.fn().mockReturnValue({
@@ -181,6 +182,10 @@ describe('DocumentIngestionWorker', () => {
         }),
       }),
     );
+    expect(documents.update).toHaveBeenCalledWith(
+      { id: 'doc_1', ownerId: 'user_1', deleted: false },
+      { status: 1 },
+    );
   });
 
   it('downloads from RustFS when a source mirror is unavailable', async () => {
@@ -215,6 +220,7 @@ describe('DocumentIngestionWorker', () => {
           sourceFileKey: 'users/user_1/documents/large.pdf',
           contentId: 'content_1',
         }),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
       } as never,
       {
         findOne: jest.fn().mockReturnValue({
@@ -394,6 +400,7 @@ describe('DocumentIngestionWorker', () => {
           sourceFileKey: null,
           contentId: 'content_1',
         }),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
       } as never,
       {
         findOne: jest.fn().mockReturnValue({

@@ -24,6 +24,8 @@ import {
   titleFromFilename,
 } from './parser/utils/markdown.util';
 import { nextSnowflakeId } from '../common/snowflake-id';
+import { DocumentGraphTaskService } from './graph/document-graph-task.service';
+import { DocumentStatus } from './document-status';
 
 const SUPPORTED_EXTENSIONS = new Set([
   'pdf',
@@ -54,6 +56,7 @@ export class DocumentUploadService {
     private readonly storage: RustfsService,
     private readonly publisher: DocumentPipelinePublisher,
     private readonly datasets: DatasetService,
+    private readonly graphTasks?: DocumentGraphTaskService,
   ) {}
 
   async upload(
@@ -117,7 +120,7 @@ export class DocumentUploadService {
       sourceFileKey: fileKey,
       sourceFileSize: String(file.size),
       sourceFileExtension: extension,
-      status: 0,
+      status: DocumentStatus.Processing,
       wordCount: 0,
       isPublic: false,
       deleted: false,
@@ -171,6 +174,12 @@ export class DocumentUploadService {
       order: { createdAt: 'DESC' },
     });
     if (!job) throw new BadRequestException('未找到文档处理任务');
+    const graph = await this.graphTasks?.getProgress(
+      ownerId,
+      documentId,
+      job.documentVersion,
+    );
+    const stageProgress = progressOf(job);
     return {
       documentId,
       jobId: job.id,
@@ -179,6 +188,8 @@ export class DocumentUploadService {
       retryCount: job.retryCount,
       errorCode: job.errorCode,
       errorMessage: job.errorMessage,
+      stageProgress,
+      graph: graph ?? null,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
     };
@@ -207,6 +218,13 @@ export class DocumentUploadService {
     job.errorCode = null;
     job.errorMessage = null;
     await this.jobRepository.save(job);
+    if (!isDelete) {
+      await this.em.update(
+        DocumentEntity,
+        { id: documentId, ownerId, deleted: false },
+        { status: DocumentStatus.Processing },
+      );
+    }
     await this.publisher.publishIndex({
       jobId: job.id,
       ownerId,
@@ -221,4 +239,28 @@ export class DocumentUploadService {
       retryCount: job.retryCount,
     };
   }
+}
+
+function progressOf(job: {
+  stageCompleted?: number;
+  stageTotal?: number;
+  stageStartedAt?: Date | null;
+}) {
+  const completed = job.stageCompleted ?? 0;
+  const total = job.stageTotal ?? 0;
+  const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const elapsedMs = job.stageStartedAt
+    ? Math.max(Date.now() - job.stageStartedAt.getTime(), 0)
+    : 0;
+  const estimatedRemainingSeconds =
+    completed > 0 && total > completed
+      ? Math.ceil((elapsedMs / completed) * (total - completed) / 1000)
+      : null;
+  return {
+    completed,
+    total,
+    percent,
+    estimatedRemainingSeconds,
+    stageStartedAt: job.stageStartedAt ?? null,
+  };
 }
