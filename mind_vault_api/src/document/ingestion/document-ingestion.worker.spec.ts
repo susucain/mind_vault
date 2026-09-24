@@ -13,6 +13,50 @@ describe('DocumentIngestionWorker', () => {
     jest.clearAllMocks();
   });
 
+  it('marks an abandoned active job as failed so it can be retried', async () => {
+    const staleJob = {
+      id: 'job_stale',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      status: IngestionJobStatus.Indexing,
+      currentStage: 'indexing',
+      retryCount: 0,
+      updatedAt: new Date(Date.now() - 41 * 60_000),
+      lastHeartbeatAt: null,
+    };
+    const jobs = {
+      find: jest.fn().mockResolvedValue([staleJob]),
+      save: jest.fn().mockResolvedValue(staleJob),
+    };
+    const documents = { update: jest.fn().mockResolvedValue({ affected: 1 }) };
+    const worker = new DocumentIngestionWorker(
+      jobs as never,
+      documents as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { get: jest.fn().mockReturnValue(undefined) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await (worker as never).failStaleJobs();
+
+    expect(staleJob).toMatchObject({
+      status: IngestionJobStatus.Failed,
+      errorCode: 'WORKER_TIMEOUT',
+      errorMessage: '任务超时或 worker 中断，请重试',
+    });
+    expect(documents.update).toHaveBeenCalledWith(
+      { id: 'doc_1', ownerId: 'user_1', deleted: false },
+      { status: 3 },
+    );
+  });
+
   it('reconnects and resumes consumption after its channel closes', async () => {
     jest.useFakeTimers();
     const firstConnectionHandlers = new Map<string, () => void>();
@@ -51,7 +95,7 @@ describe('DocumentIngestionWorker', () => {
       .mockResolvedValueOnce(firstConnection as never)
       .mockResolvedValueOnce(secondConnection as never);
     const worker = new DocumentIngestionWorker(
-      {} as never,
+      { find: jest.fn().mockResolvedValue([]) } as never,
       {} as never,
       {} as never,
       {} as never,

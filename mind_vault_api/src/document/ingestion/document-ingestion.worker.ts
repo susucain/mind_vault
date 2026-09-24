@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Model } from 'mongoose';
-import { Repository } from 'typeorm';
+import { In, IsNull, LessThan, Repository } from 'typeorm';
 import { Channel, ChannelModel, connect, ConsumeMessage } from 'amqplib';
 import {
   DocumentIngestionJobEntity,
@@ -35,6 +35,10 @@ interface IndexMessage {
 }
 
 const RECONNECT_DELAY_MS = 5_000;
+const STALE_JOB_SCAN_INTERVAL_MS = 60_000;
+// Must stay below RabbitMQ's two-hour consumer timeout, while allowing a
+// legitimate large-file parse or embedding call to run longer than 10 minutes.
+const DEFAULT_STALE_JOB_TIMEOUT_MS = 40 * 60_000;
 
 @Injectable()
 export class DocumentIngestionWorker {
@@ -42,6 +46,7 @@ export class DocumentIngestionWorker {
   private connection?: ChannelModel;
   private channel?: Channel;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private staleJobTimer?: ReturnType<typeof setInterval>;
   private shuttingDown = false;
 
   constructor(
@@ -68,14 +73,81 @@ export class DocumentIngestionWorker {
   async onModuleInit() {
     if (!this.config.get<boolean>('INGESTION_WORKER_ENABLED', false)) return;
     this.shuttingDown = false;
+    await this.failStaleJobs();
+    this.staleJobTimer = setInterval(
+      () => void this.failStaleJobs(),
+      STALE_JOB_SCAN_INTERVAL_MS,
+    );
+    this.staleJobTimer.unref();
     await this.connectAndConsume();
   }
 
   async onModuleDestroy() {
     this.shuttingDown = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    if (this.staleJobTimer) clearInterval(this.staleJobTimer);
     await this.channel?.close();
     await this.connection?.close();
+  }
+
+  private async failStaleJobs() {
+    const cutoff = new Date(Date.now() - this.staleJobTimeoutMs());
+    const activeStatuses = [
+      IngestionJobStatus.Uploaded,
+      IngestionJobStatus.Parsing,
+      IngestionJobStatus.Parsed,
+      IngestionJobStatus.Chunking,
+      IngestionJobStatus.Embedding,
+      IngestionJobStatus.Indexing,
+    ];
+    const jobs = await this.jobs.find({
+      where: [
+        {
+          status: In(activeStatuses),
+          lastHeartbeatAt: LessThan(cutoff),
+        },
+        {
+          status: In(activeStatuses),
+          lastHeartbeatAt: IsNull(),
+          updatedAt: LessThan(cutoff),
+        },
+      ],
+    });
+    for (const job of jobs) {
+      job.status = IngestionJobStatus.Failed;
+      job.errorCode = 'WORKER_TIMEOUT';
+      job.errorMessage = '任务超时或 worker 中断，请重试';
+      job.finishedAt = new Date();
+      job.lastHeartbeatAt = job.finishedAt;
+      await this.jobs.save(job);
+      await this.documents.update(
+        { id: job.documentId, ownerId: job.ownerId, deleted: false },
+        { status: DocumentStatus.Failed },
+      );
+      await this.publisher?.publishProgress({
+        ownerId: job.ownerId,
+        documentId: job.documentId,
+        stage: job.currentStage ?? 'unknown',
+        status: IngestionJobStatus.Failed,
+        completed: job.stageCompleted ?? 0,
+        total: job.stageTotal ?? 0,
+      });
+      this.logger.error(
+        `文档索引超时: jobId=${job.id} documentId=${job.documentId} stage=${job.currentStage ?? 'unknown'}`,
+      );
+    }
+  }
+
+  private staleJobTimeoutMs() {
+    const configured = Number(
+      this.config.get<string | number>(
+        'DOCUMENT_INGESTION_STALE_MS',
+        DEFAULT_STALE_JOB_TIMEOUT_MS,
+      ),
+    );
+    return Number.isFinite(configured) && configured > 0
+      ? configured
+      : DEFAULT_STALE_JOB_TIMEOUT_MS;
   }
 
   private async connectAndConsume() {
