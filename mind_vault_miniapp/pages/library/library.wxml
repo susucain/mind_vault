@@ -5,25 +5,48 @@
     <text class="subtitle">在这里管理资料集、文档和解析进度。</text>
   </view>
 
-  <view class="dataset-row">
-    <scroll-view class="dataset-scroll" scroll-x>
-      <view
-        wx:for="{{datasets}}"
-        wx:key="id"
-        class="dataset-chip {{item.id === selectedDatasetId ? 'dataset-chip-active' : ''}}"
-        data-id="{{item.id}}"
-        bind:tap="selectDataset"
-      >
-        {{item.name}}
+  <view wx:if="{{datasets.length}}" class="dataset-area">
+    <view class="dataset-control">
+      <view class="dataset-current" bind:tap="toggleDatasetSelector">
+        <text>{{selectedDatasetName || '选择资料集'}}</text>
+        <text>⌄</text>
       </view>
-    </scroll-view>
-    <van-button type="primary" size="small" bind:click="openCreateDataset">新建</van-button>
+    </view>
+    <view wx:if="{{recentDatasets.length}}" class="recent-datasets">
+      <view wx:for="{{recentDatasets}}" wx:key="id" class="recent-chip {{item.id === selectedDatasetId ? 'recent-chip-active' : ''}}" data-id="{{item.id}}" bind:tap="selectDatasetResult">{{item.name}}</view>
+    </view>
+    <view wx:if="{{showDatasetSelector}}" class="dataset-selector surface">
+      <van-field value="{{datasetQuery}}" placeholder="搜索资料集" border="{{false}}" bind:change="updateDatasetQuery" />
+      <text wx:if="{{searchingDatasets}}" class="dataset-feedback">正在搜索</text>
+      <text wx:elif="{{!datasetResults.length}}" class="dataset-feedback">没有匹配的资料集</text>
+      <view wx:for="{{datasetResults}}" wx:key="id" class="dataset-result {{item.id === selectedDatasetId ? 'dataset-result-active' : ''}}" data-id="{{item.id}}" bind:tap="selectDatasetResult">
+        <text>{{item.name}}</text>
+        <text wx:if="{{item.id === selectedDatasetId}}">当前</text>
+      </view>
+      <view class="dataset-create" bind:tap="openCreateDataset">+ 新建资料集</view>
+    </view>
+  </view>
+  <view wx:if="{{selectedDatasetId}}" class="upload surface">
+    <view class="dataset-overview">
+      <view class="overview-item">
+        <text class="overview-value">{{totalDocuments}}</text>
+        <text class="overview-label">文档</text>
+      </view>
+      <view class="overview-item">
+        <text class="overview-value">{{availableDocuments}}</text>
+        <text class="overview-label">可问答</text>
+      </view>
+      <view class="overview-item">
+        <text class="overview-value">{{processingDocuments}}</text>
+        <text class="overview-label">处理中</text>
+      </view>
+    </view>
   </view>
 
   <view wx:if="{{selectedDatasetId}}" class="upload surface">
     <view class="upload-copy">
-      <text class="upload-title">导入资料</text>
-      <text class="upload-desc">支持 PDF、Office、TXT、MD、CSV、JSON，最大 100MB</text>
+      <text class="upload-title">导入到【{{selectedDatasetName}}】</text>
+      <text class="upload-desc">PDF、Office、TXT，最大 100MB</text>
     </view>
     <van-button type="primary" size="small" loading="{{uploading}}" bind:click="chooseAndUpload">
       选择文件
@@ -84,6 +107,10 @@
   ></app-state>
 
   <view wx:else class="document-list">
+    <view class="document-list-head">
+      <text>全部文档</text>
+      <text>已显示 {{documents.length}} 篇</text>
+    </view>
     <view
       wx:for="{{documents}}"
       wx:key="id"
@@ -123,6 +150,8 @@
       </view>
       <text class="document-arrow">›</text>
     </view>
+    <view wx:if="{{loadingMoreDocuments}}" class="document-list-footer">正在加载更多文档</view>
+    <view wx:elif="{{!hasMoreDocuments && documents.length}}" class="document-list-footer">已加载全部文档</view>
   </view>
 
   <van-popup show="{{showCreateDataset}}" position="bottom" round bind:close="closeCreateDataset">

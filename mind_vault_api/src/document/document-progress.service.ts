@@ -20,6 +20,7 @@ export class DocumentProgressService implements OnModuleInit, OnModuleDestroy {
   private connection?: ChannelModel;
   private channel?: Channel;
   private readonly streams = new Map<string, Subject<DocumentProgressEvent>>();
+  private readonly ownerStreams = new Map<string, Subject<DocumentProgressEvent>>();
 
   constructor(private readonly config: ConfigService) {}
 
@@ -53,11 +54,21 @@ export class DocumentProgressService implements OnModuleInit, OnModuleDestroy {
     return subject.asObservable();
   }
 
+  streamOwner(ownerId: string): Observable<DocumentProgressEvent> {
+    let subject = this.ownerStreams.get(ownerId);
+    if (!subject) {
+      subject = new Subject<DocumentProgressEvent>();
+      this.ownerStreams.set(ownerId, subject);
+    }
+    return subject.asObservable();
+  }
+
   private consume(message: ConsumeMessage | null) {
     if (!message) return;
     try {
       const event = JSON.parse(message.content.toString()) as DocumentProgressEvent;
       this.streams.get(`${event.ownerId}:${event.documentId}`)?.next(event);
+      this.ownerStreams.get(event.ownerId)?.next(event);
       this.channel?.ack(message);
     } catch {
       this.channel?.nack(message, false, false);

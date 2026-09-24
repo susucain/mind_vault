@@ -18,10 +18,10 @@ export interface DocumentDetail extends DocumentItem {
   pageCount: number;
 }
 
-export function listDocuments(datasetId?: string) {
+export function listDocuments(datasetId?: string, page = 1, pageSize = 10) {
   const query = datasetId
-    ? `?datasetId=${encodeURIComponent(datasetId)}&page=1&pageSize=100`
-    : '?page=1&pageSize=100';
+    ? `?datasetId=${encodeURIComponent(datasetId)}&page=${page}&pageSize=${pageSize}`
+    : `?page=${page}&pageSize=${pageSize}`;
   return request<PaginatedResponse<DocumentItem>>({
     path: `/documents${query}`,
   });
@@ -30,6 +30,12 @@ export function listDocuments(datasetId?: string) {
 export function getDocument(id: string) {
   return request<DocumentDetail>({
     path: `/documents/${id}`,
+  });
+}
+
+export function getDatasetDocumentStats(datasetId: string) {
+  return request<{ total: number; available: number; processing: number }>({
+    path: `/documents/datasets/${datasetId}/stats`,
   });
 }
 
@@ -131,6 +137,39 @@ export function streamDocumentProgress(
   let aborted = false;
   const task = wx.request({
     url: `${environment.apiBaseUrl}/documents/${id}/events`,
+    method: 'GET',
+    enableChunked: true,
+    dataType: 'other',
+    timeout: environment.streamTimeout,
+    header: { Authorization: `Bearer ${session.accessToken}` },
+    success: () => {
+      if (!aborted) onClosed();
+    },
+    fail: () => {
+      if (!aborted) onClosed();
+    },
+  });
+  task.onChunkReceived((chunk) => {
+    for (const event of parser.push(chunk.data)) onEvent(event);
+  });
+  return {
+    abort: () => {
+      aborted = true;
+      task.abort();
+    },
+  };
+}
+
+export function streamLibraryDocumentProgress(
+  onEvent: (event: SseEvent) => void,
+  onClosed: () => void,
+) {
+  const session = loadSession();
+  if (!session) return { abort: () => undefined };
+  const parser = new SseParser();
+  let aborted = false;
+  const task = wx.request({
+    url: `${environment.apiBaseUrl}/documents/events`,
     method: 'GET',
     enableChunked: true,
     dataType: 'other',

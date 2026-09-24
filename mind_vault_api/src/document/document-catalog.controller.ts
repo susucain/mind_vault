@@ -17,6 +17,14 @@ export class DocumentCatalogController {
     return this.service.findAll(user.id, query);
   }
 
+  @Get('datasets/:datasetId/stats')
+  datasetStats(
+    @CurrentUser() user: { id: string },
+    @Param('datasetId') datasetId: string,
+  ) {
+    return this.service.datasetStats(user.id, datasetId);
+  }
+
   @Get(':id')
   findOne(@CurrentUser() user: { id: string }, @Param('id') id: string) {
     return this.service.findOne(user.id, id);

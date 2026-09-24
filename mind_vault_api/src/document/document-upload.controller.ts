@@ -52,6 +52,17 @@ export class DocumentUploadController {
     return this.service.status(user.id, documentId);
   }
 
+  @Sse('events')
+  allEvents(@CurrentUser() user: { id: string }): Observable<MessageEvent> {
+    return new Observable((subscriber) => {
+      const subscription = this.progress.streamOwner(user.id).subscribe({
+        next: (event: DocumentProgressEvent) =>
+          subscriber.next({ type: 'progress', data: event }),
+      });
+      return () => subscription.unsubscribe();
+    });
+  }
+
   @Sse(':id/events')
   events(
     @CurrentUser() user: { id: string },

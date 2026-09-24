@@ -42,7 +42,7 @@
     <van-button wx:if="{{sending}}" size="small" plain loading="{{stopping}}" bind:click="stopGeneration" custom-class="send-btn">
       <van-icon name="stop" custom-class="send-icon" size="{{25}}" style="height: 30px"/>
     </van-button>
-    <van-button wx-else type="primary" size="small" bind:click="sendMessage" custom-class="send-btn">
+    <van-button wx:else type="primary" size="small" bind:click="sendMessage" custom-class="send-btn">
       <van-icon name="down" custom-class="send-icon" />
     </van-button>
   </view>

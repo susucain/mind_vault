@@ -101,6 +101,30 @@ export class DocumentCatalogService {
       pageCount: content?.pageCount ?? 0,
     };
   }
+
+  async datasetStats(ownerId: string, datasetId: string) {
+    const count = async (status?: number) => {
+      const qb = this.documents
+        .createQueryBuilder('doc')
+        .innerJoin(
+          'kh_dataset_document',
+          'datasetDocument',
+          'datasetDocument.document_id = doc.id AND datasetDocument.owner_id = :ownerId',
+          { ownerId },
+        )
+        .where('doc.owner_id = :ownerId', { ownerId })
+        .andWhere('doc.deleted = false')
+        .andWhere('datasetDocument.dataset_id = :datasetId', { datasetId });
+      if (status !== undefined) qb.andWhere('doc.status = :status', { status });
+      return qb.getCount();
+    };
+    const [total, available, processing] = await Promise.all([
+      count(),
+      count(1),
+      count(0),
+    ]);
+    return { total, available, processing };
+  }
 }
 
 function progressOf(job: DocumentIngestionJobEntity) {
