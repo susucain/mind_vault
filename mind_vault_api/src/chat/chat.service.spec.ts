@@ -13,11 +13,12 @@ function buildService(input: {
   summary?: string | null;
   summarizedMessageCount?: number;
   summarizeResult?: string;
+  datasetIds?: string[];
 }) {
   const conversation = {
     id: 'conversation_1',
     ownerId: 'user_1',
-    datasetIds: ['dataset_1'],
+    datasetIds: input.datasetIds ?? ['dataset_1'],
     summary: input.summary ?? null,
     summarizedMessageCount: input.summarizedMessageCount ?? 0,
   };
@@ -52,6 +53,9 @@ function buildService(input: {
     findOne: jest.fn().mockResolvedValue(conversation),
     save: jest.fn(async (entity) => entity),
   };
+  const datasets = {
+    find: jest.fn().mockResolvedValue([]),
+  };
   const agent = {
     invoke: jest.fn().mockResolvedValue({
       answer: '答案',
@@ -71,6 +75,7 @@ function buildService(input: {
     {} as never,
     agent as never,
     memories as never,
+    datasets as never,
   );
   return {
     service,
@@ -78,6 +83,7 @@ function buildService(input: {
     all,
     messages,
     conversations,
+    datasets,
     agent,
     memories,
   };
@@ -94,7 +100,7 @@ describe('ChatService', () => {
   it('passes only the recent window and skips compaction below the batch size', async () => {
     const { service, conversation, all, conversations, agent, memories } =
       buildService({
-      messageCount: 10,
+        messageCount: 10,
       });
 
     await service.ask('user_1', 'conversation_1', '继续说说');
@@ -139,9 +145,9 @@ describe('ChatService', () => {
   it('keeps the previous summary and cursor when compaction returns nothing', async () => {
     const { service, conversation, conversations, agent, memories } =
       buildService({
-      messageCount: 12,
-      summary: '旧摘要',
-      summarizeResult: '',
+        messageCount: 12,
+        summary: '旧摘要',
+        summarizeResult: '',
       });
 
     await service.ask('user_1', 'conversation_1', '继续说说');
@@ -239,5 +245,64 @@ describe('ChatService', () => {
         title: '请总结这个项目的核心难点和关键技术取舍',
       }),
     );
+  });
+
+  it('updates a conversation dataset scope after validating ownership', async () => {
+    const { service, conversation, datasets, conversations } = buildService({
+      messageCount: 0,
+      datasetIds: ['dataset_1'],
+    });
+    datasets.find.mockResolvedValue([
+      { id: 'dataset_1', ownerId: 'user_1', deleted: false },
+      { id: 'dataset_2', ownerId: 'user_1', deleted: false },
+    ]);
+
+    const result = await service.updateDatasetScope(
+      'user_1',
+      'conversation_1',
+      ['dataset_2', 'dataset_2', 'dataset_1'],
+    );
+
+    expect(conversation.datasetIds).toEqual(['dataset_2', 'dataset_1']);
+    expect(conversations.save).toHaveBeenCalledWith(conversation);
+    expect(result).toBe(conversation);
+  });
+
+  it('passes the updated dataset scope to the next ask', async () => {
+    const { service, conversation, agent } = buildService({
+      messageCount: 0,
+      datasetIds: ['dataset_2'],
+    });
+    conversation.datasetIds = ['dataset_1'];
+
+    await service.ask('user_1', 'conversation_1', '下一问');
+
+    expect(agent.invoke).toHaveBeenCalledWith(
+      expect.objectContaining({ datasetIds: ['dataset_1'] }),
+    );
+  });
+
+  it('rejects a dataset scope containing an unknown dataset', async () => {
+    const { service, datasets } = buildService({ messageCount: 0 });
+    datasets.find.mockResolvedValue([]);
+
+    await expect(
+      service.updateDatasetScope('user_1', 'conversation_1', ['missing']),
+    ).rejects.toThrow('资料集不存在或无权访问');
+  });
+
+  it('rejects an empty or oversized dataset scope', async () => {
+    const { service } = buildService({ messageCount: 0 });
+
+    await expect(
+      service.updateDatasetScope('user_1', 'conversation_1', []),
+    ).rejects.toThrow('资料集范围不能为空');
+    await expect(
+      service.updateDatasetScope(
+        'user_1',
+        'conversation_1',
+        Array.from({ length: 21 }, (_, index) => `dataset_${index}`),
+      ),
+    ).rejects.toThrow('资料集范围最多包含 20 个资料集');
   });
 });

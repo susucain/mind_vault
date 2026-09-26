@@ -104,13 +104,14 @@ Page({
       const datasets = (await listDatasets()).items;
       const selectedDatasetId = selectAvailableDatasetId(
         this.data.selectedDatasetId,
-        datasets,
+        datasets
       );
       this.setData({
         datasets,
         selectedDatasetId,
         selectedDatasetName:
-          datasets.find((dataset) => dataset.id === selectedDatasetId)?.name ?? '',
+          datasets.find((dataset) => dataset.id === selectedDatasetId)?.name ??
+          '',
         recentDatasets: recentDatasets(datasets),
       });
       await this.loadDocuments(true);
@@ -283,10 +284,12 @@ Page({
     datasetSearchTimer = setTimeout(() => {
       datasetSearchTimer = null;
       void listDatasets({ name: datasetQuery, pageSize: 20 })
-        .then((response) => this.setData({
-          datasetResults: response.items,
-          searchingDatasets: false,
-        }))
+        .then((response) =>
+          this.setData({
+            datasetResults: response.items,
+            searchingDatasets: false,
+          })
+        )
         .catch(() => this.setData({ searchingDatasets: false }));
     }, 300);
   },
@@ -294,7 +297,11 @@ Page({
   async selectDatasetResult(event: WechatMiniprogram.BaseEvent) {
     const datasetId = event.currentTarget.dataset.id as string;
     await this.selectDatasetById(datasetId);
-    this.setData({ showDatasetSelector: false, datasetQuery: '', datasetResults: [] });
+    this.setData({
+      showDatasetSelector: false,
+      datasetQuery: '',
+      datasetResults: [],
+    });
   },
 
   async selectDatasetById(datasetId: string) {
@@ -302,17 +309,22 @@ Page({
     this.setData({
       selectedDatasetId: datasetId,
       selectedDatasetName:
-        this.data.datasets.find((dataset) => dataset.id === datasetId)?.name ?? '',
+        this.data.datasets.find((dataset) => dataset.id === datasetId)?.name ??
+        '',
       documentPage: 1,
     });
-    rememberDataset(datasetId);
+    rememberDataset(datasetId, this.data.datasets);
     this.setData({ recentDatasets: recentDatasets(this.data.datasets) });
     await this.loadDocuments(true);
   },
 
   async loadDocuments(reset: boolean) {
     if (!this.data.selectedDatasetId) return;
-    if (!reset && (!this.data.hasMoreDocuments || this.data.loadingMoreDocuments)) return;
+    if (
+      !reset &&
+      (!this.data.hasMoreDocuments || this.data.loadingMoreDocuments)
+    )
+      return;
     const page = reset ? 1 : this.data.documentPage;
     this.setData({ loadingMoreDocuments: !reset });
     try {
@@ -326,7 +338,7 @@ Page({
         this.data.documents,
         withIngestionState(response.items),
         page,
-        10,
+        10
       );
       this.setData({
         documents: merged.items,
@@ -358,7 +370,7 @@ Page({
         uploadGraph: process.graph ?? null,
         uploadEta: formatRemainingSeconds(
           process.graph?.estimatedRemainingSeconds ??
-            process.stageProgress.estimatedRemainingSeconds,
+            process.stageProgress.estimatedRemainingSeconds
         ),
         uploadGraphLabel: graphStatusLabel(process.graph?.status),
       });
@@ -389,29 +401,32 @@ Page({
 
   subscribeProgress() {
     this.stopProgressStream();
-    progressStream = streamLibraryDocumentProgress((event) => {
-      if (event.event !== 'progress') return;
-      const documentId =
-        typeof event.data.documentId === 'string' ? event.data.documentId : '';
-      if (documentId && documentId === this.data.uploadDocumentId) {
-        void this.pollDocumentStatus(documentId);
+    progressStream = streamLibraryDocumentProgress(
+      (event) => {
+        if (event.event !== 'progress') return;
+        const documentId =
+          typeof event.data.documentId === 'string'
+            ? event.data.documentId
+            : '';
+        if (documentId && documentId === this.data.uploadDocumentId) {
+          void this.pollDocumentStatus(documentId);
+        }
+        if (libraryRefreshTimer) clearTimeout(libraryRefreshTimer);
+        libraryRefreshTimer = setTimeout(() => {
+          libraryRefreshTimer = null;
+          void this.loadDocuments(true);
+        }, 300);
+      },
+      () => {
+        if (!this.data.selectedDatasetId) {
+          return;
+        }
+        progressReconnectTimer = setTimeout(() => {
+          progressReconnectTimer = null;
+          this.subscribeProgress();
+        }, 5_000);
       }
-      if (libraryRefreshTimer) clearTimeout(libraryRefreshTimer);
-      libraryRefreshTimer = setTimeout(() => {
-        libraryRefreshTimer = null;
-        void this.loadDocuments(true);
-      }, 300);
-    }, () => {
-      if (
-        !this.data.selectedDatasetId
-      ) {
-        return;
-      }
-      progressReconnectTimer = setTimeout(() => {
-        progressReconnectTimer = null;
-        this.subscribeProgress();
-      }, 5_000);
-    });
+    );
   },
 
   stopProgressStream() {
@@ -453,23 +468,24 @@ function withIngestionState(documents: DocumentItem[]): LibraryDocumentItem[] {
 
 function recentDatasets(datasets: Dataset[]) {
   const ids = wx.getStorageSync(RECENT_DATASETS_KEY) as unknown;
-  const recentIds = Array.isArray(ids)
+  let recentIds = Array.isArray(ids)
     ? ids.filter((id): id is string => typeof id === 'string')
-    : [];
+    : datasets?.map((dataset) => dataset.id)?.slice(0, 3) || [];
   return recentIds
     .map((id) => datasets.find((dataset) => dataset.id === id))
     .filter((dataset): dataset is Dataset => Boolean(dataset))
     .slice(0, 3);
 }
 
-function rememberDataset(id: string) {
+function rememberDataset(id: string, datasets: Dataset[]) {
   const stored = wx.getStorageSync(RECENT_DATASETS_KEY) as unknown;
   const existing = Array.isArray(stored)
     ? stored.filter((value): value is string => typeof value === 'string')
-    : [];
+    : datasets?.map((dataset) => dataset.id)?.slice(0, 3) || [];
+
   if (existing.includes(id)) return;
   wx.setStorageSync(
     RECENT_DATASETS_KEY,
-    [id, ...existing.filter((value) => value !== id)].slice(0, 3),
+    [id, ...existing.filter((value) => value !== id)].slice(0, 3)
   );
 }

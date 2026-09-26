@@ -28,6 +28,17 @@ export function listConversations() {
   });
 }
 
+export function updateConversationDatasetScope(
+  conversationId: string,
+  datasetIds: string[]
+) {
+  return request<Conversation, { datasetIds: string[] }>({
+    path: `/conversations/${conversationId}`,
+    method: 'PATCH',
+    data: { datasetIds },
+  });
+}
+
 export function listMessages(conversationId: string) {
   return request<{ items: ChatMessage[] }>({
     path: `/conversations/${conversationId}/messages`,

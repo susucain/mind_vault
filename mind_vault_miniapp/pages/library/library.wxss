@@ -206,6 +206,14 @@
   padding: 12rpx;
 }
 
+.dataset-search-field {
+  padding: 8rpx 12rpx !important;
+}
+
+.dataset-search-input {
+  font-size: 24rpx !important;
+}
+
 .dataset-feedback,
 .dataset-result {
   display: flex;

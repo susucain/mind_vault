@@ -10,6 +10,7 @@ import { ChatCitationEntity } from './entities/citation.entity';
 import { ConversationEntity } from './entities/conversation.entity';
 import { ChatMessageEntity } from './entities/chat-message.entity';
 import { MemoryModule } from '../memory/memory.module';
+import { DatasetEntity } from '../dataset/entities/dataset.entity';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { MemoryModule } from '../memory/memory.module';
       ConversationEntity,
       ChatMessageEntity,
       ChatCitationEntity,
+      DatasetEntity,
     ]),
   ],
   controllers: [ChatController],

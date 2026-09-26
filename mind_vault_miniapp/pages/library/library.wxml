@@ -16,7 +16,7 @@
       <view wx:for="{{recentDatasets}}" wx:key="id" class="recent-chip {{item.id === selectedDatasetId ? 'recent-chip-active' : ''}}" data-id="{{item.id}}" bind:tap="selectDatasetResult">{{item.name}}</view>
     </view>
     <view wx:if="{{showDatasetSelector}}" class="dataset-selector surface">
-      <van-field value="{{datasetQuery}}" placeholder="搜索资料集" border="{{false}}" bind:change="updateDatasetQuery" />
+      <van-field value="{{datasetQuery}}" placeholder="搜索资料集" border="{{true}}" bind:change="updateDatasetQuery" custom-class="dataset-search-field" input-class="dataset-search-input" />
       <text wx:if="{{searchingDatasets}}" class="dataset-feedback">正在搜索</text>
       <text wx:elif="{{!datasetResults.length}}" class="dataset-feedback">没有匹配的资料集</text>
       <view wx:for="{{datasetResults}}" wx:key="id" class="dataset-result {{item.id === selectedDatasetId ? 'dataset-result-active' : ''}}" data-id="{{item.id}}" bind:tap="selectDatasetResult">

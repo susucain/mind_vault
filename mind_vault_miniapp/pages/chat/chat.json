@@ -4,6 +4,7 @@
     "van-button": "@vant/weapp/button/index",
     "van-icon": "@vant/weapp/icon/index",
     "van-field": "@vant/weapp/field/index",
+    "van-popup": "@vant/weapp/popup/index",
     "app-state": "/components/app-state/app-state",
     "citation-card": "/components/citation-card/citation-card",
     "mp-html": "mp-html"

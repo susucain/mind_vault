@@ -6,6 +6,7 @@ import {
   listMessages,
   streamMessage,
   StreamHandle,
+  updateConversationDatasetScope,
 } from '../../services/chat';
 import { ChatCitation, ChatMessage, Conversation } from '../../types/chat';
 import { Dataset } from '../../types/api';
@@ -13,6 +14,14 @@ import { ensureAuthenticated } from '../../utils/auth-guard';
 import { showRequestError } from '../../utils/feedback';
 import { markdownToHtml } from '../../utils/markdown-render';
 import { sanitizeMarkdown } from '../../utils/markdown-safety';
+import {
+  datasetScopeSummary,
+  isAllDatasetScope,
+  normalizeDatasetScope,
+  sanitizeDatasetScope,
+  toggleAllDatasetScope,
+  toggleDatasetScope,
+} from '../../utils/chat-dataset-scope';
 
 interface DisplayMessage extends ChatMessage {
   streaming?: boolean;
@@ -26,6 +35,7 @@ interface DisplayMessage extends ChatMessage {
 
 const MEMORY_TOOL = 'memory';
 let activeStream: StreamHandle | null = null;
+let datasetSearchTimer: ReturnType<typeof setTimeout> | null = null;
 const STAGE_LABELS: Record<string, string> = {
   preparing: '正在准备回答',
   rewrite: '正在理解上下文',
@@ -80,6 +90,15 @@ Page({
   data: {
     datasets: [] as Dataset[],
     selectedDatasetIds: [] as string[],
+    datasetScopeLabel: '全部资料',
+    draftDatasetIds: [] as string[],
+    isAllScope: false,
+    showDatasetSelector: false,
+    datasetQuery: '',
+    datasetResults: [] as Dataset[],
+    searchingDatasets: false,
+    savingDatasetScope: false,
+    datasetScopeError: '',
     messages: [] as DisplayMessage[],
     input: '',
     conversationId: '',
@@ -114,6 +133,7 @@ Page({
         datasets,
         conversations,
         selectedDatasetIds: datasets.map((dataset) => dataset.id),
+        datasetScopeLabel: '全部资料',
       });
       const requestedConversation = conversations.find(
         (conversation) => conversation.id === query.conversationId
@@ -144,14 +164,20 @@ Page({
   },
 
   async createNewConversation(datasetIds?: string[]) {
+    const nextDatasetIds =
+      datasetIds ?? this.data.datasets.map((dataset) => dataset.id);
     const conversation = await createConversation({
       title: '资料问答',
-      datasetIds: datasetIds ?? this.data.selectedDatasetIds,
+      datasetIds: nextDatasetIds,
     });
     this.setData({
       conversationId: conversation.id,
       currentConversationTitle: conversation.title,
       selectedDatasetIds: conversation.datasetIds,
+      datasetScopeLabel: datasetScopeSummary(
+        conversation.datasetIds,
+        this.data.datasets
+      ),
       conversations: [conversation, ...this.data.conversations],
       messages: [],
     });
@@ -159,21 +185,145 @@ Page({
 
   async openConversation(conversation: Conversation) {
     const history = await listMessages(conversation.id);
+    const selectedDatasetIds = normalizeDatasetScope(
+      conversation.datasetIds,
+      this.data.datasets.map((dataset) => dataset.id)
+    );
     this.setData({
       conversationId: conversation.id,
       currentConversationTitle: conversation.title,
-      selectedDatasetIds: conversation.datasetIds,
+      selectedDatasetIds,
+      datasetScopeLabel: datasetScopeSummary(
+        selectedDatasetIds,
+        this.data.datasets
+      ),
       messages: history.items.map(withMemoryFlag),
     });
   },
 
-  toggleDataset(event: WechatMiniprogram.BaseEvent) {
+  openDatasetSelector() {
+    if (this.data.sending || this.data.savingDatasetScope) return;
+    const draftDatasetIds = normalizeDatasetScope(
+      this.data.selectedDatasetIds,
+      this.data.datasets.map((dataset) => dataset.id)
+    );
+    this.setData({
+      draftDatasetIds,
+      isAllScope: isAllDatasetScope(
+        draftDatasetIds,
+        this.data.datasets.map((dataset) => dataset.id)
+      ),
+      showDatasetSelector: true,
+      datasetQuery: '',
+      datasetResults: this.data.datasets.slice(0, 6),
+      datasetScopeError: '',
+    });
+  },
+
+  closeDatasetSelector() {
+    if (this.data.savingDatasetScope) return;
+    if (datasetSearchTimer) clearTimeout(datasetSearchTimer);
+    datasetSearchTimer = null;
+    this.setData({
+      showDatasetSelector: false,
+      draftDatasetIds: [],
+      datasetQuery: '',
+      datasetResults: [],
+      searchingDatasets: false,
+      datasetScopeError: '',
+    });
+  },
+
+  updateDatasetQuery(event: WechatMiniprogram.CustomEvent) {
+    const datasetQuery = inputValue(event.detail);
+    this.setData({
+      datasetQuery,
+      searchingDatasets: true,
+      datasetScopeError: '',
+    });
+    if (datasetSearchTimer) clearTimeout(datasetSearchTimer);
+    datasetSearchTimer = setTimeout(() => {
+      datasetSearchTimer = null;
+      void listDatasets({ name: datasetQuery, pageSize: 20 })
+        .then((response) => {
+          this.setData({
+            datasetResults: response.items,
+            searchingDatasets: false,
+          });
+        })
+        .catch((error) => {
+          this.setData({
+            searchingDatasets: false,
+            datasetScopeError:
+              error instanceof Error ? error.message : '搜索资料集失败',
+          });
+          showRequestError(error);
+        });
+    }, 240);
+  },
+
+  toggleAllDatasets() {
+    const allIds = this.data.datasets.map((dataset) => dataset.id);
+    const draftDatasetIds = toggleAllDatasetScope(
+      this.data.draftDatasetIds,
+      allIds
+    );
+    this.setData({
+      draftDatasetIds,
+      isAllScope: isAllDatasetScope(draftDatasetIds, allIds),
+    });
+  },
+
+  toggleDraftDataset(event: WechatMiniprogram.BaseEvent) {
     const id = event.currentTarget.dataset.id as string;
-    const selected = this.data.selectedDatasetIds.includes(id);
-    const selectedDatasetIds = selected
-      ? this.data.selectedDatasetIds.filter((item) => item !== id)
-      : [...this.data.selectedDatasetIds, id];
-    this.setData({ selectedDatasetIds });
+    const allIds = this.data.datasets.map((dataset) => dataset.id);
+    const draftDatasetIds = toggleDatasetScope(this.data.draftDatasetIds, id);
+    this.setData({
+      draftDatasetIds,
+      isAllScope: isAllDatasetScope(draftDatasetIds, allIds),
+    });
+  },
+
+  async saveDatasetScope() {
+    const datasetIds = sanitizeDatasetScope(
+      this.data.draftDatasetIds,
+      this.data.datasets.map((dataset) => dataset.id)
+    );
+    if (!datasetIds.length) {
+      wx.showToast({ title: '请至少选择一个资料集', icon: 'none' });
+      return;
+    }
+    this.setData({ savingDatasetScope: true, datasetScopeError: '' });
+    try {
+      const conversation = await updateConversationDatasetScope(
+        this.data.conversationId,
+        datasetIds
+      );
+      this.setData({
+        selectedDatasetIds: conversation.datasetIds,
+        datasetScopeLabel: datasetScopeSummary(
+          conversation.datasetIds,
+          this.data.datasets
+        ),
+        conversations: this.data.conversations.map((item) =>
+          item.id === conversation.id ? conversation : item
+        ),
+        showDatasetSelector: false,
+        draftDatasetIds: [],
+        isAllScope: isAllDatasetScope(
+          conversation.datasetIds,
+          this.data.datasets.map((dataset) => dataset.id)
+        ),
+      });
+    } catch (error) {
+      this.setData({
+        datasetScopeError:
+          error instanceof Error ? error.message : '保存资料范围失败',
+      });
+      showRequestError(error);
+    } finally {
+      this.setData({ savingDatasetScope: false });
+    }
   },
 
   updateInput(event: WechatMiniprogram.CustomEvent) {
@@ -183,6 +333,10 @@ Page({
   async sendMessage() {
     const content = this.data.input.trim();
     if (!content || this.data.sending) return;
+    if (this.data.savingDatasetScope) {
+      wx.showToast({ title: '正在保存资料范围', icon: 'none' });
+      return;
+    }
     if (this.data.selectedDatasetIds.length === 0) {
       wx.showToast({ title: '请至少选择一个资料集', icon: 'none' });
       return;
@@ -300,7 +454,10 @@ Page({
   newConversation() {
     activeStream?.abort();
     activeStream = null;
-    void this.createNewConversation();
+    this.closeDatasetSelector();
+    void this.createNewConversation(
+      this.data.datasets.map((dataset) => dataset.id)
+    );
   },
 
   toggleConversationPicker() {
@@ -311,7 +468,7 @@ Page({
   },
 
   async selectConversation(event: WechatMiniprogram.BaseEvent) {
-    if (this.data.sending) return;
+    if (this.data.sending || this.data.savingDatasetScope) return;
     const id = event.currentTarget.dataset.id as string;
     const conversation = this.data.conversations.find((item) => item.id === id);
     if (!conversation || conversation.id === this.data.conversationId) {
@@ -319,6 +476,7 @@ Page({
       return;
     }
     try {
+      this.closeDatasetSelector();
       await this.openConversation(conversation);
       this.setData({ showConversationPicker: false });
       this.scrollToBottom();
@@ -345,6 +503,8 @@ Page({
   onUnload() {
     activeStream?.abort();
     activeStream = null;
+    if (datasetSearchTimer) clearTimeout(datasetSearchTimer);
+    datasetSearchTimer = null;
   },
 
   scrollToBottom() {

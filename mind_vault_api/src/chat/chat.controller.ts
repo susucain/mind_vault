@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Res,
   UseGuards,
@@ -13,6 +14,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
+import { UpdateConversationDto } from './dto/update-conversation.dto';
 import { ChatService } from './chat.service';
 
 @Controller('conversations')
@@ -31,6 +33,15 @@ export class ChatController {
   @Get()
   listConversations(@CurrentUser() user: { id: string }) {
     return this.chat.listConversations(user.id);
+  }
+
+  @Patch(':id')
+  update(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+    @Body() dto: UpdateConversationDto,
+  ) {
+    return this.chat.updateDatasetScope(user.id, id, dto.datasetIds);
   }
 
   @Get(':id/messages')

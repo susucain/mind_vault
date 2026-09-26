@@ -11,11 +11,12 @@
       {{item.title}}
     </view>
   </view>
-  <scroll-view class="dataset-scroll" scroll-x>
-    <view wx:for="{{datasets}}" wx:key="id" class="dataset-chip {{selectedDatasetIds.includes(item.id) ? 'dataset-chip-active' : ''}}" data-id="{{item.id}}" bind:tap="toggleDataset">
-      {{item.name}}
+  <view wx:if="{{datasets.length}}" class="dataset-scope">
+    <view class="dataset-scope-summary">
+      <text class="dataset-scope-label">{{datasetScopeLabel}}</text>
+      <van-button size="small" plain bind:click="openDatasetSelector">切换</van-button>
     </view>
-  </scroll-view>
+  </view>
   <app-state wx:if="{{loading}}" type="loading"></app-state>
   <app-state wx:elif="{{error}}" type="error" title="问答初始化失败" description="{{error}}" bind:action="initialize"></app-state>
   <app-state wx:elif="{{datasets.length === 0}}" type="empty" title="还没有可问答的资料集" description="请先在知识库中创建资料集并上传文档。"></app-state>
@@ -46,4 +47,54 @@
       <van-icon name="down" custom-class="send-icon" />
     </van-button>
   </view>
+  <van-popup
+    show="{{showDatasetSelector}}"
+    position="bottom"
+    round
+    bind:close="closeDatasetSelector"
+  >
+    <view class="dataset-selector-panel">
+      <view class="dataset-selector-head">
+        <text>选择资料范围</text>
+        <text class="dataset-selector-cancel" bind:tap="closeDatasetSelector">取消</text>
+      </view>
+      <van-field
+        value="{{datasetQuery}}"
+        placeholder="搜索资料集"
+        border="{{true}}"
+        bind:change="updateDatasetQuery"
+        custom-class="dataset-search-field"
+        input-class="dataset-search-input"
+      />
+      <view
+        class="dataset-scope-option {{isAllScope ? 'dataset-scope-option-active' : ''}}"
+        bind:tap="toggleAllDatasets"
+      >
+        <text>全部资料</text>
+        <text>{{isAllScope ? '已选' : '快捷全选'}}</text>
+      </view>
+      <text wx:if="{{searchingDatasets}}" class="dataset-feedback">正在搜索</text>
+      <text wx:elif="{{!datasetResults.length}}" class="dataset-feedback">没有匹配的资料集</text>
+      <view
+        wx:for="{{datasetResults}}"
+        wx:key="id"
+        class="dataset-scope-option {{draftDatasetIds.includes(item.id) ? 'dataset-scope-option-active' : ''}}"
+        data-id="{{item.id}}"
+        bind:tap="toggleDraftDataset"
+      >
+        <text>{{item.name}}</text>
+        <text>{{draftDatasetIds.includes(item.id) ? '已选' : '选择'}}</text>
+      </view>
+      <text wx:if="{{datasetScopeError}}" class="dataset-scope-error">{{datasetScopeError}}</text>
+      <van-button
+        type="primary"
+        block
+        loading="{{savingDatasetScope}}"
+        disabled="{{savingDatasetScope}}"
+        bind:click="saveDatasetScope"
+      >
+        完成
+      </van-button>
+    </view>
+  </van-popup>
 </view>

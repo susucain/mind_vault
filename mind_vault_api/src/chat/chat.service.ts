@@ -1,8 +1,14 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { nextSnowflakeId } from '../common/snowflake-id';
 import { MemoryService } from '../memory/memory.service';
+import { DatasetEntity } from '../dataset/entities/dataset.entity';
 import { RagAgentService } from './agent/rag-agent.service';
 import { HistoryTurn, historyWindow, RagState } from './agent/rag-types';
 import { CreateConversationDto } from './dto/create-conversation.dto';
@@ -23,7 +29,32 @@ export class ChatService {
     private readonly citations: Repository<ChatCitationEntity>,
     private readonly agent: RagAgentService,
     private readonly memories: MemoryService,
+    @InjectRepository(DatasetEntity)
+    private readonly datasets: Repository<DatasetEntity>,
   ) {}
+
+  async updateDatasetScope(
+    ownerId: string,
+    conversationId: string,
+    datasetIds: string[],
+  ) {
+    const conversation = await this.findConversation(ownerId, conversationId);
+    const uniqueIds = [...new Set(datasetIds)];
+    if (!uniqueIds.length) {
+      throw new BadRequestException('资料集范围不能为空');
+    }
+    if (uniqueIds.length > 20) {
+      throw new BadRequestException('资料集范围最多包含 20 个资料集');
+    }
+    const datasets = await this.datasets.find({
+      where: uniqueIds.map((id) => ({ id, ownerId, deleted: false })),
+    });
+    if (datasets.length !== uniqueIds.length) {
+      throw new BadRequestException('资料集不存在或无权访问');
+    }
+    conversation.datasetIds = uniqueIds;
+    return this.conversations.save(conversation);
+  }
 
   async createConversation(ownerId: string, dto: CreateConversationDto) {
     const conversation = this.conversations.create({
