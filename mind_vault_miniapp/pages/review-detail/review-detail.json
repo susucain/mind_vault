@@ -1,0 +1,8 @@
+{
+  "navigationBarTitleText": "复习详情",
+  "usingComponents": {
+    "van-field": "@vant/weapp/field/index",
+    "app-state": "/components/app-state/app-state",
+    "interview-score": "/components/interview-score/interview-score"
+  }
+}

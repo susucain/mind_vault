@@ -1,0 +1,129 @@
+<view class="page">
+  <app-state wx:if="{{loading}}" type="loading"></app-state>
+  <app-state
+    wx:elif="{{error}}"
+    type="error"
+    title="复习详情加载失败"
+    description="{{error}}"
+    bind:action="retryLoad"
+  ></app-state>
+
+  <view wx:elif="{{detail}}" class="content">
+    <view class="status surface">
+      <view class="status-head">
+        <text class="status-mode">来源模式：{{sourceModeLabel}}</text>
+        <text
+          class="status-badge {{detail.item.status === 'COMPLETED' ? 'status-badge-completed' : ''}}"
+        >
+          {{detail.item.status === 'COMPLETED' ? '已复习' : '待复习'}}
+        </text>
+      </view>
+      <text class="status-title">{{detail.item.title}}</text>
+      <text wx:if="{{detail.item.reason}}" class="status-reason">{{detail.item.reason}}</text>
+      <view class="status-actions">
+        <button
+          wx:if="{{detail.item.status === 'PENDING'}}"
+          class="status-link"
+          disabled="{{statusUpdating || submitting}}"
+          loading="{{statusUpdating}}"
+          bind:tap="markCompleted"
+        >
+          手动标记已复习
+        </button>
+        <button
+          wx:else
+          class="status-link"
+          disabled="{{statusUpdating || submitting}}"
+          loading="{{statusUpdating}}"
+          bind:tap="restorePending"
+        >
+          恢复待复习
+        </button>
+      </view>
+    </view>
+
+    <view wx:if="{{resultMessage}}" class="result-banner {{detail.item.status === 'COMPLETED' ? 'result-banner-completed' : ''}}">
+      {{resultMessage}}
+    </view>
+
+    <view class="section-title">来源题目</view>
+    <view class="block surface">
+      <text class="question-text">{{detail.sourceTurn ? detail.sourceTurn.question : '原始题目已不可用。'}}</text>
+    </view>
+
+    <view class="section-title">原始回答</view>
+    <view class="block surface">
+      <text class="answer-text">{{detail.sourceTurn && detail.sourceTurn.answer ? detail.sourceTurn.answer : '没有记录原始回答。'}}</text>
+    </view>
+
+    <block wx:if="{{detail.sourceTurn && detail.sourceTurn.evaluation}}">
+      <view class="section-title">来源评分</view>
+      <view class="block surface">
+        <interview-score evaluation="{{detail.sourceTurn.evaluation}}"></interview-score>
+      </view>
+    </block>
+
+    <block wx:if="{{lastAttempt}}">
+      <view class="section-title">最新反馈</view>
+      <view class="block surface">
+        <view class="attempt-head">
+          <text>第 {{lastAttempt.order}} 次复习 · {{lastAttempt.timeLabel}}</text>
+          <text class="attempt-score">{{lastAttempt.scoreLabel}}</text>
+        </view>
+        <interview-score evaluation="{{lastAttempt.evaluation}}"></interview-score>
+        <view wx:if="{{lastAttempt.evaluation.strengths.length}}" class="feedback-section">
+          <text>优点</text>
+          <text wx:for="{{lastAttempt.evaluation.strengths}}" wx:key="*this" class="feedback-item">{{item}}</text>
+        </view>
+        <view wx:if="{{lastAttempt.evaluation.gaps.length}}" class="feedback-section">
+          <text>待加强</text>
+          <text wx:for="{{lastAttempt.evaluation.gaps}}" wx:key="*this" class="feedback-item gap">{{item}}</text>
+        </view>
+        <text wx:if="{{lastAttempt.evaluation.followUp}}" class="follow-up">追问：{{lastAttempt.evaluation.followUp}}</text>
+      </view>
+    </block>
+
+    <view class="section-title">历史复习尝试</view>
+    <view wx:if="{{attempts.length}}" class="attempt-list">
+      <view wx:for="{{attempts}}" wx:key="id" class="attempt surface">
+        <view class="attempt-head">
+          <text>第 {{item.order}} 次 · {{item.timeLabel}}</text>
+          <text class="attempt-score">{{item.scoreLabel}}</text>
+        </view>
+        <text class="attempt-answer">{{item.answer}}</text>
+        <interview-score evaluation="{{item.evaluation}}"></interview-score>
+      </view>
+    </view>
+    <view wx:else class="block surface muted">还没有复习尝试记录。</view>
+
+    <view class="section-title">重新作答</view>
+    <view class="answer surface">
+      <van-field
+        value="{{answer}}"
+        type="textarea"
+        autosize
+        maxlength="4000"
+        placeholder="重新回答这个问题"
+        border="{{false}}"
+        bind:change="updateAnswer"
+      />
+      <view class="review-actions">
+        <button
+          class="review-action-primary"
+          loading="{{submitting}}"
+          disabled="{{statusUpdating}}"
+          bind:tap="resubmitAnswer"
+        >
+          重新评估
+        </button>
+        <button
+          class="review-action-secondary"
+          disabled="{{submitting || statusUpdating}}"
+          bind:tap="keepAsPending"
+        >
+          保留待复习
+        </button>
+      </view>
+    </view>
+  </view>
+</view>
