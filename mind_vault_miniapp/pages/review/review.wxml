@@ -1,0 +1,70 @@
+<view class="page">
+  <view class="header">
+    <text class="kicker">REVIEW WORKSPACE</text>
+    <view class="header-title-row">
+      <text class="title">复习</text>
+      <text class="header-count">{{activeStatus === 'PENDING' ? '待复习 ' + total : '已复习 ' + total}}</text>
+    </view>
+    <text class="subtitle">回看面试训练中待加强的问题，重新作答并跟踪进展。</text>
+  </view>
+
+  <view class="tabs">
+    <view
+      class="tab {{activeStatus === 'PENDING' ? 'tab-active' : ''}}"
+      data-status="PENDING"
+      bind:tap="switchStatus"
+    >
+      待复习
+    </view>
+    <view
+      class="tab {{activeStatus === 'COMPLETED' ? 'tab-active' : ''}}"
+      data-status="COMPLETED"
+      bind:tap="switchStatus"
+    >
+      已复习
+    </view>
+  </view>
+
+  <app-state wx:if="{{loading && !items.length}}" type="loading"></app-state>
+  <app-state
+    wx:elif="{{error && !items.length}}"
+    type="error"
+    title="复习列表加载失败"
+    description="{{error}}"
+    bind:action="retryReviews"
+  ></app-state>
+  <app-state
+    wx:elif="{{!items.length}}"
+    type="empty"
+    title="{{activeStatus === 'PENDING' ? '没有待复习项' : '还没有已复习项'}}"
+    description="{{activeStatus === 'PENDING' ? '完成面试训练后，待加强的问题会出现在这里。' : '标记为已复习的条目会归档到这里。'}}"
+  ></app-state>
+
+  <view wx:else class="review-list">
+    <view class="review-list-head">
+      <text>已显示 {{items.length}} 项</text>
+      <text>共 {{total}} 项</text>
+    </view>
+    <view
+      wx:for="{{items}}"
+      wx:key="id"
+      class="review-card surface"
+      data-id="{{item.id}}"
+      bind:tap="openDetail"
+    >
+      <view class="review-card-head">
+        <text class="review-title">{{item.title}}</text>
+        <text
+          class="review-status {{item.status === 'COMPLETED' ? 'review-status-completed' : ''}}"
+        >
+          {{item.statusLabel}}
+        </text>
+      </view>
+      <text wx:if="{{item.reason}}" class="review-reason">{{item.reason}}</text>
+      <text wx:if="{{item.timeLabel}}" class="review-meta">{{item.timeLabel}}</text>
+    </view>
+    <view wx:if="{{loadingMore}}" class="review-list-footer">正在加载更多复习项</view>
+    <view wx:elif="{{error}}" class="review-list-footer review-list-error">{{error}}，请再次触底重试</view>
+    <view wx:elif="{{!hasMore}}" class="review-list-footer">已加载全部复习项</view>
+  </view>
+</view>

@@ -1,6 +1,9 @@
 <view class="page">
   <view class="header">
-    <text class="kicker">INTERVIEW COACH</text>
+    <view class="header-top">
+      <text class="kicker">INTERVIEW COACH</text>
+      <view class="review-entry" bind:tap="openReviews">复习 ›</view>
+    </view>
     <text class="title">面试训练</text>
     <text class="subtitle">从你的项目资料中生成问题、追问和复习项。</text>
   </view>
@@ -92,14 +95,6 @@
     <view class="actions">
       <van-button wx:if="{{session.status === 'IN_PROGRESS'}}" type="default" plain bind:click="finishSession">结束训练</van-button>
       <van-button wx:if="{{session.status === 'COMPLETED'}}" type="primary" bind:click="resetSession">开始新训练</van-button>
-    </view>
-  </view>
-
-  <view wx:if="{{reviewItems.length}}" class="review">
-    <text class="section-title">待复习</text>
-    <view wx:for="{{reviewItems}}" wx:key="id" class="review-item surface">
-      <text class="review-title">{{item.title}}</text>
-      <text class="review-reason">{{item.reason}}</text>
     </view>
   </view>
 </view>

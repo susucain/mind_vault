@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "复习",
+  "usingComponents": {
+    "app-state": "/components/app-state/app-state"
+  }
+}

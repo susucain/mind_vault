@@ -4,6 +4,22 @@
   padding: 28rpx 0;
 }
 
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.review-entry {
+  padding: 8rpx 20rpx;
+  border: 1rpx solid #087f78;
+  border-radius: 999rpx;
+  color: #087f78;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
 .kicker {
   color: #b85f2b;
   font-size: 24rpx;
@@ -130,31 +146,6 @@
 .actions {
   display: flex;
   justify-content: flex-end;
-}
-
-.review {
-  display: flex;
-  flex-direction: column;
-  gap: 14rpx;
-  margin-top: 18rpx;
-}
-
-.review-item {
-  display: flex;
-  flex-direction: column;
-  gap: 10rpx;
-  padding: 24rpx;
-}
-
-.review-title {
-  font-size: 27rpx;
-  font-weight: 700;
-}
-
-.review-reason {
-  color: #718087;
-  font-size: 22rpx;
-  line-height: 1.5;
 }
 
 .training-title {

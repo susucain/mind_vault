@@ -8,7 +8,8 @@
     "pages/sessions/sessions",
     "pages/document-detail/document-detail",
     "pages/chat/chat",
-    "pages/memory/memory"
+    "pages/memory/memory",
+    "pages/review/review"
   ],
   "window": {
     "backgroundColor": "#f5f7f6",

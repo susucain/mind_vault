@@ -4,7 +4,6 @@ import {
   createInterviewSession,
   finishInterviewSession,
   getInterviewSession,
-  listReviewItems,
   submitInterviewAnswer,
 } from '../../services/interview';
 import { Dataset } from '../../types/api';
@@ -12,7 +11,6 @@ import {
   InterviewEvaluation,
   InterviewMode,
   InterviewSession,
-  ReviewItem,
 } from '../../types/interview';
 import { showRequestError } from '../../utils/feedback';
 import { consumePendingInterviewSessionId } from '../../utils/interview-navigation';
@@ -28,7 +26,6 @@ Page({
     session: null as InterviewSession | null,
     answer: '',
     evaluation: null as InterviewEvaluation | null,
-    reviewItems: [] as ReviewItem[],
     loading: true,
     creating: false,
     submitting: false,
@@ -54,8 +51,6 @@ Page({
         datasets,
         selectedDatasetId: this.data.selectedDatasetId || datasets[0]?.id || '',
       });
-      const reviewItems = await listReviewItems();
-      this.setData({ reviewItems: reviewItems.items });
       if (pendingSessionId) {
         const session = await getInterviewSession(pendingSessionId);
         pendingSessionId = '';
@@ -70,6 +65,10 @@ Page({
     } finally {
       this.setData({ loading: false });
     }
+  },
+
+  openReviews() {
+    wx.navigateTo({ url: '/pages/review/review' });
   },
 
   selectDataset(event: WechatMiniprogram.BaseEvent) {
@@ -122,7 +121,6 @@ Page({
       this.setData({
         session: nextSession,
         evaluation: result.evaluation,
-        reviewItems: [...result.reviewItems, ...this.data.reviewItems],
         answer: '',
       });
     } catch (error) {

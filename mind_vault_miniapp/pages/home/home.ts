@@ -130,6 +130,18 @@ Page({
   openLibrary() {
     wx.switchTab({ url: '/pages/library/library' });
   },
+
+  openReviews() {
+    wx.navigateTo({ url: '/pages/review/review' });
+  },
+
+  openReviewDetail(event: WechatMiniprogram.BaseEvent) {
+    const id = event.currentTarget.dataset.id as string;
+    if (!id) return;
+    wx.navigateTo({
+      url: `/pages/review-detail/review-detail?id=${id}`,
+    });
+  },
 });
 
 function inputValue(detail: unknown): string {

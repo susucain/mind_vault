@@ -51,8 +51,11 @@
         <text class="session-copy">{{item.ingestionStatus === 'READY' ? '可问答' : '处理中'}}</text>
       </view>
     </view>
-    <view wx:if="{{reviewItems.length}}" class="section-title">待复习</view>
-    <view wx:for="{{reviewItems}}" wx:key="id" class="review surface">
+    <view wx:if="{{reviewItems.length}}" class="section-head">
+      <text class="section-title">待复习</text>
+      <text class="link" bind:tap="openReviews">查看全部</text>
+    </view>
+    <view wx:for="{{reviewItems}}" wx:key="id" class="review surface" data-id="{{item.id}}" bind:tap="openReviewDetail">
       <text class="continue-icon chat">Q</text>
       <view class="session-main">
         <text class="session-title">{{item.title}}</text>
