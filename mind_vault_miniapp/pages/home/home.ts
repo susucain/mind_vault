@@ -15,6 +15,7 @@ import {
   mergeSessionItems,
   recentSessions,
 } from '../../utils/sessions';
+import { rememberInterviewSessionId } from '../../utils/interview-navigation';
 
 Page({
   data: {
@@ -100,11 +101,21 @@ Page({
 
   openSession(event: WechatMiniprogram.BaseEvent) {
     const session = event.currentTarget.dataset.session as SessionListItem;
+    if (session.kind === 'interview') {
+      rememberInterviewSessionId(session.id);
+      wx.switchTab({
+        url: '/pages/interview/interview',
+        fail: (error) => {
+          wx.showToast({
+            title: error.errMsg || '无法打开面试训练',
+            icon: 'none',
+          });
+        },
+      });
+      return;
+    }
     wx.navigateTo({
-      url:
-        session.kind === 'chat'
-          ? `/pages/chat/chat?conversationId=${session.id}`
-          : `/pages/interview/interview?sessionId=${session.id}`,
+      url: `/pages/chat/chat?conversationId=${session.id}`,
     });
   },
 

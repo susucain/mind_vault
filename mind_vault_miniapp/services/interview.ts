@@ -1,4 +1,5 @@
 import { request } from './request';
+import { environment } from '../config/env';
 import {
   InterviewAnswerResult,
   InterviewMode,
@@ -14,6 +15,7 @@ export function createInterviewSession(input: {
   return request<InterviewSession, typeof input>({
     path: '/interview/sessions',
     method: 'POST',
+    timeout: environment.interviewSessionTimeout,
     data: input,
   });
 }
@@ -34,6 +36,7 @@ export function submitInterviewAnswer(id: string, answer: string) {
   return request<InterviewAnswerResult, { answer: string }>({
     path: `/interview/sessions/${id}/answers`,
     method: 'POST',
+    timeout: environment.interviewAnswerTimeout,
     data: { answer },
   });
 }

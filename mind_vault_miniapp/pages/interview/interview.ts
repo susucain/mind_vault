@@ -15,6 +15,7 @@ import {
   ReviewItem,
 } from '../../types/interview';
 import { showRequestError } from '../../utils/feedback';
+import { consumePendingInterviewSessionId } from '../../utils/interview-navigation';
 
 let pendingSessionId = '';
 
@@ -40,6 +41,8 @@ Page({
 
   onShow() {
     if (!ensureAuthenticated()) return;
+    const storedSessionId = consumePendingInterviewSessionId();
+    if (storedSessionId) pendingSessionId = storedSessionId;
     void this.loadDatasets();
   },
 

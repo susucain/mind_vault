@@ -11,6 +11,7 @@ interface RequestOptions<T> {
   method?: HttpMethod;
   data?: T;
   skipAuth?: boolean;
+  timeout?: number;
 }
 
 export function request<TResponse, TData = Record<string, unknown>>(
@@ -21,9 +22,9 @@ export function request<TResponse, TData = Record<string, unknown>>(
   return new Promise((resolve, reject) => {
     wx.request({
       url: `${environment.apiBaseUrl}${options.path}`,
-      timeout: environment.requestTimeout,
       method: (options.method ??
         'GET') as WechatMiniprogram.RequestOption['method'],
+      timeout: options.timeout ?? environment.requestTimeout,
       data: options.data as WechatMiniprogram.IAnyObject | undefined,
       header: {
         ...(options.skipAuth || !session

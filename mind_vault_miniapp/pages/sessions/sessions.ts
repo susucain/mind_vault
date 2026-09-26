@@ -5,6 +5,7 @@ import { ensureAuthenticated } from '../../utils/auth-guard';
 import { showRequestError } from '../../utils/feedback';
 import { SessionKind, SessionListItem } from '../../types/session-list';
 import { filterSessions, mergeSessionItems } from '../../utils/sessions';
+import { rememberInterviewSessionId } from '../../utils/interview-navigation';
 
 Page({
   data: {
@@ -59,8 +60,15 @@ Page({
       wx.navigateTo({ url: `/pages/chat/chat?conversationId=${session.id}` });
       return;
     }
-    wx.navigateTo({
-      url: `/pages/interview/interview?sessionId=${session.id}`,
+    rememberInterviewSessionId(session.id);
+    wx.switchTab({
+      url: '/pages/interview/interview',
+      fail: (error) => {
+        wx.showToast({
+          title: error.errMsg || '无法打开面试训练',
+          icon: 'none',
+        });
+      },
     });
   },
 });
