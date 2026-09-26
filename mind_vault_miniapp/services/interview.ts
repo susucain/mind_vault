@@ -4,7 +4,11 @@ import {
   InterviewAnswerResult,
   InterviewMode,
   InterviewSession,
+  ReviewAnswerResult,
+  ReviewDetail,
+  ReviewItem,
   ReviewItemsPage,
+  ReviewStatus,
 } from '../types/interview';
 
 export function createInterviewSession(input: {
@@ -48,8 +52,35 @@ export function finishInterviewSession(id: string) {
   });
 }
 
-export function listReviewItems() {
+export function listReviewItems(
+  status: ReviewStatus = 'PENDING',
+  page = 1,
+  pageSize = 20
+) {
   return request<ReviewItemsPage>({
-    path: '/interview/review-items',
+    path: `/interview/review-items?status=${status}&page=${page}&pageSize=${pageSize}`,
+  });
+}
+
+export function getReviewItem(id: string) {
+  return request<ReviewDetail>({
+    path: `/interview/review-items/${id}`,
+  });
+}
+
+export function submitReviewAnswer(id: string, answer: string) {
+  return request<ReviewAnswerResult, { answer: string }>({
+    path: `/interview/review-items/${id}/answers`,
+    method: 'POST',
+    timeout: environment.interviewAnswerTimeout,
+    data: { answer },
+  });
+}
+
+export function updateReviewItemStatus(id: string, status: ReviewStatus) {
+  return request<ReviewItem, { status: ReviewStatus }>({
+    path: `/interview/review-items/${id}`,
+    method: 'PATCH',
+    data: { status },
   });
 }
