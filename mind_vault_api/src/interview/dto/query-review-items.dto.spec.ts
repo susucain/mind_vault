@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import 'reflect-metadata';
 import { validate } from 'class-validator';
 import { QueryReviewItemsDto } from './query-review-items.dto';

@@ -11,9 +11,12 @@ import { InterviewAgentService } from './interview-agent.service';
 import { InterviewEvaluation } from './interview-model.service';
 import { CreateInterviewSessionDto } from './dto/create-interview-session.dto';
 import { SubmitInterviewAnswerDto } from './dto/submit-interview-answer.dto';
+import { SubmitReviewAnswerDto } from './dto/submit-review-answer.dto';
+import { UpdateReviewItemDto } from './dto/update-review-item.dto';
 import { QueryReviewItemsDto } from './dto/query-review-items.dto';
 import { InterviewSessionEntity } from './entities/interview-session.entity';
 import { InterviewTurnEntity } from './entities/interview-turn.entity';
+import { ReviewAttemptEntity } from './entities/review-attempt.entity';
 import { ReviewItemEntity } from './entities/review-item.entity';
 
 @Injectable()
@@ -25,6 +28,8 @@ export class InterviewService {
     private readonly turns: Repository<InterviewTurnEntity>,
     @InjectRepository(ReviewItemEntity)
     private readonly reviewItems: Repository<ReviewItemEntity>,
+    @InjectRepository(ReviewAttemptEntity)
+    private readonly reviewAttempts: Repository<ReviewAttemptEntity>,
     private readonly datasets: DatasetService,
     private readonly agent: InterviewAgentService,
   ) {}
@@ -152,6 +157,103 @@ export class InterviewService {
       take: pageSize,
     });
     return { items, total, page, pageSize };
+  }
+
+  async getReviewItem(ownerId: string, id: string) {
+    const item = await this.findReviewItem(ownerId, id);
+    const sourceTurn = await this.turns.findOne({
+      where: { id: item.sourceTurnId, ownerId },
+    });
+    const sourceSession = sourceTurn
+      ? await this.sessions.findOne({
+          where: { id: sourceTurn.sessionId, ownerId },
+        })
+      : null;
+    const attempts = await this.reviewAttempts.find({
+      where: { reviewItemId: id, ownerId },
+      order: { createdAt: 'ASC' },
+    });
+    return {
+      item,
+      sourceTurn,
+      sourceMode: sourceSession?.mode ?? null,
+      attempts,
+    };
+  }
+
+  async submitReviewAnswer(
+    ownerId: string,
+    id: string,
+    dto: SubmitReviewAnswerDto,
+  ) {
+    const item = await this.findReviewItem(ownerId, id);
+    const sourceTurn = await this.turns.findOne({
+      where: { id: item.sourceTurnId, ownerId },
+    });
+    if (!sourceTurn) {
+      throw new NotFoundException(
+        `Interview turn ${item.sourceTurnId} not found`,
+      );
+    }
+    const sourceSession = await this.sessions.findOne({
+      where: { id: sourceTurn.sessionId, ownerId },
+    });
+    if (!sourceSession) {
+      throw new NotFoundException(
+        `Interview session ${sourceTurn.sessionId} not found`,
+      );
+    }
+    const result = (await this.agent.evaluate({
+      ownerId,
+      datasetId: sourceSession.datasetId,
+      question: sourceTurn.question,
+      answer: dto.answer,
+    })) as { evaluation: InterviewEvaluation; citations: string[] };
+    const evaluation = result.evaluation;
+    const score =
+      (evaluation.accuracy +
+        evaluation.depth +
+        evaluation.structure +
+        evaluation.clarity) /
+      4;
+    const autoCompleted = score >= 60;
+    const now = new Date();
+    const attempt = await this.reviewAttempts.save(
+      this.reviewAttempts.create({
+        id: nextSnowflakeId(),
+        reviewItemId: id,
+        ownerId,
+        answer: dto.answer,
+        evaluation,
+        citationIds: result.citations,
+        score: score.toFixed(2),
+      }),
+    );
+    item.status = autoCompleted ? 'COMPLETED' : 'PENDING';
+    item.lastReviewedAt = now;
+    item.completedAt = autoCompleted ? now : null;
+    await this.reviewItems.save(item);
+    return { attempt, item, autoCompleted, score };
+  }
+
+  async updateReviewItemStatus(
+    ownerId: string,
+    id: string,
+    dto: UpdateReviewItemDto,
+  ) {
+    const item = await this.findReviewItem(ownerId, id);
+    const now = new Date();
+    item.status = dto.status;
+    item.lastReviewedAt = now;
+    item.completedAt = dto.status === 'COMPLETED' ? now : null;
+    await this.reviewItems.save(item);
+    return item;
+  }
+
+  private async findReviewItem(ownerId: string, id: string) {
+    const item = await this.reviewItems.findOne({ where: { id, ownerId } });
+    if (!item) throw new NotFoundException(`Review item ${id} not found`);
+    return item;
   }
 
   private async findSession(ownerId: string, id: string) {

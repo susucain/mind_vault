@@ -1,5 +1,122 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await */
+import { NotFoundException } from '@nestjs/common';
+import { InterviewEvaluation } from './interview-model.service';
 import { InterviewService } from './interview.service';
+
+function buildService(
+  input: {
+    sessions?: Record<string, unknown>;
+    turns?: Record<string, unknown>;
+    reviewItems?: Record<string, unknown>;
+    reviewAttempts?: Record<string, unknown>;
+    datasets?: Record<string, unknown>;
+    agent?: Record<string, unknown>;
+  } = {},
+) {
+  return new InterviewService(
+    (input.sessions ?? {}) as never,
+    (input.turns ?? {}) as never,
+    (input.reviewItems ?? {}) as never,
+    (input.reviewAttempts ?? {}) as never,
+    (input.datasets ?? {}) as never,
+    (input.agent ?? {}) as never,
+  );
+}
+
+const passingEvaluation: InterviewEvaluation = {
+  accuracy: 60,
+  depth: 60,
+  structure: 60,
+  clarity: 60,
+  strengths: [],
+  gaps: [],
+  followUp: '继续说明',
+  reviewItems: [],
+};
+
+function buildReviewService(
+  overrides: {
+    item?: Record<string, unknown> | null;
+    sourceTurn?: Record<string, unknown> | null;
+    sourceSession?: Record<string, unknown> | null;
+    attempts?: unknown[];
+    evaluation?: InterviewEvaluation;
+  } = {},
+) {
+  const item =
+    overrides.item === null
+      ? null
+      : {
+          id: 'review_1',
+          ownerId: 'user_1',
+          sourceTurnId: 'turn_1',
+          title: '复习幂等设计',
+          reason: '缺少幂等设计',
+          status: 'PENDING',
+          completedAt: null as Date | null,
+          lastReviewedAt: null as Date | null,
+          ...(overrides.item ?? {}),
+        };
+  const reviewItems = {
+    findOne: jest.fn().mockResolvedValue(item),
+    save: jest.fn(async (input: Record<string, unknown>) => input),
+  };
+  const turns = {
+    findOne: jest.fn().mockResolvedValue(
+      overrides.sourceTurn === undefined
+        ? {
+            id: 'turn_1',
+            sessionId: 'session_1',
+            ownerId: 'user_1',
+            question: '如何处理失败消息？',
+            answer: '使用重试队列。',
+          }
+        : overrides.sourceTurn,
+    ),
+  };
+  const sessions = {
+    findOne: jest.fn().mockResolvedValue(
+      overrides.sourceSession === undefined
+        ? {
+            id: 'session_1',
+            ownerId: 'user_1',
+            datasetId: 'dataset_1',
+            mode: 'technical',
+          }
+        : overrides.sourceSession,
+    ),
+  };
+  const attempts = {
+    find: jest.fn().mockResolvedValue(overrides.attempts ?? []),
+    create: jest.fn((input: Record<string, unknown>) => input),
+    save: jest.fn(async (input: Record<string, unknown>) => ({
+      id: 'attempt_1',
+      ...input,
+    })),
+  };
+  const agent = {
+    evaluate: jest.fn().mockResolvedValue({
+      evaluation: overrides.evaluation ?? passingEvaluation,
+      citations: [],
+    }),
+  };
+
+  return {
+    service: buildService({
+      sessions,
+      turns,
+      reviewItems,
+      reviewAttempts: attempts,
+      agent,
+    }),
+    item,
+    reviewItems,
+    turns,
+    sessions,
+    attempts,
+    agent,
+  };
+}
 
 describe('InterviewService', () => {
   it('lists only the owner sessions ordered by latest activity', async () => {
@@ -8,13 +125,7 @@ describe('InterviewService', () => {
     const sessions = {
       find: jest.fn().mockResolvedValue([newer, older]),
     };
-    const service = new InterviewService(
-      sessions as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-    );
+    const service = buildService({ sessions });
 
     await expect(service.listSessions('user_1')).resolves.toEqual({
       items: [newer, older],
@@ -30,13 +141,7 @@ describe('InterviewService', () => {
     const reviewItems = {
       findAndCount: jest.fn().mockResolvedValue([items, 2]),
     };
-    const service = new InterviewService(
-      {} as never,
-      {} as never,
-      reviewItems as never,
-      {} as never,
-      {} as never,
-    );
+    const service = buildService({ reviewItems });
 
     await expect(service.listReviewItems('user_1')).resolves.toEqual({
       items,
@@ -57,13 +162,7 @@ describe('InterviewService', () => {
     const reviewItems = {
       findAndCount: jest.fn().mockResolvedValue([items, 5]),
     };
-    const service = new InterviewService(
-      {} as never,
-      {} as never,
-      reviewItems as never,
-      {} as never,
-      {} as never,
-    );
+    const service = buildService({ reviewItems });
 
     await expect(
       service.listReviewItems('user_1', {
@@ -89,13 +188,7 @@ describe('InterviewService', () => {
     const reviewItems = {
       findAndCount: jest.fn().mockResolvedValue([[], 0]),
     };
-    const service = new InterviewService(
-      {} as never,
-      {} as never,
-      reviewItems as never,
-      {} as never,
-      {} as never,
-    );
+    const service = buildService({ reviewItems });
 
     await service.listReviewItems('user_2', { page: 3, pageSize: 10 });
 
@@ -121,13 +214,7 @@ describe('InterviewService', () => {
         question: '请介绍项目中的缓存设计。',
       }),
     };
-    const service = new InterviewService(
-      sessions as never,
-      {} as never,
-      {} as never,
-      datasets as never,
-      agent as never,
-    );
+    const service = buildService({ sessions, datasets, agent });
 
     await expect(
       service.createSession('user_1', {
@@ -181,13 +268,7 @@ describe('InterviewService', () => {
         nextQuestion: '如何保证幂等？',
       }),
     };
-    const service = new InterviewService(
-      sessions as never,
-      turns as never,
-      reviewItems as never,
-      {} as never,
-      agent as never,
-    );
+    const service = buildService({ sessions, turns, reviewItems, agent });
 
     await expect(
       service.submitAnswer('user_1', 'session_1', {
@@ -206,5 +287,158 @@ describe('InterviewService', () => {
         title: '复习幂等设计',
       }),
     );
+  });
+
+  it('completes a review item after a score of 60 or more', async () => {
+    const { service, reviewItems, attempts, agent } = buildReviewService();
+
+    const result = await service.submitReviewAnswer('user_1', 'review_1', {
+      answer: '新的回答',
+    });
+
+    expect(result.score).toBe(60);
+    expect(result.autoCompleted).toBe(true);
+    expect(reviewItems.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'COMPLETED',
+        completedAt: expect.any(Date),
+        lastReviewedAt: expect.any(Date),
+      }),
+    );
+    expect(attempts.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewItemId: 'review_1',
+        ownerId: 'user_1',
+        answer: '新的回答',
+      }),
+    );
+    expect(agent.evaluate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerId: 'user_1',
+        datasetId: 'dataset_1',
+        question: '如何处理失败消息？',
+        answer: '新的回答',
+      }),
+    );
+  });
+
+  it('keeps a pending review item and clears completion time below 60', async () => {
+    const { service, reviewItems, item, attempts } = buildReviewService({
+      evaluation: {
+        accuracy: 40,
+        depth: 50,
+        structure: 60,
+        clarity: 50,
+        strengths: [],
+        gaps: ['仍缺少幂等设计'],
+        followUp: '继续说明',
+        reviewItems: [],
+      },
+    });
+
+    const result = await service.submitReviewAnswer('user_1', 'review_1', {
+      answer: '不够完整的回答',
+    });
+
+    expect(result.score).toBe(50);
+    expect(result.autoCompleted).toBe(false);
+    expect(item).toMatchObject({ status: 'PENDING', completedAt: null });
+    expect(reviewItems.save).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'PENDING', completedAt: null }),
+    );
+    expect(attempts.save).toHaveBeenCalled();
+  });
+
+  it('restores a completed review item to pending after a low score', async () => {
+    const { service, item } = buildReviewService({
+      item: { status: 'COMPLETED', completedAt: new Date('2026-09-25') },
+      evaluation: {
+        accuracy: 10,
+        depth: 20,
+        structure: 30,
+        clarity: 20,
+        strengths: [],
+        gaps: [],
+        followUp: '',
+        reviewItems: [],
+      },
+    });
+
+    const result = await service.submitReviewAnswer('user_1', 'review_1', {
+      answer: '答得很差',
+    });
+
+    expect(result.autoCompleted).toBe(false);
+    expect(item).toMatchObject({ status: 'PENDING', completedAt: null });
+  });
+
+  it('returns the source turn, mode and attempts in review detail', async () => {
+    const attemptList = [
+      { id: 'attempt_1', createdAt: new Date('2026-09-26') },
+    ];
+    const { service, turns, sessions } = buildReviewService({
+      attempts: attemptList,
+    });
+
+    await expect(service.getReviewItem('user_1', 'review_1')).resolves.toEqual({
+      item: expect.objectContaining({ id: 'review_1' }),
+      sourceTurn: expect.objectContaining({ question: '如何处理失败消息？' }),
+      sourceMode: 'technical',
+      attempts: attemptList,
+    });
+    expect(turns.findOne).toHaveBeenCalledWith({
+      where: { id: 'turn_1', ownerId: 'user_1' },
+    });
+    expect(sessions.findOne).toHaveBeenCalledWith({
+      where: { id: 'session_1', ownerId: 'user_1' },
+    });
+  });
+
+  it('rejects review items owned by another user', async () => {
+    const { service, reviewItems } = buildReviewService({ item: null });
+
+    await expect(
+      service.getReviewItem('user_2', 'review_1'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(reviewItems.findOne).toHaveBeenCalledWith({
+      where: { id: 'review_1', ownerId: 'user_2' },
+    });
+  });
+
+  it('rejects submitting an answer for another user review item', async () => {
+    const { service, agent } = buildReviewService({ item: null });
+
+    await expect(
+      service.submitReviewAnswer('user_2', 'review_1', { answer: '新的回答' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(agent.evaluate).not.toHaveBeenCalled();
+  });
+
+  it('marks a review item completed manually', async () => {
+    const { service, reviewItems, item } = buildReviewService();
+
+    await expect(
+      service.updateReviewItemStatus('user_1', 'review_1', {
+        status: 'COMPLETED',
+      }),
+    ).resolves.toMatchObject({
+      status: 'COMPLETED',
+      completedAt: expect.any(Date),
+      lastReviewedAt: expect.any(Date),
+    });
+    expect(reviewItems.save).toHaveBeenCalledWith(item);
+  });
+
+  it('restores a completed review item to pending manually', async () => {
+    const { service, item } = buildReviewService({
+      item: { status: 'COMPLETED', completedAt: new Date('2026-09-25') },
+    });
+
+    await service.updateReviewItemStatus('user_1', 'review_1', {
+      status: 'PENDING',
+    });
+
+    expect(item).toMatchObject({ status: 'PENDING', completedAt: null });
+    expect(item?.lastReviewedAt).toBeInstanceOf(Date);
   });
 });

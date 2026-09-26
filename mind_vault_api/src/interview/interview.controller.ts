@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -12,6 +13,8 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { CreateInterviewSessionDto } from './dto/create-interview-session.dto';
 import { QueryReviewItemsDto } from './dto/query-review-items.dto';
 import { SubmitInterviewAnswerDto } from './dto/submit-interview-answer.dto';
+import { SubmitReviewAnswerDto } from './dto/submit-review-answer.dto';
+import { UpdateReviewItemDto } from './dto/update-review-item.dto';
 import { InterviewService } from './interview.service';
 
 @Controller('interview')
@@ -57,5 +60,28 @@ export class InterviewController {
     @Query() query: QueryReviewItemsDto,
   ) {
     return this.service.listReviewItems(user.id, query);
+  }
+
+  @Get('review-items/:id')
+  getReviewItem(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.service.getReviewItem(user.id, id);
+  }
+
+  @Post('review-items/:id/answers')
+  submitReviewAnswer(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+    @Body() dto: SubmitReviewAnswerDto,
+  ) {
+    return this.service.submitReviewAnswer(user.id, id, dto);
+  }
+
+  @Patch('review-items/:id')
+  updateReviewItem(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+    @Body() dto: UpdateReviewItemDto,
+  ) {
+    return this.service.updateReviewItemStatus(user.id, id, dto);
   }
 }
