@@ -13,8 +13,10 @@
   </view>
   <view wx:if="{{datasets.length}}" class="dataset-scope">
     <view class="dataset-scope-summary">
-      <text class="dataset-scope-label">{{datasetScopeLabel}}</text>
-      <van-button size="small" plain bind:click="openDatasetSelector">切换</van-button>
+      <view class="dataset-scope-current">
+        <text class="dataset-scope-label">{{datasetScopeLabel}}</text>
+      </view>
+      <view class="dataset-scope-switch" bind:tap="openDatasetSelector">切换</view>
     </view>
   </view>
   <app-state wx:if="{{loading}}" type="loading"></app-state>
@@ -27,7 +29,8 @@
         <text wx:else class="message-content">{{item.content || (item.streaming ? '正在生成回答...' : '')}}</text>
         <text wx:if="{{item.stage}}" class="message-stage">{{item.stage}}</text>
         <view wx:if="{{item.role === 'assistant' && (item.usedMemory || item.toolLabels.length || item.model || item.thinking || item.answerMode)}}" class="message-meta">
-          <text wx:if="{{item.usedMemory}}" class="memory-hint">已参考你的记忆</text>
+          <text wx:if="{{item.memoryAction && item.memoryAction.action === 'saved'}}" class="memory-hint">已保存到长期记忆</text>
+          <text wx:elif="{{item.usedMemory}}" class="memory-hint">已参考你的记忆</text>
           <text wx:if="{{item.answerMode === 'rag'}}">已基于资料检索</text>
           <text wx:if="{{item.answerMode === 'general'}}">使用通用知识补答</text>
           <text wx:if="{{item.toolLabels.length}}">{{item.toolLabels.join(' · ')}}</text>
@@ -69,21 +72,23 @@
       <view
         class="dataset-scope-option {{isAllScope ? 'dataset-scope-option-active' : ''}}"
         bind:tap="toggleAllDatasets"
+        wx:if="{{!datasetQuery}}"
       >
         <text>全部资料</text>
         <text>{{isAllScope ? '已选' : '快捷全选'}}</text>
       </view>
-      <text wx:if="{{searchingDatasets}}" class="dataset-feedback">正在搜索</text>
-      <text wx:elif="{{!datasetResults.length}}" class="dataset-feedback">没有匹配的资料集</text>
       <view
         wx:for="{{datasetResults}}"
         wx:key="id"
-        class="dataset-scope-option {{draftDatasetIds.includes(item.id) ? 'dataset-scope-option-active' : ''}}"
+        class="dataset-scope-option {{item.selected ? 'dataset-scope-option-active' : ''}}"
         data-id="{{item.id}}"
         bind:tap="toggleDraftDataset"
       >
         <text>{{item.name}}</text>
-        <text>{{draftDatasetIds.includes(item.id) ? '已选' : '选择'}}</text>
+        <text>{{item.selected ? '已选' : '选择'}}</text>
+      </view>
+      <view class="dataset-feedback-slot" wx:if="{{!datasetResults.length}}">
+        <text>{{datasetFeedback}}</text>
       </view>
       <text wx:if="{{datasetScopeError}}" class="dataset-scope-error">{{datasetScopeError}}</text>
       <van-button

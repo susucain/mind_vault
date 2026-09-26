@@ -17,6 +17,14 @@ export interface ChatCitation {
   rank: number;
 }
 
+export type MemoryAction =
+  | 'saved'
+  | 'not_saved'
+  | 'clarification_required'
+  | 'forgotten'
+  | 'queried'
+  | 'failed';
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -27,6 +35,10 @@ export interface ChatMessage {
   confidence?: number | null;
   status?: 'COMPLETED' | 'ABORTED' | 'FAILED';
   answerMode?: 'rag' | 'general';
+  memoryAction?: {
+    action: MemoryAction;
+    content?: string;
+  };
   citations: ChatCitation[];
 }
 
@@ -37,6 +49,10 @@ export interface ChatStreamMeta extends Record<string, unknown> {
   thinking: boolean;
   /** rag：回答基于资料命中；general：资料无依据，改由模型通用知识作答 */
   answerMode?: 'rag' | 'general';
+  memoryAction?: {
+    action: MemoryAction;
+    content?: string;
+  };
 }
 
 export interface DatasetChoice extends Dataset {

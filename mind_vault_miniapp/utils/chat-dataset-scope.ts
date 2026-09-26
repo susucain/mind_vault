@@ -1,4 +1,5 @@
 import { Dataset } from '../types/api';
+import { DatasetChoice } from '../types/chat';
 
 export function normalizeDatasetScope(selectedIds: string[], allIds: string[]) {
   const validIds = new Set(allIds);
@@ -9,6 +10,17 @@ export function normalizeDatasetScope(selectedIds: string[], allIds: string[]) {
 export function sanitizeDatasetScope(selectedIds: string[], allIds: string[]) {
   const validIds = new Set(allIds);
   return [...new Set(selectedIds)].filter((id) => validIds.has(id));
+}
+
+export function markDatasetChoices(
+  datasets: Dataset[],
+  selectedIds: string[]
+): DatasetChoice[] {
+  const selected = new Set(selectedIds);
+  return datasets.map((dataset) => ({
+    ...dataset,
+    selected: selected.has(dataset.id),
+  }));
 }
 
 export function isAllDatasetScope(selectedIds: string[], allIds: string[]) {

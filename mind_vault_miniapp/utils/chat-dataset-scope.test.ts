@@ -1,5 +1,6 @@
 import {
   datasetScopeSummary,
+  markDatasetChoices,
   sanitizeDatasetScope,
   isAllDatasetScope,
   normalizeDatasetScope,
@@ -8,9 +9,9 @@ import {
 } from './chat-dataset-scope';
 
 const datasets = [
-  { id: 'a', name: '后端面试' },
-  { id: 'b', name: '系统设计' },
-  { id: 'c', name: 'Java 基础' },
+  { id: 'a', name: '后端面试', createdAt: '' },
+  { id: 'b', name: '系统设计', createdAt: '' },
+  { id: 'c', name: 'Java 基础', createdAt: '' },
 ];
 
 function expectEqual(actual: unknown, expected: unknown, label: string) {
@@ -52,6 +53,15 @@ expectEqual(
   datasetScopeSummary(['a', 'b', 'c'], datasets),
   '全部资料',
   'summarizes all'
+);
+expectEqual(
+  markDatasetChoices(datasets, ['b']),
+  [
+    { id: 'a', name: '后端面试', createdAt: '', selected: false },
+    { id: 'b', name: '系统设计', createdAt: '', selected: true },
+    { id: 'c', name: 'Java 基础', createdAt: '', selected: false },
+  ],
+  'marks selected dataset choices'
 );
 
 console.log('chat dataset scope tests passed');

@@ -8,7 +8,12 @@ import {
   StreamHandle,
   updateConversationDatasetScope,
 } from '../../services/chat';
-import { ChatCitation, ChatMessage, Conversation } from '../../types/chat';
+import {
+  ChatCitation,
+  ChatMessage,
+  Conversation,
+  DatasetChoice,
+} from '../../types/chat';
 import { Dataset } from '../../types/api';
 import { ensureAuthenticated } from '../../utils/auth-guard';
 import { showRequestError } from '../../utils/feedback';
@@ -17,6 +22,7 @@ import { sanitizeMarkdown } from '../../utils/markdown-safety';
 import {
   datasetScopeSummary,
   isAllDatasetScope,
+  markDatasetChoices,
   normalizeDatasetScope,
   sanitizeDatasetScope,
   toggleAllDatasetScope,
@@ -95,8 +101,9 @@ Page({
     isAllScope: false,
     showDatasetSelector: false,
     datasetQuery: '',
-    datasetResults: [] as Dataset[],
+    datasetResults: [] as DatasetChoice[],
     searchingDatasets: false,
+    datasetFeedback: '',
     savingDatasetScope: false,
     datasetScopeError: '',
     messages: [] as DisplayMessage[],
@@ -215,7 +222,11 @@ Page({
       ),
       showDatasetSelector: true,
       datasetQuery: '',
-      datasetResults: this.data.datasets.slice(0, 6),
+      datasetResults: markDatasetChoices(
+        this.data.datasets.slice(0, 6),
+        draftDatasetIds
+      ),
+      datasetFeedback: '',
       datasetScopeError: '',
     });
   },
@@ -230,6 +241,7 @@ Page({
       datasetQuery: '',
       datasetResults: [],
       searchingDatasets: false,
+      datasetFeedback: '',
       datasetScopeError: '',
     });
   },
@@ -239,6 +251,7 @@ Page({
     this.setData({
       datasetQuery,
       searchingDatasets: true,
+      datasetFeedback: '正在搜索',
       datasetScopeError: '',
     });
     if (datasetSearchTimer) clearTimeout(datasetSearchTimer);
@@ -247,13 +260,18 @@ Page({
       void listDatasets({ name: datasetQuery, pageSize: 20 })
         .then((response) => {
           this.setData({
-            datasetResults: response.items,
+            datasetResults: markDatasetChoices(
+              response.items,
+              this.data.draftDatasetIds
+            ),
             searchingDatasets: false,
+            datasetFeedback: response.items.length ? '' : '没有匹配的资料集',
           });
         })
         .catch((error) => {
           this.setData({
             searchingDatasets: false,
+            datasetFeedback: '搜索失败，请重试',
             datasetScopeError:
               error instanceof Error ? error.message : '搜索资料集失败',
           });
@@ -270,6 +288,10 @@ Page({
     );
     this.setData({
       draftDatasetIds,
+      datasetResults: markDatasetChoices(
+        this.data.datasetResults,
+        draftDatasetIds
+      ),
       isAllScope: isAllDatasetScope(draftDatasetIds, allIds),
     });
   },
@@ -280,6 +302,10 @@ Page({
     const draftDatasetIds = toggleDatasetScope(this.data.draftDatasetIds, id);
     this.setData({
       draftDatasetIds,
+      datasetResults: markDatasetChoices(
+        this.data.datasetResults,
+        draftDatasetIds
+      ),
       isAllScope: isAllDatasetScope(draftDatasetIds, allIds),
     });
   },
@@ -310,6 +336,8 @@ Page({
         ),
         showDatasetSelector: false,
         draftDatasetIds: [],
+        datasetResults: [],
+        datasetFeedback: '',
         isAllScope: isAllDatasetScope(
           conversation.datasetIds,
           this.data.datasets.map((dataset) => dataset.id)
@@ -416,6 +444,7 @@ Page({
       target.model = data.model ?? null;
       target.thinking = data.thinking;
       target.answerMode = data.answerMode;
+      target.memoryAction = data.memoryAction;
     }
     if (event === 'token' && typeof data.text === 'string') {
       target.content += data.text;

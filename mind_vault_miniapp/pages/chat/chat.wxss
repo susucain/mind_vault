@@ -55,25 +55,45 @@
 }
 
 .dataset-scope {
-  margin: 12rpx 0 18rpx;
+  margin: 22rpx 0 24rpx;
 }
 
 .dataset-scope-summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16rpx;
-  padding: 12rpx 16rpx;
-  border: 1rpx solid #c8ddd8;
-  border-radius: 8rpx;
+  gap: 18rpx;
+}
+
+.dataset-scope-current,
+.dataset-scope-switch {
+  display: flex;
+  min-height: 65rpx;
+  align-items: center;
+  justify-content: center;
+  padding: 0 28rpx;
+  border-radius: 999rpx;
+  box-sizing: border-box;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.dataset-scope-current {
+  flex: 1;
+  min-width: 0;
+  border: 2rpx solid #087f78;
+  color: #087f78;
+  background: #e7f5f1;
+}
+
+.dataset-scope-switch {
+  flex: 0 0 auto;
+  border: 2rpx solid #c8ddd8;
+  color: #087f78;
   background: #ffffff;
 }
 
 .dataset-scope-label {
   overflow: hidden;
-  color: #087f78;
-  font-size: 25rpx;
-  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -189,11 +209,11 @@
 }
 
 .dataset-search-field {
-  padding: 8rpx 12rpx !important;
+  /* padding: 8rpx 12rpx !important; */
 }
 
 .dataset-search-input {
-  font-size: 24rpx !important;
+  font-size: 25rpx !important;
 }
 
 .dataset-scope-option {
@@ -203,22 +223,21 @@
   gap: 18rpx;
   margin-top: 10rpx;
   padding: 20rpx 16rpx;
-  border: 1rpx solid #e2ebe8;
   border-radius: 6rpx;
   color: #52636b;
   font-size: 25rpx;
 }
 
 .dataset-scope-option-active {
-  border-color: #087f78;
   color: #087f78;
-  background: #e7f5f1;
-  font-weight: 700;
+  font-weight: 600;
 }
 
-.dataset-feedback {
-  display: block;
-  padding: 22rpx 12rpx;
+.dataset-feedback-slot {
+  display: flex;
+  height: 46rpx;
+  align-items: center;
+  padding: 0 12rpx;
   color: #718087;
   font-size: 24rpx;
 }
