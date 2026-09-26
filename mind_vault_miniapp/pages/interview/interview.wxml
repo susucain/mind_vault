@@ -25,7 +25,7 @@
 
   <view wx:elif="{{!session}}" class="training surface">
     <text class="training-title">开始训练</text>
-    <text class="training-copy">选择资料集和训练模式。</text>
+    <text class="training-copy">选择资料集、主题和强度。</text>
 
     <scroll-view class="dataset-scroll" scroll-x>
       <view
@@ -39,11 +39,31 @@
       </view>
     </scroll-view>
 
+    <text class="field-label">主题</text>
     <view class="mode-grid">
-      <view class="mode {{mode === 'project_deep_dive' ? 'mode-active' : ''}}" data-mode="project_deep_dive" bind:tap="selectMode">项目深挖</view>
-      <view class="mode {{mode === 'quick_qa' ? 'mode-active' : ''}}" data-mode="quick_qa" bind:tap="selectMode">快速问答</view>
-      <view class="mode {{mode === 'technical' ? 'mode-active' : ''}}" data-mode="technical" bind:tap="selectMode">技术面试</view>
-      <view class="mode {{mode === 'behavioral' ? 'mode-active' : ''}}" data-mode="behavioral" bind:tap="selectMode">行为面试</view>
+      <view class="mode {{topic === 'project_deep_dive' ? 'mode-active' : ''}}" data-topic="project_deep_dive" bind:tap="selectTopic">项目深挖</view>
+      <view class="mode {{topic === 'technical_fundamentals' ? 'mode-active' : ''}}" data-topic="technical_fundamentals" bind:tap="selectTopic">技术基础</view>
+      <view class="mode {{topic === 'behavioral' ? 'mode-active' : ''}}" data-topic="behavioral" bind:tap="selectTopic">行为面试</view>
+    </view>
+
+    <text class="field-label">强度</text>
+    <view class="mode-grid">
+      <view class="mode {{intensity === 'quick' ? 'mode-active' : ''}}" data-intensity="quick" bind:tap="selectIntensity">快速</view>
+      <view class="mode {{intensity === 'deep' ? 'mode-active' : ''}}" data-intensity="deep" bind:tap="selectIntensity">深度</view>
+    </view>
+
+    <van-field
+      value="{{focus}}"
+      maxlength="200"
+      label="聚焦"
+      placeholder="可选：想重点练的方向"
+      border="{{false}}"
+      bind:change="updateFocus"
+    />
+
+    <view class="jd-trigger" bind:tap="openJobDescription">
+      <text>岗位描述</text>
+      <text class="jd-trigger-value">{{jobDescription ? '已填写' : '可选，粘贴 JD'}}</text>
     </view>
 
     <van-button type="primary" block loading="{{creating}}" bind:click="startSession">生成第一题</van-button>
@@ -97,4 +117,27 @@
       <van-button wx:if="{{session.status === 'COMPLETED'}}" type="primary" bind:click="resetSession">开始新训练</van-button>
     </view>
   </view>
+
+  <van-popup
+    show="{{showJobDescription}}"
+    position="bottom"
+    round
+    bind:close="closeJobDescription"
+  >
+    <view class="jd-panel">
+      <text class="jd-title">岗位描述</text>
+      <text class="jd-copy">粘贴目标岗位的 JD，出题会尽量贴近岗位要求。</text>
+      <van-field
+        value="{{jobDescription}}"
+        type="textarea"
+        autosize
+        maxlength="2000"
+        show-word-limit
+        border="{{false}}"
+        placeholder="粘贴岗位描述原文"
+        bind:change="updateJobDescription"
+      />
+      <van-button type="primary" block bind:click="closeJobDescription">完成</van-button>
+    </view>
+  </van-popup>
 </view>

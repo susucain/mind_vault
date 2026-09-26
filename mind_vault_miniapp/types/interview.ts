@@ -1,5 +1,7 @@
-export type InterviewMode =
-  'quick_qa' | 'project_deep_dive' | 'technical' | 'behavioral';
+export type InterviewTopic =
+  'project_deep_dive' | 'technical_fundamentals' | 'behavioral';
+
+export type InterviewIntensity = 'quick' | 'deep';
 
 export interface InterviewEvaluation {
   accuracy: number;
@@ -24,7 +26,10 @@ export interface InterviewTurn {
 export interface InterviewSession {
   id: string;
   datasetId: string;
-  mode: InterviewMode;
+  topic: InterviewTopic;
+  intensity: InterviewIntensity;
+  focus?: string | null;
+  jobDescription?: string | null;
   status: 'IN_PROGRESS' | 'COMPLETED';
   currentIndex: number;
   totalQuestions: number;
@@ -70,7 +75,7 @@ export interface ReviewSourceTurn {
 export interface ReviewDetail {
   item: ReviewItem;
   sourceTurn: ReviewSourceTurn | null;
-  sourceMode: InterviewMode | null;
+  sourceTopic: InterviewTopic | null;
   attempts: ReviewAttempt[];
 }
 

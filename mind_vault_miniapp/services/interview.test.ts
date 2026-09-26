@@ -25,7 +25,8 @@ storage.set('mind-vault-session', {
 
 void createInterviewSession({
   datasetId: 'dataset_1',
-  mode: 'technical',
+  topic: 'technical_fundamentals',
+  intensity: 'deep',
   totalQuestions: 5,
 })
   .then(() => submitInterviewAnswer('session_1', '回答内容'))

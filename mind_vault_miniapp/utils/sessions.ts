@@ -2,6 +2,7 @@ import { Conversation } from '../types/chat';
 import { InterviewSession } from '../types/interview';
 import { Dataset } from '../types/api';
 import { SessionKind, SessionListItem } from '../types/session-list';
+import { intensityLabel, topicLabel } from './interview-labels';
 
 export function mergeSessionItems(
   conversations: Conversation[],
@@ -35,7 +36,7 @@ export function toInterviewSessionItem(
   return {
     id: session.id,
     kind: 'interview',
-    title: `${modeLabel(session.mode)} · 第 ${Math.min(session.currentIndex + 1, session.totalQuestions)} 题`,
+    title: `${topicLabel(session.topic)} · ${intensityLabel(session.intensity)} · 第 ${Math.min(session.currentIndex + 1, session.totalQuestions)} 题`,
     subtitle: dataset?.name ?? '未知资料集',
     updatedAt: session.updatedAt,
     status: session.status,
@@ -55,14 +56,4 @@ export function recentSessions(items: SessionListItem[], count = 3) {
 
 export function allDatasetIds(datasets: Dataset[]) {
   return datasets.map((dataset) => dataset.id);
-}
-
-function modeLabel(mode: InterviewSession['mode']) {
-  const labels: Record<InterviewSession['mode'], string> = {
-    project_deep_dive: '项目深挖',
-    quick_qa: '快速问答',
-    technical: '技术面试',
-    behavioral: '行为面试',
-  };
-  return labels[mode];
 }

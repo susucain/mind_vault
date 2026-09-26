@@ -9,8 +9,9 @@ import {
 import { Dataset } from '../../types/api';
 import {
   InterviewEvaluation,
-  InterviewMode,
+  InterviewIntensity,
   InterviewSession,
+  InterviewTopic,
 } from '../../types/interview';
 import { showRequestError } from '../../utils/feedback';
 import { consumePendingInterviewSessionId } from '../../utils/interview-navigation';
@@ -21,7 +22,11 @@ Page({
   data: {
     datasets: [] as Dataset[],
     selectedDatasetId: '',
-    mode: 'project_deep_dive' as InterviewMode,
+    topic: 'project_deep_dive' as InterviewTopic,
+    intensity: 'deep' as InterviewIntensity,
+    focus: '',
+    jobDescription: '',
+    showJobDescription: false,
     totalQuestions: 5,
     session: null as InterviewSession | null,
     answer: '',
@@ -76,9 +81,31 @@ Page({
     if (id) this.setData({ selectedDatasetId: id });
   },
 
-  selectMode(event: WechatMiniprogram.BaseEvent) {
-    const mode = event.currentTarget.dataset.mode as InterviewMode;
-    if (mode) this.setData({ mode });
+  selectTopic(event: WechatMiniprogram.BaseEvent) {
+    const topic = event.currentTarget.dataset.topic as InterviewTopic;
+    if (topic) this.setData({ topic });
+  },
+
+  selectIntensity(event: WechatMiniprogram.BaseEvent) {
+    const intensity = event.currentTarget.dataset
+      .intensity as InterviewIntensity;
+    if (intensity) this.setData({ intensity });
+  },
+
+  updateFocus(event: WechatMiniprogram.CustomEvent) {
+    this.setData({ focus: inputValue(event.detail) });
+  },
+
+  updateJobDescription(event: WechatMiniprogram.CustomEvent) {
+    this.setData({ jobDescription: inputValue(event.detail) });
+  },
+
+  openJobDescription() {
+    this.setData({ showJobDescription: true });
+  },
+
+  closeJobDescription() {
+    this.setData({ showJobDescription: false });
   },
 
   updateAnswer(event: WechatMiniprogram.CustomEvent) {
@@ -92,9 +119,14 @@ Page({
     }
     this.setData({ creating: true, evaluation: null, answer: '' });
     try {
+      const focus = this.data.focus.trim();
+      const jobDescription = this.data.jobDescription.trim();
       const session = await createInterviewSession({
         datasetId: this.data.selectedDatasetId,
-        mode: this.data.mode,
+        topic: this.data.topic,
+        intensity: this.data.intensity,
+        focus: focus || undefined,
+        jobDescription: jobDescription || undefined,
         totalQuestions: this.data.totalQuestions,
       });
       this.setData({ session });

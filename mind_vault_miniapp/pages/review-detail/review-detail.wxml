@@ -11,7 +11,7 @@
   <view wx:elif="{{detail}}" class="content">
     <view class="status surface">
       <view class="status-head">
-        <text class="status-mode">来源模式：{{sourceModeLabel}}</text>
+        <text class="status-mode">来源主题：{{sourceTopicLabel}}</text>
         <text
           class="status-badge {{detail.item.status === 'COMPLETED' ? 'status-badge-completed' : ''}}"
         >

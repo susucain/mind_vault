@@ -5,12 +5,12 @@ import {
   updateReviewItemStatus,
 } from '../../services/interview';
 import {
-  InterviewMode,
   ReviewAttempt,
   ReviewDetail,
   ReviewStatus,
 } from '../../types/interview';
 import { showRequestError } from '../../utils/feedback';
+import { topicLabel } from '../../utils/interview-labels';
 import { reviewScoreLabel } from '../../utils/review-state';
 
 type ReviewAttemptView = ReviewAttempt & {
@@ -23,7 +23,7 @@ Page({
   data: {
     id: '',
     detail: null as ReviewDetail | null,
-    sourceModeLabel: '',
+    sourceTopicLabel: '',
     attempts: [] as ReviewAttemptView[],
     lastAttempt: null as ReviewAttemptView | null,
     answer: '',
@@ -54,7 +54,9 @@ Page({
       );
       this.setData({
         detail,
-        sourceModeLabel: modeLabel(detail.sourceMode),
+        sourceTopicLabel: detail.sourceTopic
+          ? topicLabel(detail.sourceTopic)
+          : '未知主题',
         attempts,
         lastAttempt: attempts.length ? attempts[attempts.length - 1] : null,
         resultMessage: '',
@@ -145,16 +147,6 @@ function toAttemptView(
     scoreLabel: reviewScoreLabel(Number(attempt.score)),
     timeLabel: formatTime(attempt.createdAt),
   };
-}
-
-function modeLabel(mode: InterviewMode | null) {
-  const labels: Record<InterviewMode, string> = {
-    project_deep_dive: '项目深挖',
-    quick_qa: '快速问答',
-    technical: '技术面试',
-    behavioral: '行为面试',
-  };
-  return mode ? labels[mode] : '未知模式';
 }
 
 function formatTime(value: string | null | undefined) {

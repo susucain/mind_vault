@@ -2,8 +2,9 @@ import { request } from './request';
 import { environment } from '../config/env';
 import {
   InterviewAnswerResult,
-  InterviewMode,
+  InterviewIntensity,
   InterviewSession,
+  InterviewTopic,
   ReviewAnswerResult,
   ReviewDetail,
   ReviewItem,
@@ -13,7 +14,10 @@ import {
 
 export function createInterviewSession(input: {
   datasetId: string;
-  mode: InterviewMode;
+  topic: InterviewTopic;
+  intensity: InterviewIntensity;
+  focus?: string;
+  jobDescription?: string;
   totalQuestions: number;
 }) {
   return request<InterviewSession, typeof input>({

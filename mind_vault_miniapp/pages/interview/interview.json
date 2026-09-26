@@ -3,6 +3,7 @@
   "usingComponents": {
     "van-button": "@vant/weapp/button/index",
     "van-field": "@vant/weapp/field/index",
+    "van-popup": "@vant/weapp/popup/index",
     "app-state": "/components/app-state/app-state",
     "interview-score": "/components/interview-score/interview-score"
   }

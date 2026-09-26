@@ -176,3 +176,43 @@
   font-size: 23rpx;
   line-height: 1.5;
 }
+
+.field-label {
+  margin-top: 8rpx;
+  color: #b85f2b;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.jd-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #eef3f1;
+  color: #4f6066;
+  font-size: 26rpx;
+}
+
+.jd-trigger-value {
+  color: #718087;
+  font-size: 24rpx;
+}
+
+.jd-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+  padding: 36rpx 32rpx 52rpx;
+}
+
+.jd-title {
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.jd-copy {
+  color: #718087;
+  font-size: 24rpx;
+  line-height: 1.5;
+}

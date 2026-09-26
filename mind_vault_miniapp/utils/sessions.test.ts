@@ -28,7 +28,8 @@ test('merges chat and interview sessions by latest activity', () => {
       {
         id: 'interview_1',
         datasetId: 'dataset_1',
-        mode: 'technical',
+        topic: 'technical_fundamentals',
+        intensity: 'deep',
         status: 'IN_PROGRESS',
         currentIndex: 1,
         totalQuestions: 5,
@@ -44,6 +45,7 @@ test('merges chat and interview sessions by latest activity', () => {
     ['interview', 'chat']
   );
   expectEqual(items[0].subtitle, '我的项目');
+  expectEqual(items[0].title, '技术基础 · 深度 · 第 2 题');
 });
 
 test('filters unified sessions by kind', () => {
