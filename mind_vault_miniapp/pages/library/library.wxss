@@ -113,6 +113,7 @@
   min-height: 104rpx;
   flex-direction: column;
   justify-content: center;
+  align-items: center;
   padding: 16rpx;
   border-radius: 6rpx;
   background: #edf5f3;
