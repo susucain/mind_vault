@@ -39,6 +39,22 @@ export interface ExtractedMemory {
   confidence: number;
 }
 
+export type ExplicitMemoryAction =
+  | 'none'
+  | 'saved'
+  | 'not_saved'
+  | 'clarification_required'
+  | 'forgotten'
+  | 'queried'
+  | 'failed';
+
+export interface ExplicitMemoryResult {
+  action: ExplicitMemoryAction;
+  content?: string;
+  answer?: string;
+  memories?: MemoryNote[];
+}
+
 // 非法值用 catch 降级：抽取失败宁可少记一条，也不能让整轮问答出问题
 export const extractSchema = z.object({
   memories: z
@@ -50,4 +66,9 @@ export const extractSchema = z.object({
       }),
     )
     .catch([]),
+});
+
+export const explicitMemorySchema = z.object({
+  content: z.string().catch(''),
+  kind: z.enum(['preference', 'fact', 'goal']).catch('fact'),
 });

@@ -100,6 +100,12 @@ export class ChatController {
         thinking: result.message.thinking,
         // rag / general：general 为资料无依据时的自动补答（正文自带来源提示行）
         answerMode: result.answerMode,
+        memoryAction: result.memoryAction
+          ? {
+              action: result.memoryAction.action,
+              content: result.memoryAction.content,
+            }
+          : undefined,
       });
       for (const text of splitText(result.message.content, 48)) {
         if (!connected || response.writableEnded) return;

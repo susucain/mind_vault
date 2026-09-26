@@ -32,7 +32,13 @@ function buildService(
     count: jest.fn().mockResolvedValue(input.activeCount ?? 1),
   };
   const embedding = { embedQuery: jest.fn().mockResolvedValue([0.1, 0.2]) };
-  const model = { extract: jest.fn().mockResolvedValue(input.extracted ?? []) };
+  const model = {
+    extract: jest.fn().mockResolvedValue(input.extracted ?? []),
+    extractExplicit: jest.fn().mockResolvedValue({
+      content: '',
+      kind: 'fact',
+    }),
+  };
   const service = new MemoryService(
     memories as never,
     embedding as never,
@@ -304,5 +310,83 @@ describe('MemoryService', () => {
 
     await expect(service.clear('user_1')).resolves.toEqual({ deleted: 7 });
     expect(memories.delete).toHaveBeenCalledWith({ ownerId: 'user_1' });
+  });
+
+  it('saves a fact immediately when the user explicitly asks to remember it', async () => {
+    const { service, model, inserts } = buildService();
+    model.extractExplicit = jest.fn().mockResolvedValue({
+      content: '用户今年 30 岁',
+      kind: 'fact',
+    });
+
+    await expect(
+      service.handleExplicit({
+        ownerId: 'user_1',
+        conversationId: 'conversation_1',
+        question: '记住我的年龄',
+        history: [{ role: 'user', content: '我今年 30 岁' }],
+      }),
+    ).resolves.toMatchObject({
+      action: 'saved',
+      content: '用户今年 30 岁',
+    });
+
+    expect(model.extractExplicit).toHaveBeenCalled();
+    expect(inserts[0][2]).toBe('用户今年 30 岁');
+  });
+
+  it('asks for the missing fact instead of saving an incomplete instruction', async () => {
+    const { service, model, inserts } = buildService();
+    model.extractExplicit = jest.fn().mockResolvedValue({
+      content: '',
+      kind: 'fact',
+    });
+
+    await expect(
+      service.handleExplicit({
+        ownerId: 'user_1',
+        conversationId: 'conversation_1',
+        question: '记住我的年龄',
+        history: [],
+      }),
+    ).resolves.toEqual({
+      action: 'clarification_required',
+      answer: '你的年龄是多少？告诉我后我再帮你记住。',
+    });
+
+    expect(inserts).toHaveLength(0);
+  });
+
+  it('does not treat a normal statement as an explicit save request', async () => {
+    const { service, model } = buildService();
+
+    await expect(
+      service.handleExplicit({
+        ownerId: 'user_1',
+        conversationId: 'conversation_1',
+        question: '我今年 30 岁',
+        history: [],
+      }),
+    ).resolves.toEqual({ action: 'none' });
+
+    expect(model.extractExplicit).not.toHaveBeenCalled();
+  });
+
+  it('does not delete existing memories when the user declines saving', async () => {
+    const { service, memories } = buildService();
+
+    await expect(
+      service.handleExplicit({
+        ownerId: 'user_1',
+        conversationId: 'conversation_1',
+        question: '不要记住我的年龄',
+        history: [],
+      }),
+    ).resolves.toEqual({
+      action: 'not_saved',
+      answer: '好的，这次不会把这条信息保存为长期记忆。',
+    });
+
+    expect(memories.delete).not.toHaveBeenCalled();
   });
 });

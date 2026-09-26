@@ -10,7 +10,12 @@ import { nextSnowflakeId } from '../common/snowflake-id';
 import { EmbeddingService } from '../embedding/embedding.service';
 import { UserMemoryEntity } from './entities/user-memory.entity';
 import { MemoryModelService } from './memory-model.service';
-import { MemoryItem, MemoryNote, memoryConfig } from './memory.types';
+import {
+  ExplicitMemoryResult,
+  MemoryItem,
+  MemoryNote,
+  memoryConfig,
+} from './memory.types';
 import type { MemoryKind, MemoryStatus } from './memory.types';
 
 interface MemoryRow {
@@ -110,6 +115,81 @@ export class MemoryService {
     );
     if (saved > 0) await this.evict(input.ownerId);
     return saved;
+  }
+
+  async handleExplicit(input: {
+    ownerId: string;
+    conversationId: string;
+    question: string;
+    summary?: string;
+    history: { role: 'user' | 'assistant'; content: string }[];
+    signal?: AbortSignal;
+  }): Promise<ExplicitMemoryResult> {
+    const intent = explicitIntent(input.question);
+    if (intent === 'none') return { action: 'none' };
+    if (intent === 'decline') {
+      return {
+        action: 'not_saved',
+        answer: '好的，这次不会把这条信息保存为长期记忆。',
+      };
+    }
+
+    if (intent === 'save') {
+      const extracted = await this.model.extractExplicit(
+        {
+          question: input.question,
+          summary: input.summary,
+          history: input.history,
+        },
+        { signal: input.signal },
+      );
+      if (!extracted.content) {
+        return {
+          action: 'clarification_required',
+          answer: '你的年龄是多少？告诉我后我再帮你记住。',
+        };
+      }
+      await this.create(input.ownerId, {
+        content: extracted.content,
+        kind: extracted.kind,
+        sourceConversationId: input.conversationId,
+      });
+      this.logger.log(
+        `显式长期记忆已保存: owner=${input.ownerId} conversation=${input.conversationId}`,
+      );
+      return { action: 'saved', content: extracted.content };
+    }
+
+    const memories = await this.recallMemories(
+      input.ownerId,
+      memoryQuery(input.question),
+    );
+    if (intent === 'query') {
+      return {
+        action: 'queried',
+        memories: memories.map((memory) => ({
+          id: memory.id,
+          content: memory.content,
+          kind: memory.kind,
+        })),
+        answer:
+          memories.length > 0
+            ? `我记得：${memories.map((memory) => memory.content).join('；')}`
+            : '我还没有记住与这件事相关的信息。',
+      };
+    }
+    if (memories.length === 0) {
+      return {
+        action: 'forgotten',
+        answer: '我没有找到与这件事相关的长期记忆。',
+      };
+    }
+    await this.remove(input.ownerId, memories[0].id);
+    return {
+      action: 'forgotten',
+      content: memories[0].content,
+      answer: `已忘记：${memories[0].content}`,
+    };
   }
 
   async list(ownerId: string, status: MemoryStatus = 'ACTIVE') {
@@ -322,4 +402,34 @@ const documentDerivedPatterns = [
 
 function isDocumentDerived(content: string): boolean {
   return documentDerivedPatterns.some((pattern) => pattern.test(content));
+}
+
+type ExplicitIntent = 'none' | 'save' | 'forget' | 'query' | 'decline';
+
+function explicitIntent(question: string): ExplicitIntent {
+  const text = question.trim();
+  if (!text) return 'none';
+  if (/你还记得|记得我之前|我之前说过|长期记忆里/.test(text)) {
+    return 'query';
+  }
+  if (/不要记住|别记住|不要保存|别保存/.test(text)) {
+    return 'decline';
+  }
+  if (/不要记住|别记住|忘记|忘掉|删除.*记忆/.test(text)) {
+    return 'forget';
+  }
+  if (/记住|记下来|以后记得|帮我保存|长期保存|保存.*记忆/.test(text)) {
+    return 'save';
+  }
+  return 'none';
+}
+
+function memoryQuery(question: string): string {
+  const query = question
+    .replace(
+      /你还记得|记得我之前|我之前说过|长期记忆里|忘记|忘掉|删除|记住|记下来|吗|么|[?？]/g,
+      '',
+    )
+    .trim();
+  return query || question.trim();
 }

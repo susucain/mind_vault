@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { nextSnowflakeId } from '../common/snowflake-id';
 import { MemoryService } from '../memory/memory.service';
+import type { ExplicitMemoryResult } from '../memory/memory.types';
 import { DatasetEntity } from '../dataset/entities/dataset.entity';
 import { RagAgentService } from './agent/rag-agent.service';
 import { HistoryTurn, historyWindow, RagState } from './agent/rag-types';
@@ -110,6 +111,7 @@ export class ChatService {
     const conversation = await this.findConversation(ownerId, conversationId);
     let userMessage: ChatMessageEntity | undefined;
     let result: RagState;
+    let memoryAction: ExplicitMemoryResult | undefined;
     try {
       // 在保存本轮用户消息之前读取记忆，避免把当前提问当成历史重复带入
       const { history, summary } = await this.loadMemory(
@@ -131,17 +133,36 @@ export class ChatService {
       if (conversation.title === '资料问答') {
         conversation.title = question.trim().slice(0, 28) || '资料问答';
       }
-      const agentInput = {
+      memoryAction = await this.memories.handleExplicit({
         ownerId,
+        conversationId,
         question,
-        datasetIds: conversation.datasetIds,
         summary,
         history,
-      };
-      result =
-        options.signal || options.emitStage
-          ? await this.agent.invoke(agentInput, options)
-          : await this.agent.invoke(agentInput);
+        signal: options.signal,
+      });
+      if (memoryAction.action !== 'none') {
+        result = explicitMemoryState(
+          ownerId,
+          question,
+          conversation.datasetIds,
+          summary,
+          history,
+          memoryAction,
+        );
+      } else {
+        const agentInput = {
+          ownerId,
+          question,
+          datasetIds: conversation.datasetIds,
+          summary,
+          history,
+        };
+        result =
+          options.signal || options.emitStage
+            ? await this.agent.invoke(agentInput, options)
+            : await this.agent.invoke(agentInput);
+      }
     } catch (error) {
       if (!userMessage) {
         userMessage = await this.messages.save(
@@ -209,6 +230,7 @@ export class ChatService {
       message: assistantMessage,
       citations,
       answerMode: result.answerMode,
+      memoryAction,
     };
   }
 
@@ -309,4 +331,38 @@ export class ChatService {
       throw new NotFoundException(`Conversation ${id} not found`);
     return conversation;
   }
+}
+
+function explicitMemoryState(
+  ownerId: string,
+  question: string,
+  datasetIds: string[],
+  summary: string | undefined,
+  history: HistoryTurn[],
+  action: ExplicitMemoryResult,
+): RagState {
+  const answer =
+    action.answer ??
+    (action.action === 'saved'
+      ? `已记住：${action.content}`
+      : action.action === 'not_saved'
+        ? '好的，这次不会把这条信息保存为长期记忆。'
+        : '长期记忆操作已完成。');
+  return {
+    ownerId,
+    question,
+    summary,
+    history,
+    memories: [],
+    datasetIds,
+    hits: [],
+    vectorHits: [],
+    hasEvidence: false,
+    usedTools: ['memory'],
+    answer,
+    citedChunkIds: [],
+    confidence: 1,
+    thinking: false,
+    answerMode: 'general',
+  };
 }

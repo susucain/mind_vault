@@ -59,4 +59,21 @@ describe('MemoryModelService', () => {
       service.extract([{ role: 'user', content: '你好' }]),
     ).resolves.toEqual([]);
   });
+
+  it('extracts an explicit memory from the current question and history', async () => {
+    const { service } = buildService({
+      content: '用户今年 30 岁',
+      kind: 'fact',
+    });
+
+    await expect(
+      service.extractExplicit({
+        question: '记住我的年龄',
+        history: [{ role: 'user', content: '我今年 30 岁' }],
+      }),
+    ).resolves.toEqual({
+      content: '用户今年 30 岁',
+      kind: 'fact',
+    });
+  });
 });

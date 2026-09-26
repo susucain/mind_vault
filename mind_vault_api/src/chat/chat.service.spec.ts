@@ -68,7 +68,10 @@ function buildService(input: {
     }),
     summarize: jest.fn().mockResolvedValue(input.summarizeResult ?? '新摘要'),
   };
-  const memories = { extractFromTurns: jest.fn().mockResolvedValue(0) };
+  const memories = {
+    extractFromTurns: jest.fn().mockResolvedValue(0),
+    handleExplicit: jest.fn().mockResolvedValue({ action: 'none' }),
+  };
   const service = new ChatService(
     conversations as never,
     messages as never,
@@ -304,5 +307,35 @@ describe('ChatService', () => {
         Array.from({ length: 21 }, (_, index) => `dataset_${index}`),
       ),
     ).rejects.toThrow('资料集范围最多包含 20 个资料集');
+  });
+
+  it('handles an explicit memory request without invoking the RAG agent', async () => {
+    const { service, agent, memories, messages } = buildService({
+      messageCount: 0,
+    });
+    memories.handleExplicit.mockResolvedValue({
+      action: 'saved',
+      content: '用户今年 30 岁',
+    });
+
+    const result = await service.ask(
+      'user_1',
+      'conversation_1',
+      '记住我的年龄是 30 岁',
+    );
+
+    expect(agent.invoke).not.toHaveBeenCalled();
+    expect(result.answerMode).toBe('general');
+    expect(result.memoryAction).toEqual({
+      action: 'saved',
+      content: '用户今年 30 岁',
+    });
+    expect(messages.save).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        role: 'assistant',
+        content: '已记住：用户今年 30 岁',
+        usedTools: ['memory'],
+      }),
+    );
   });
 });

@@ -1,7 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { ModelGatewayService } from '../model/model-gateway.service';
-import { ExtractedMemory, extractSchema, memoryConfig } from './memory.types';
+import {
+  ExplicitMemoryResult,
+  ExtractedMemory,
+  explicitMemorySchema,
+  extractSchema,
+  memoryConfig,
+} from './memory.types';
 
 /**
  * 长期记忆的抽取模型。
@@ -37,5 +43,48 @@ export class MemoryModelService {
       .filter((item) => item.content.length > 0)
       .filter((item) => item.confidence >= memoryConfig.minExtractConfidence)
       .slice(0, memoryConfig.extractTopN);
+  }
+
+  async extractExplicit(
+    input: {
+      question: string;
+      summary?: string;
+      history: { role: string; content: string }[];
+    },
+    options: { signal?: AbortSignal } = {},
+  ): Promise<
+    Pick<ExplicitMemoryResult, 'content'> & {
+      kind: 'preference' | 'fact' | 'goal';
+    }
+  > {
+    const { data } = await this.gateway.invokeJson(
+      'fast',
+      [
+        new SystemMessage(
+          [
+            '你负责解析用户明确要求保存的长期记忆。',
+            '只提取用户明确说过的稳定事实、偏好或目标，不得猜测或补全缺失信息。',
+            '当前消息中的“记住、记下来、以后记得、帮我保存”等只是保存指令，不是记忆内容。',
+            '结合历史对话补全当前指令明确指向的事实；如果事实仍不完整，content 输出空字符串。',
+            'content 必须以“用户”作主语，不超过 200 字。',
+            '仅输出 JSON：{"content":"","kind":"preference|fact|goal"}',
+          ].join('\n'),
+        ),
+        new HumanMessage(
+          JSON.stringify({
+            summary: input.summary ?? '',
+            history: input.history,
+            question: input.question,
+          }),
+        ),
+      ],
+      false,
+      (raw) => explicitMemorySchema.parse(raw),
+      options,
+    );
+    return {
+      content: data.content.trim(),
+      kind: data.kind,
+    };
   }
 }
