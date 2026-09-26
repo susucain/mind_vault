@@ -24,7 +24,11 @@ export class InterviewModelService {
   constructor(private readonly gateway: ModelGatewayService) {}
 
   async generateQuestion(input: {
-    mode: string;
+    topic: string;
+    intensity: string;
+    focus?: string | null;
+    jobDescription?: string | null;
+    askedQuestions?: string[];
     hits: RetrievalHit[];
     memories?: MemoryNote[];
   }) {
@@ -32,11 +36,15 @@ export class InterviewModelService {
       'fast',
       [
         new SystemMessage(
-          '你是面试官。基于提供的个人项目资料生成一道面试题。只输出 JSON：{"question":""}。不能编造资料中没有的项目事实。memories 是用户的偏好与目标，只用来让题目更贴近他关心的方向，不属于资料，也不能当作项目事实。',
+          `你是面试官。基于提供的个人项目资料生成一道面试题。只输出 JSON：{"question":""}。不能编造资料中没有的项目事实。memories 是用户的偏好与目标，只用来让题目更贴近他关心的方向，不属于资料，也不能当作项目事实。focus 是用户想重点练习的方向，jobDescription 是目标岗位描述，都只在出题时参考，不能当作项目事实。askedQuestions 是已问过的题目，不要重复。${topicGuide(input.topic)}${intensityGuide(input.intensity)}`,
         ),
         new HumanMessage(
           JSON.stringify({
-            mode: input.mode,
+            topic: input.topic,
+            intensity: input.intensity,
+            focus: input.focus || undefined,
+            jobDescription: input.jobDescription || undefined,
+            askedQuestions: input.askedQuestions ?? [],
             memories: memoryPayload(input.memories),
             evidence: input.hits.map((hit) => ({
               chunkId: hit.chunkId,
@@ -99,6 +107,24 @@ export class InterviewModelService {
       citations: data.citations.filter((id) => validIds.has(id)),
     };
   }
+}
+
+function topicGuide(topic: string) {
+  const guides: Record<string, string> = {
+    project_deep_dive:
+      '主题是项目深挖：聚焦项目本身的技术架构、关键难点、设计取舍与可量化结果。',
+    technical_fundamentals:
+      '主题是技术基础：考察技术原理与基础知识，包括机制、边界、常见坑与取舍。',
+    behavioral:
+      '主题是行为面试：考察具体情境下的个人动作、协作方式、冲突处理与复盘。',
+  };
+  return guides[topic] ? `\n${guides[topic]}` : '';
+}
+
+function intensityGuide(intensity: string) {
+  return intensity === 'quick'
+    ? '\n强度是快速问答：题目独立、聚焦单一考点，可以与已问过的题目换方向。'
+    : '\n强度是深度追问：在已有题目基础上继续深挖，逐层逼近实现细节。';
 }
 
 /** 只给内容与类型，不暴露记忆 id，模型无从把它当成可引用的证据 */

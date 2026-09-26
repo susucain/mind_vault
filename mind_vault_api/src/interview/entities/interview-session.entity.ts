@@ -23,7 +23,16 @@ export class InterviewSessionEntity {
   datasetId: string;
 
   @Column({ type: 'varchar' })
-  mode: string;
+  topic: string;
+
+  @Column({ type: 'varchar', default: 'deep' })
+  intensity: string;
+
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  focus?: string | null;
+
+  @Column({ name: 'job_description', type: 'text', nullable: true })
+  jobDescription?: string | null;
 
   @Column({ type: 'varchar', default: 'IN_PROGRESS' })
   status: string;

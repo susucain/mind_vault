@@ -81,7 +81,8 @@ function buildReviewService(
             id: 'session_1',
             ownerId: 'user_1',
             datasetId: 'dataset_1',
-            mode: 'technical',
+            topic: 'technical_fundamentals',
+            intensity: 'deep',
           }
         : overrides.sourceSession,
     ),
@@ -219,16 +220,25 @@ describe('InterviewService', () => {
     await expect(
       service.createSession('user_1', {
         datasetId: 'dataset_1',
-        mode: 'project_deep_dive',
+        topic: 'project_deep_dive',
+        intensity: 'deep',
         totalQuestions: 5,
       }),
     ).resolves.toMatchObject({
       id: expect.any(String),
       datasetId: 'dataset_1',
+      topic: 'project_deep_dive',
+      intensity: 'deep',
       status: 'IN_PROGRESS',
       currentQuestion: '请介绍项目中的缓存设计。',
     });
     expect(datasets.findOne).toHaveBeenCalledWith('user_1', 'dataset_1');
+    expect(agent.generateQuestion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: 'project_deep_dive',
+        intensity: 'deep',
+      }),
+    );
   });
 
   it('evaluates an answer, persists the turn, and creates review items for gaps', async () => {
@@ -241,6 +251,8 @@ describe('InterviewService', () => {
         id: 'session_1',
         ownerId: 'user_1',
         datasetId: 'dataset_1',
+        topic: 'project_deep_dive',
+        intensity: 'deep',
         currentIndex: 0,
         totalQuestions: 5,
         status: 'IN_PROGRESS',
@@ -287,6 +299,65 @@ describe('InterviewService', () => {
         title: '复习幂等设计',
       }),
     );
+    // 深度强度沿用评估给出的追问，不额外调用出题
+    expect(agent.evaluate).toHaveBeenCalledWith(
+      expect.objectContaining({ topic: 'project_deep_dive' }),
+    );
+    expect(sessions.save).toHaveBeenCalledWith(
+      expect.objectContaining({ currentQuestion: '如何保证幂等？' }),
+    );
+  });
+
+  it('generates a fresh next question in quick intensity without repeating asked ones', async () => {
+    const turns = {
+      create: jest.fn((input) => input),
+      save: jest.fn(async (input) => ({ id: 'turn_2', ...input })),
+      find: jest
+        .fn()
+        .mockResolvedValue([{ id: 'turn_1', question: '如何处理失败消息？' }]),
+    };
+    const sessions = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'session_1',
+        ownerId: 'user_1',
+        datasetId: 'dataset_1',
+        topic: 'technical_fundamentals',
+        intensity: 'quick',
+        focus: null,
+        jobDescription: null,
+        currentIndex: 0,
+        totalQuestions: 3,
+        status: 'IN_PROGRESS',
+        currentQuestion: '如何处理失败消息？',
+      }),
+      save: jest.fn(async (input) => input),
+    };
+    const agent = {
+      evaluate: jest.fn().mockResolvedValue({
+        evaluation: { ...passingEvaluation, followUp: '被忽略的追问' },
+        citations: [],
+      }),
+      generateQuestion: jest
+        .fn()
+        .mockResolvedValue({ question: '说说索引失效的常见场景。' }),
+    };
+    const service = buildService({ sessions, turns, agent });
+
+    await expect(
+      service.submitAnswer('user_1', 'session_1', { answer: '使用重试队列。' }),
+    ).resolves.toMatchObject({ nextQuestion: '说说索引失效的常见场景。' });
+    expect(agent.generateQuestion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: 'technical_fundamentals',
+        intensity: 'quick',
+        askedQuestions: ['如何处理失败消息？'],
+      }),
+    );
+    expect(sessions.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentQuestion: '说说索引失效的常见场景。',
+      }),
+    );
   });
 
   it('completes a review item after a score of 60 or more', async () => {
@@ -318,6 +389,7 @@ describe('InterviewService', () => {
         datasetId: 'dataset_1',
         question: '如何处理失败消息？',
         answer: '新的回答',
+        topic: 'technical_fundamentals',
       }),
     );
   });
@@ -372,7 +444,7 @@ describe('InterviewService', () => {
     expect(item).toMatchObject({ status: 'PENDING', completedAt: null });
   });
 
-  it('returns the source turn, mode and attempts in review detail', async () => {
+  it('returns the source turn, topic and attempts in review detail', async () => {
     const attemptList = [
       { id: 'attempt_1', createdAt: new Date('2026-09-26') },
     ];
@@ -383,7 +455,7 @@ describe('InterviewService', () => {
     await expect(service.getReviewItem('user_1', 'review_1')).resolves.toEqual({
       item: expect.objectContaining({ id: 'review_1' }),
       sourceTurn: expect.objectContaining({ question: '如何处理失败消息？' }),
-      sourceMode: 'technical',
+      sourceTopic: 'technical_fundamentals',
       attempts: attemptList,
     });
     expect(turns.findOne).toHaveBeenCalledWith({

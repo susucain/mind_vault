@@ -12,7 +12,7 @@ import {
 interface InterviewState {
   ownerId: string;
   datasetId: string;
-  mode: string;
+  topic: string;
   question: string;
   answer?: string;
   hits: RetrievalHit[];
@@ -24,7 +24,7 @@ interface InterviewState {
 const State = Annotation.Root({
   ownerId: Annotation<string>,
   datasetId: Annotation<string>,
-  mode: Annotation<string>,
+  topic: Annotation<string>,
   question: Annotation<string>,
   answer: Annotation<string | undefined>,
   hits: Annotation<RetrievalHit[]>,
@@ -76,7 +76,11 @@ export class InterviewAgentService {
   async generateQuestion(input: {
     ownerId?: string;
     datasetId?: string;
-    mode: string;
+    topic: string;
+    intensity: string;
+    focus?: string | null;
+    jobDescription?: string | null;
+    askedQuestions?: string[];
     hits: RetrievalHit[];
   }) {
     const hits =
@@ -84,7 +88,7 @@ export class InterviewAgentService {
         ? (
             await this.retrieval.hybrid({
               ownerId: input.ownerId,
-              query: '项目技术架构 核心难点 设计取舍',
+              query: questionQuery(input.topic, input.focus),
               datasetIds: [input.datasetId],
               topK: 8,
             })
@@ -118,12 +122,24 @@ export class InterviewAgentService {
     datasetId: string;
     question: string;
     answer: string;
+    topic: string;
   }) {
     return this.graph.invoke({
       ...input,
-      mode: 'project_deep_dive',
       hits: [],
       citations: [],
     });
   }
+}
+
+/** 检索查询优先用用户填写的聚焦方向，否则回退到主题预设关键词 */
+function questionQuery(topic: string, focus?: string | null) {
+  const trimmed = focus?.trim();
+  if (trimmed) return trimmed;
+  const presets: Record<string, string> = {
+    project_deep_dive: '项目技术架构 核心难点 设计取舍',
+    technical_fundamentals: '技术原理 基础知识 常见考点',
+    behavioral: '团队协作 冲突处理 项目经历',
+  };
+  return presets[topic] ?? presets.project_deep_dive;
 }

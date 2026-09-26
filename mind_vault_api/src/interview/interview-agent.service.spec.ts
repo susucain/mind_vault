@@ -25,7 +25,8 @@ function buildAgent() {
 const input = {
   ownerId: 'user_1',
   datasetId: 'dataset_1',
-  mode: 'project_deep_dive',
+  topic: 'project_deep_dive',
+  intensity: 'deep',
   hits: [],
 };
 
@@ -42,10 +43,35 @@ describe('InterviewAgentService', () => {
     ]);
     expect(models.generateQuestion).toHaveBeenCalledWith(
       expect.objectContaining({
+        topic: 'project_deep_dive',
+        intensity: 'deep',
         memories: [
           { id: 'm1', content: '偏好先给结论再给理由', kind: 'preference' },
         ],
       }),
+    );
+  });
+
+  it('builds the retrieval query from the focus text when provided', async () => {
+    const { agent, retrieval } = buildAgent();
+
+    await agent.generateQuestion({
+      ...input,
+      focus: '基于简历里的支付网关项目',
+    });
+
+    expect(retrieval.hybrid).toHaveBeenCalledWith(
+      expect.objectContaining({ query: '基于简历里的支付网关项目' }),
+    );
+  });
+
+  it('falls back to the topic preset query without a focus', async () => {
+    const { agent, retrieval } = buildAgent();
+
+    await agent.generateQuestion(input);
+
+    expect(retrieval.hybrid).toHaveBeenCalledWith(
+      expect.objectContaining({ query: '项目技术架构 核心难点 设计取舍' }),
     );
   });
 
@@ -64,7 +90,11 @@ describe('InterviewAgentService', () => {
   it('skips the memory lookup when no owner is provided', async () => {
     const { agent, memories } = buildAgent();
 
-    await agent.generateQuestion({ mode: 'project_deep_dive', hits: [] });
+    await agent.generateQuestion({
+      topic: 'project_deep_dive',
+      intensity: 'deep',
+      hits: [],
+    });
 
     expect(memories.recallByKinds).not.toHaveBeenCalled();
   });

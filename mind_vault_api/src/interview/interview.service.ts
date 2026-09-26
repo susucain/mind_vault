@@ -39,14 +39,20 @@ export class InterviewService {
     const question = await this.agent.generateQuestion({
       ownerId,
       datasetId: dto.datasetId,
-      mode: dto.mode,
+      topic: dto.topic,
+      intensity: dto.intensity,
+      focus: dto.focus,
+      jobDescription: dto.jobDescription,
       hits: [],
     });
     const session = this.sessions.create({
       id: nextSnowflakeId(),
       ownerId,
       datasetId: dto.datasetId,
-      mode: dto.mode,
+      topic: dto.topic,
+      intensity: dto.intensity,
+      focus: dto.focus ?? null,
+      jobDescription: dto.jobDescription ?? null,
       status: 'IN_PROGRESS',
       currentIndex: 0,
       totalQuestions: dto.totalQuestions,
@@ -88,6 +94,7 @@ export class InterviewService {
       datasetId: session.datasetId,
       question,
       answer: dto.answer,
+      topic: session.topic,
     })) as {
       evaluation: InterviewEvaluation;
       citations: string[];
@@ -123,7 +130,9 @@ export class InterviewService {
     session.currentIndex += 1;
     const completed = session.currentIndex >= session.totalQuestions;
     session.status = completed ? 'COMPLETED' : 'IN_PROGRESS';
-    session.currentQuestion = completed ? null : result.evaluation.followUp;
+    session.currentQuestion = completed
+      ? null
+      : await this.resolveNextQuestion(session, result);
     await this.sessions.save(session);
     return {
       turn,
@@ -176,7 +185,7 @@ export class InterviewService {
     return {
       item,
       sourceTurn,
-      sourceMode: sourceSession?.mode ?? null,
+      sourceTopic: sourceSession?.topic ?? null,
       attempts,
     };
   }
@@ -208,6 +217,7 @@ export class InterviewService {
       datasetId: sourceSession.datasetId,
       question: sourceTurn.question,
       answer: dto.answer,
+      topic: sourceSession.topic,
     })) as { evaluation: InterviewEvaluation; citations: string[] };
     const evaluation = result.evaluation;
     const score =
@@ -248,6 +258,31 @@ export class InterviewService {
     item.completedAt = dto.status === 'COMPLETED' ? now : null;
     await this.reviewItems.save(item);
     return item;
+  }
+
+  /**
+   * 深度强度沿用评估给出的追问；快速强度重新出一题，并把已问过的题目交给出题节点去重。
+   */
+  private async resolveNextQuestion(
+    session: InterviewSessionEntity,
+    result: { evaluation: InterviewEvaluation },
+  ) {
+    if (session.intensity !== 'quick') return result.evaluation.followUp;
+    const asked = await this.turns.find({
+      where: { ownerId: session.ownerId, sessionId: session.id },
+      order: { createdAt: 'ASC' },
+    });
+    const next = await this.agent.generateQuestion({
+      ownerId: session.ownerId,
+      datasetId: session.datasetId,
+      topic: session.topic,
+      intensity: session.intensity,
+      focus: session.focus,
+      jobDescription: session.jobDescription,
+      askedQuestions: asked.map((turn) => turn.question),
+      hits: [],
+    });
+    return next.question;
   }
 
   private async findReviewItem(ownerId: string, id: string) {

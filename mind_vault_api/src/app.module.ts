@@ -28,6 +28,7 @@ import { ModelModule } from './model/model.module';
 import { MemoryModule } from './memory/memory.module';
 import { UserMemoryEntity } from './memory/entities/user-memory.entity';
 import { AddReviewWorkspaceSchema1790380800000 } from './migrations/1790380800000-add-review-workspace-schema';
+import { AddInterviewTopicIntensity1790467200000 } from './migrations/1790467200000-add-interview-topic-intensity';
 
 const standalone = buildConfiguration(process.env).runtime.standalone;
 
@@ -76,7 +77,10 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
                 UserMemoryEntity,
               ],
               synchronize: false,
-              migrations: [AddReviewWorkspaceSchema1790380800000],
+              migrations: [
+                AddReviewWorkspaceSchema1790380800000,
+                AddInterviewTopicIntensity1790467200000,
+              ],
               migrationsRun: true,
             }),
           }),
