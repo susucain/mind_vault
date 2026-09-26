@@ -55,7 +55,7 @@ Page({
         selectedDatasetId: this.data.selectedDatasetId || datasets[0]?.id || '',
       });
       const reviewItems = await listReviewItems();
-      this.setData({ reviewItems });
+      this.setData({ reviewItems: reviewItems.items });
       if (pendingSessionId) {
         const session = await getInterviewSession(pendingSessionId);
         pendingSessionId = '';

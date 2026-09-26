@@ -59,7 +59,7 @@ Page({
         latestInterview:
           sessions.find((item) => item.kind === 'interview') ?? null,
         documents: documents.items.slice(0, 2),
-        reviewItems: reviewItems.slice(0, 1),
+        reviewItems: reviewItems.items.slice(0, 1),
       });
     } catch (error) {
       this.setData({ error: '无法加载首页内容' });

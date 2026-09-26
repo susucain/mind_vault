@@ -42,6 +42,13 @@ export interface ReviewItem {
   createdAt: string;
 }
 
+export interface ReviewItemsPage {
+  items: ReviewItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface InterviewAnswerResult {
   turn: InterviewTurn;
   evaluation: InterviewEvaluation;

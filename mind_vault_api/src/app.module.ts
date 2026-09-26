@@ -27,6 +27,7 @@ import { ReviewAttemptEntity } from './interview/entities/review-attempt.entity'
 import { ModelModule } from './model/model.module';
 import { MemoryModule } from './memory/memory.module';
 import { UserMemoryEntity } from './memory/entities/user-memory.entity';
+import { AddReviewWorkspaceSchema1790380800000 } from './migrations/1790380800000-add-review-workspace-schema';
 
 const standalone = buildConfiguration(process.env).runtime.standalone;
 
@@ -75,6 +76,8 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
                 UserMemoryEntity,
               ],
               synchronize: false,
+              migrations: [AddReviewWorkspaceSchema1790380800000],
+              migrationsRun: true,
             }),
           }),
           MongooseModule.forRootAsync({

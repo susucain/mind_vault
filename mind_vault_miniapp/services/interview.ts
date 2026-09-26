@@ -4,7 +4,7 @@ import {
   InterviewAnswerResult,
   InterviewMode,
   InterviewSession,
-  ReviewItem,
+  ReviewItemsPage,
 } from '../types/interview';
 
 export function createInterviewSession(input: {
@@ -49,7 +49,7 @@ export function finishInterviewSession(id: string) {
 }
 
 export function listReviewItems() {
-  return request<ReviewItem[]>({
+  return request<ReviewItemsPage>({
     path: '/interview/review-items',
   });
 }
