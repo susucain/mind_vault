@@ -1,7 +1,16 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { CreateInterviewSessionDto } from './dto/create-interview-session.dto';
+import { QueryReviewItemsDto } from './dto/query-review-items.dto';
 import { SubmitInterviewAnswerDto } from './dto/submit-interview-answer.dto';
 import { InterviewService } from './interview.service';
 
@@ -43,7 +52,10 @@ export class InterviewController {
   }
 
   @Get('review-items')
-  listReviewItems(@CurrentUser() user: { id: string }) {
-    return this.service.listReviewItems(user.id);
+  listReviewItems(
+    @CurrentUser() user: { id: string },
+    @Query() query: QueryReviewItemsDto,
+  ) {
+    return this.service.listReviewItems(user.id, query);
   }
 }
