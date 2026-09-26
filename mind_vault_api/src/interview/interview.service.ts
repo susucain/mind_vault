@@ -11,6 +11,7 @@ import { InterviewAgentService } from './interview-agent.service';
 import { InterviewEvaluation } from './interview-model.service';
 import { CreateInterviewSessionDto } from './dto/create-interview-session.dto';
 import { SubmitInterviewAnswerDto } from './dto/submit-interview-answer.dto';
+import { QueryReviewItemsDto } from './dto/query-review-items.dto';
 import { InterviewSessionEntity } from './entities/interview-session.entity';
 import { InterviewTurnEntity } from './entities/interview-turn.entity';
 import { ReviewItemEntity } from './entities/review-item.entity';
@@ -137,11 +138,20 @@ export class InterviewService {
     return session;
   }
 
-  async listReviewItems(ownerId: string) {
-    return this.reviewItems.find({
-      where: { ownerId, status: 'PENDING' },
-      order: { createdAt: 'DESC' },
+  async listReviewItems(ownerId: string, query: QueryReviewItemsDto = {}) {
+    const status = query.status ?? 'PENDING';
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const [items, total] = await this.reviewItems.findAndCount({
+      where: { ownerId, status },
+      order:
+        status === 'COMPLETED'
+          ? { completedAt: 'DESC', createdAt: 'DESC' }
+          : { createdAt: 'DESC' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
     });
+    return { items, total, page, pageSize };
   }
 
   private async findSession(ownerId: string, id: string) {

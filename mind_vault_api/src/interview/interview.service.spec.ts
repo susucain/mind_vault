@@ -25,6 +25,89 @@ describe('InterviewService', () => {
     });
   });
 
+  it('lists the first pending review item page by default', async () => {
+    const items = [{ id: 'review_2' }, { id: 'review_1' }];
+    const reviewItems = {
+      findAndCount: jest.fn().mockResolvedValue([items, 2]),
+    };
+    const service = new InterviewService(
+      {} as never,
+      {} as never,
+      reviewItems as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(service.listReviewItems('user_1')).resolves.toEqual({
+      items,
+      total: 2,
+      page: 1,
+      pageSize: 20,
+    });
+    expect(reviewItems.findAndCount).toHaveBeenCalledWith({
+      where: { ownerId: 'user_1', status: 'PENDING' },
+      order: { createdAt: 'DESC' },
+      skip: 0,
+      take: 20,
+    });
+  });
+
+  it('paginates completed review items by completion time', async () => {
+    const items = [{ id: 'review_3' }];
+    const reviewItems = {
+      findAndCount: jest.fn().mockResolvedValue([items, 5]),
+    };
+    const service = new InterviewService(
+      {} as never,
+      {} as never,
+      reviewItems as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(
+      service.listReviewItems('user_1', {
+        status: 'COMPLETED',
+        page: 2,
+        pageSize: 2,
+      }),
+    ).resolves.toEqual({
+      items,
+      total: 5,
+      page: 2,
+      pageSize: 2,
+    });
+    expect(reviewItems.findAndCount).toHaveBeenCalledWith({
+      where: { ownerId: 'user_1', status: 'COMPLETED' },
+      order: { completedAt: 'DESC', createdAt: 'DESC' },
+      skip: 2,
+      take: 2,
+    });
+  });
+
+  it('scopes paginated review items to the requesting owner', async () => {
+    const reviewItems = {
+      findAndCount: jest.fn().mockResolvedValue([[], 0]),
+    };
+    const service = new InterviewService(
+      {} as never,
+      {} as never,
+      reviewItems as never,
+      {} as never,
+      {} as never,
+    );
+
+    await service.listReviewItems('user_2', { page: 3, pageSize: 10 });
+
+    expect(reviewItems.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { ownerId: 'user_2', status: 'PENDING' },
+        skip: 20,
+        take: 10,
+      }),
+    );
+  });
+
   it('creates a session with the requested dataset and first question', async () => {
     const sessions = {
       create: jest.fn((input) => input),

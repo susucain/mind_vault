@@ -30,6 +30,12 @@ export class ReviewItemEntity {
   @Column({ name: 'due_at', type: 'timestamp', nullable: true })
   dueAt?: Date | null;
 
+  @Column({ name: 'completed_at', type: 'timestamp', nullable: true })
+  completedAt?: Date | null;
+
+  @Column({ name: 'last_reviewed_at', type: 'timestamp', nullable: true })
+  lastReviewedAt?: Date | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 

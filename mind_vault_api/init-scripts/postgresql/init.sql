@@ -216,6 +216,23 @@ CREATE TABLE IF NOT EXISTS kh_review_item (
 );
 CREATE INDEX IF NOT EXISTS idx_kh_review_item_owner
     ON kh_review_item(owner_id, status, created_at DESC);
+ALTER TABLE kh_review_item
+    ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP;
+ALTER TABLE kh_review_item
+    ADD COLUMN IF NOT EXISTS last_reviewed_at TIMESTAMP;
+
+CREATE TABLE IF NOT EXISTS kh_review_attempt (
+    id VARCHAR PRIMARY KEY,
+    review_item_id VARCHAR NOT NULL,
+    owner_id BIGINT NOT NULL,
+    answer TEXT NOT NULL,
+    evaluation_json JSONB NOT NULL,
+    citation_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    score DECIMAL(5,2) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_kh_review_attempt_owner_item_created
+    ON kh_review_attempt(owner_id, review_item_id, created_at DESC);
 
 -- 长期记忆：关于用户的稳定事实与偏好，与资料检索严格分离
 -- pgvector 扩展由镜像自带，只需启用；向量维度固定 1024，须与 EMBEDDING_DIMENSIONS 一致

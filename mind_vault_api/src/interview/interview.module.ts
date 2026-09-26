@@ -11,6 +11,7 @@ import { InterviewService } from './interview.service';
 import { InterviewSessionEntity } from './entities/interview-session.entity';
 import { InterviewTurnEntity } from './entities/interview-turn.entity';
 import { ReviewItemEntity } from './entities/review-item.entity';
+import { ReviewAttemptEntity } from './entities/review-attempt.entity';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ReviewItemEntity } from './entities/review-item.entity';
       InterviewSessionEntity,
       InterviewTurnEntity,
       ReviewItemEntity,
+      ReviewAttemptEntity,
     ]),
   ],
   controllers: [InterviewController],
