@@ -68,6 +68,10 @@
     </view>
 
     <van-button type="primary" block loading="{{creating}}" bind:click="startSession">生成第一题</van-button>
+    <view wx:if="{{creating}}" class="waiting">
+      <text class="waiting-text">{{waitingLabel}}</text>
+      <text class="waiting-elapsed">已等待 {{waitingSeconds}} 秒</text>
+    </view>
   </view>
 
   <view wx:else class="session">
@@ -98,6 +102,10 @@
         bind:change="updateAnswer"
       />
       <van-button type="primary" block loading="{{submitting}}" bind:click="submitAnswer">提交回答</van-button>
+      <view wx:if="{{submitting}}" class="waiting">
+        <text class="waiting-text">{{waitingLabel}}</text>
+        <text class="waiting-elapsed">已等待 {{waitingSeconds}} 秒</text>
+      </view>
     </view>
 
     <view wx:if="{{evaluation}}" class="feedback surface">

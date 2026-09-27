@@ -144,6 +144,26 @@
   color: #a75b32;
 }
 
+.waiting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 10rpx;
+  background: #f2f8f6;
+}
+
+.waiting-text {
+  color: #087f78;
+  font-size: 24rpx;
+}
+
+.waiting-elapsed {
+  color: #718087;
+  font-size: 22rpx;
+}
+
 .actions {
   display: flex;
   justify-content: flex-end;
