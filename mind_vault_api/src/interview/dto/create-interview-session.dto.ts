@@ -11,7 +11,8 @@ import {
 export const INTERVIEW_TOPICS = [
   'project_deep_dive',
   'technical_fundamentals',
-  'behavioral',
+  'job_fit',
+  'system_design',
 ] as const;
 
 export const INTERVIEW_INTENSITIES = ['quick', 'deep'] as const;
