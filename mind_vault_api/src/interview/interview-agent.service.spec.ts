@@ -5,6 +5,19 @@ function buildAgent() {
     generateQuestion: jest
       .fn()
       .mockResolvedValue({ question: '请介绍项目中的缓存设计。' }),
+    evaluate: jest.fn().mockResolvedValue({
+      evaluation: {
+        accuracy: 60,
+        depth: 60,
+        structure: 60,
+        clarity: 60,
+        strengths: [],
+        gaps: [],
+        followUp: '继续说明',
+        reviewItems: [],
+      },
+      citations: [],
+    }),
   };
   const retrieval = { hybrid: jest.fn().mockResolvedValue({ hits: [] }) };
   const memories = {
@@ -85,6 +98,35 @@ describe('InterviewAgentService', () => {
     expect(models.generateQuestion).toHaveBeenCalledWith(
       expect.objectContaining({ memories: [] }),
     );
+  });
+
+  it('reports the retrieval and generation stages while producing a question', async () => {
+    const { agent } = buildAgent();
+    const stages: string[] = [];
+
+    await agent.generateQuestion({
+      ...input,
+      onStage: (stage) => stages.push(stage),
+    });
+
+    expect(stages).toEqual(['retrieving', 'generating']);
+  });
+
+  it('reports the retrieval and evaluation stages while grading an answer', async () => {
+    const { agent } = buildAgent();
+    const stages: string[] = [];
+
+    await agent.evaluate({
+      ownerId: 'user_1',
+      datasetId: 'dataset_1',
+      topic: 'project_deep_dive',
+      question: '如何处理失败消息？',
+      answer: '使用重试队列。',
+      onStage: (stage) => stages.push(stage),
+    });
+
+    // 图只编译一次，阶段回调必须能通过 config.configurable 逐次传入
+    expect(stages).toEqual(['retrieving', 'evaluating']);
   });
 
   it('skips the memory lookup when no owner is provided', async () => {

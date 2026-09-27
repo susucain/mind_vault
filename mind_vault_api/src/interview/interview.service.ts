@@ -7,7 +7,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DatasetService } from '../dataset/dataset.service';
 import { nextSnowflakeId } from '../common/snowflake-id';
-import { InterviewAgentService } from './interview-agent.service';
+import {
+  InterviewAgentService,
+  StageReporter,
+} from './interview-agent.service';
 import { InterviewEvaluation } from './interview-model.service';
 import { CreateInterviewSessionDto } from './dto/create-interview-session.dto';
 import { SubmitInterviewAnswerDto } from './dto/submit-interview-answer.dto';
@@ -34,7 +37,11 @@ export class InterviewService {
     private readonly agent: InterviewAgentService,
   ) {}
 
-  async createSession(ownerId: string, dto: CreateInterviewSessionDto) {
+  async createSession(
+    ownerId: string,
+    dto: CreateInterviewSessionDto,
+    onStage?: StageReporter,
+  ) {
     await this.datasets.findOne(ownerId, dto.datasetId);
     const question = await this.agent.generateQuestion({
       ownerId,
@@ -44,6 +51,7 @@ export class InterviewService {
       focus: dto.focus,
       jobDescription: dto.jobDescription,
       hits: [],
+      onStage,
     });
     const session = this.sessions.create({
       id: nextSnowflakeId(),
@@ -83,6 +91,7 @@ export class InterviewService {
     ownerId: string,
     id: string,
     dto: SubmitInterviewAnswerDto & { question?: string },
+    onStage?: StageReporter,
   ) {
     const session = await this.findSession(ownerId, id);
     if (session.status !== 'IN_PROGRESS' || !session.currentQuestion) {
@@ -95,6 +104,7 @@ export class InterviewService {
       question,
       answer: dto.answer,
       topic: session.topic,
+      onStage,
     })) as {
       evaluation: InterviewEvaluation;
       citations: string[];
@@ -132,7 +142,7 @@ export class InterviewService {
     session.status = completed ? 'COMPLETED' : 'IN_PROGRESS';
     session.currentQuestion = completed
       ? null
-      : await this.resolveNextQuestion(session, result);
+      : await this.resolveNextQuestion(session, result, onStage);
     await this.sessions.save(session);
     return {
       turn,
@@ -266,6 +276,7 @@ export class InterviewService {
   private async resolveNextQuestion(
     session: InterviewSessionEntity,
     result: { evaluation: InterviewEvaluation },
+    onStage?: StageReporter,
   ) {
     if (session.intensity !== 'quick') return result.evaluation.followUp;
     const asked = await this.turns.find({
@@ -281,6 +292,7 @@ export class InterviewService {
       jobDescription: session.jobDescription,
       askedQuestions: asked.map((turn) => turn.question),
       hits: [],
+      onStage,
     });
     return next.question;
   }
