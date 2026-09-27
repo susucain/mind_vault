@@ -43,7 +43,8 @@
     <view class="mode-grid">
       <view class="mode {{topic === 'project_deep_dive' ? 'mode-active' : ''}}" data-topic="project_deep_dive" bind:tap="selectTopic">项目深挖</view>
       <view class="mode {{topic === 'technical_fundamentals' ? 'mode-active' : ''}}" data-topic="technical_fundamentals" bind:tap="selectTopic">技术基础</view>
-      <view class="mode {{topic === 'behavioral' ? 'mode-active' : ''}}" data-topic="behavioral" bind:tap="selectTopic">行为面试</view>
+      <view class="mode {{topic === 'job_fit' ? 'mode-active' : ''}}" data-topic="job_fit" bind:tap="selectTopic">岗位匹配</view>
+      <view class="mode {{topic === 'system_design' ? 'mode-active' : ''}}" data-topic="system_design" bind:tap="selectTopic">系统设计</view>
     </view>
 
     <text class="field-label">强度</text>

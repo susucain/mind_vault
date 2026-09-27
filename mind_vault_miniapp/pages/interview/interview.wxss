@@ -63,13 +63,6 @@
   font-size: 22rpx;
 }
 
-.dataset-chip-active,
-.mode-active {
-  border-color: #087f78;
-  color: #087f78;
-  background: #e7f5f1;
-}
-
 .mode-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -84,6 +77,14 @@
   background: #ffffff;
   font-size: 24rpx;
   text-align: center;
+}
+
+/* 选中态必须排在基础样式之后，否则会被 .mode / .dataset-chip 覆盖 */
+.dataset-chip-active,
+.mode-active {
+  border-color: #087f78;
+  color: #087f78;
+  background: #e7f5f1;
 }
 
 .session {

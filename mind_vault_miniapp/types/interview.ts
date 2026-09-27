@@ -1,5 +1,5 @@
 export type InterviewTopic =
-  'project_deep_dive' | 'technical_fundamentals' | 'behavioral';
+  'project_deep_dive' | 'technical_fundamentals' | 'job_fit' | 'system_design';
 
 export type InterviewIntensity = 'quick' | 'deep';
 

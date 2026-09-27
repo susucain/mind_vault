@@ -3,7 +3,8 @@ import { InterviewIntensity, InterviewTopic } from '../types/interview';
 const topicLabels: Record<InterviewTopic, string> = {
   project_deep_dive: '项目深挖',
   technical_fundamentals: '技术基础',
-  behavioral: '行为面试',
+  job_fit: '岗位匹配',
+  system_design: '系统设计',
 };
 
 const intensityLabels: Record<InterviewIntensity, string> = {
