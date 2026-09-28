@@ -13,6 +13,8 @@ export interface DocumentProgressEvent {
   percent: number;
   estimatedRemainingSeconds?: number | null;
   graph?: Record<string, unknown>;
+  errorCode?: string | null;
+  errorMessage?: string | null;
 }
 
 @Injectable()

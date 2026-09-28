@@ -396,7 +396,7 @@ export class DocumentIngestionWorker {
       job.status = IngestionJobStatus.Failed;
       job.currentStage = stage;
       job.retryCount += 1;
-      job.errorCode = 'PARSE_FAILED';
+      job.errorCode = failureCodeForStage(stage);
       job.errorMessage = error instanceof Error ? error.message : String(error);
       job.finishedAt = new Date();
       job.lastHeartbeatAt = job.finishedAt;
@@ -405,6 +405,20 @@ export class DocumentIngestionWorker {
         { id: message.documentId, ownerId: message.ownerId, deleted: false },
         { status: DocumentStatus.Failed },
       );
+      await this.publisher?.publishProgress({
+        ownerId: job.ownerId,
+        documentId: job.documentId,
+        stage,
+        status: IngestionJobStatus.Failed,
+        completed: job.stageCompleted,
+        total: job.stageTotal,
+        percent:
+          job.stageTotal > 0
+            ? Math.round((job.stageCompleted / job.stageTotal) * 100)
+            : 0,
+        errorCode: job.errorCode,
+        errorMessage: job.errorMessage,
+      });
       this.logger.error(
         `文档索引失败: jobId=${job.id} documentId=${message.documentId} stage=${stage} retry=${job.retryCount} error=${job.errorMessage}`,
       );
@@ -478,6 +492,19 @@ export class DocumentIngestionWorker {
       documentId: message.documentId,
       status: IngestionJobStatus.Deleted,
     };
+  }
+}
+
+function failureCodeForStage(stage: string) {
+  switch (stage) {
+    case 'embedding':
+      return 'EMBEDDING_FAILED';
+    case 'indexing':
+      return 'INDEXING_FAILED';
+    case 'parsing':
+      return 'PARSING_FAILED';
+    default:
+      return 'INGESTION_FAILED';
   }
 }
 

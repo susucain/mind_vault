@@ -11,6 +11,7 @@ import {
   GraphTaskStatus,
 } from './entities/document-graph-task.entity';
 import { DocumentPipelinePublisher } from '../../mq/document-pipeline.publisher';
+import { DocumentGraphTaskService } from './document-graph-task.service';
 
 const RECONNECT_DELAY_MS = 5_000;
 
@@ -35,6 +36,7 @@ export class DocumentGraphWorker {
     private readonly graph: KnowledgeGraphService,
     private readonly config: ConfigService,
     private readonly publisher?: DocumentPipelinePublisher,
+    private readonly graphTasks?: DocumentGraphTaskService,
   ) {}
 
   async onModuleInit() {
@@ -231,13 +233,23 @@ export class DocumentGraphWorker {
   }
 
   private async publishProgress(task: DocumentGraphTaskEntity) {
+    const graph = await this.graphTasks?.getProgress(
+      task.ownerId,
+      task.documentId,
+      task.documentVersion,
+    );
     await this.publisher?.publishProgress({
       ownerId: task.ownerId,
       documentId: task.documentId,
       stage: 'graph',
       status: task.status,
-      completed: 0,
-      total: 0,
+      completed: graph?.completed ?? 0,
+      total: graph?.total ?? 0,
+      percent:
+        graph && graph.total > 0
+          ? Math.round((graph.completed / graph.total) * 100)
+          : 0,
+      graph,
     });
   }
 }

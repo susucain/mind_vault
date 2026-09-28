@@ -301,6 +301,96 @@ describe('DocumentIngestionWorker', () => {
     );
   });
 
+  it('publishes a failed embedding snapshot when the model rejects the request', async () => {
+    const job = {
+      id: 'job_1',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      status: IngestionJobStatus.Uploaded,
+      currentStage: 'uploaded',
+      retryCount: 0,
+      stageCompleted: 0,
+      stageTotal: 0,
+    };
+    const publisher = { publishProgress: jest.fn().mockResolvedValue(undefined) };
+    const worker = new DocumentIngestionWorker(
+      {
+        findOne: jest.fn().mockResolvedValue(job),
+        save: jest.fn(async (entity) => entity),
+      } as never,
+      {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'doc_1',
+          ownerId: 'user_1',
+          sourceFileName: 'notes.md',
+          sourceFileKey: null,
+          contentId: 'content_1',
+        }),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      } as never,
+      {
+        findOne: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({
+            sourceBytes: Buffer.from('# 标题\n正文'),
+          }),
+        }),
+        updateOne: jest.fn().mockResolvedValue({ matchedCount: 1 }),
+      } as never,
+      {
+        parseStructured: jest.fn().mockResolvedValue({
+          rawText: '# 标题\n正文',
+          sections: [],
+          assets: [],
+        }),
+      } as never,
+      { downloadBytes: jest.fn() } as never,
+      { get: jest.fn().mockReturnValue(false) } as never,
+      {
+        chunk: jest.fn().mockReturnValue([
+          { chunkId: 'chunk_1', text: '标题\n正文', documentId: 'doc_1' },
+        ]),
+      } as never,
+      {
+        embedDocuments: jest
+          .fn()
+          .mockRejectedValue(new Error('429 MODEL_RATE_LIMIT')),
+      } as never,
+      { indexChunks: jest.fn() } as never,
+      { extract: jest.fn() } as never,
+      { indexChunk: jest.fn() } as never,
+      { find: jest.fn().mockResolvedValue([]) } as never,
+      undefined,
+      publisher as never,
+    );
+
+    await expect(
+      worker.process({
+        jobId: 'job_1',
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        documentVersion: 1,
+        operation: 'index',
+      }),
+    ).rejects.toThrow('429 MODEL_RATE_LIMIT');
+
+    expect(job).toMatchObject({
+      status: IngestionJobStatus.Failed,
+      currentStage: 'embedding',
+      errorCode: 'EMBEDDING_FAILED',
+      errorMessage: '429 MODEL_RATE_LIMIT',
+    });
+    expect(publisher.publishProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        documentId: 'doc_1',
+        stage: 'embedding',
+        status: IngestionJobStatus.Failed,
+        errorCode: 'EMBEDDING_FAILED',
+        errorMessage: '429 MODEL_RATE_LIMIT',
+      }),
+    );
+  });
+
   it('deletes source storage and external indexes for a deletion job', async () => {
     const job = {
       id: 'job_delete',

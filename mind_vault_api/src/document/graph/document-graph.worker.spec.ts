@@ -109,12 +109,24 @@ describe('DocumentGraphWorker', () => {
       }),
     };
     const graph = { indexChunk: jest.fn().mockResolvedValue(undefined) };
+    const publisher = { publishProgress: jest.fn().mockResolvedValue(undefined) };
+    const graphTasks = {
+      getProgress: jest.fn().mockResolvedValue({
+        status: 'READY',
+        completed: 1,
+        total: 1,
+        failed: 0,
+        estimatedRemainingSeconds: null,
+      }),
+    };
     const worker = new DocumentGraphWorker(
       tasks as never,
       documents as never,
       extraction as never,
       graph as never,
       { get: jest.fn().mockReturnValue(false) } as never,
+      publisher as never,
+      graphTasks as never,
     );
 
     await worker.process({ taskId: 'task_1' });
@@ -135,6 +147,20 @@ describe('DocumentGraphWorker', () => {
       }),
     );
     expect(task.status).toBe(GraphTaskStatus.Ready);
+    expect(publisher.publishProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: 'doc_1',
+        stage: 'graph',
+        status: GraphTaskStatus.Ready,
+        graph: {
+          status: 'READY',
+          completed: 1,
+          total: 1,
+          failed: 0,
+          estimatedRemainingSeconds: null,
+        },
+      }),
+    );
   });
 
   it('cancels a queued task when its document was deleted', async () => {
