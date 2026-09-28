@@ -1,9 +1,27 @@
-import { DocumentProcessStatus } from '../types/api';
+import { DocumentProcessStatus, GraphProgress } from '../types/api';
 
 export function isRetryableIngestionStatus(
   status: DocumentProcessStatus | null | undefined,
 ): boolean {
   return status === 'FAILED' || status === 'UPLOADED';
+}
+
+export function isTerminalIngestionStatus(
+  status: DocumentProcessStatus | '',
+): boolean {
+  return status === 'READY' || status === 'FAILED' || status === 'DELETED';
+}
+
+export function shouldShowMainIngestionProgress(
+  status: DocumentProcessStatus | '',
+): boolean {
+  return Boolean(status) && !isTerminalIngestionStatus(status);
+}
+
+export function shouldShowGraphProgress(
+  graph: GraphProgress | null | undefined,
+): boolean {
+  return graph !== null && graph !== undefined;
 }
 
 export function ingestionStatusLabel(

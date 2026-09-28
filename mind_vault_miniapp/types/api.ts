@@ -110,6 +110,18 @@ export interface GraphProgress {
   estimatedRemainingSeconds: number | null;
 }
 
+export interface DocumentProgressEvent {
+  documentId: string;
+  stage: string;
+  status: DocumentProcessStatus;
+  completed: number;
+  total: number;
+  percent: number;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  graph?: GraphProgress | null;
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;
