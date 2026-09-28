@@ -69,6 +69,30 @@ describe('EmbeddingService', () => {
     expect(MockOpenAIEmbeddings).not.toHaveBeenCalled();
   });
 
+  it('waits for the configured interval between embedding batches', async () => {
+    embedDocuments
+      .mockResolvedValueOnce([[0.1], [0.2]])
+      .mockResolvedValueOnce([[0.3]]);
+    const timer = jest
+      .spyOn(global, 'setTimeout')
+      .mockImplementation((callback) => {
+        if (typeof callback === 'function') callback();
+        return 0 as never;
+      });
+
+    await expect(
+      createService({
+        EMBEDDING_BATCH_SIZE: 2,
+        EMBEDDING_REQUEST_INTERVAL_MS: 1_000,
+      }).embedDocuments(['a', 'b', 'c']),
+    ).resolves.toEqual([[0.1], [0.2], [0.3]]);
+
+    expect(embedDocuments).toHaveBeenNthCalledWith(1, ['a', 'b']);
+    expect(embedDocuments).toHaveBeenNthCalledWith(2, ['c']);
+    expect(timer).toHaveBeenCalledWith(expect.any(Function), 1_000);
+    timer.mockRestore();
+  });
+
   it('上游调用失败时抛出 BadGatewayException', async () => {
     embedDocuments.mockRejectedValue(new Error('boom'));
     await expect(createService().embedDocuments(['a'])).rejects.toThrow(
