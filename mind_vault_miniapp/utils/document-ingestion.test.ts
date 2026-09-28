@@ -1,4 +1,5 @@
 import {
+  buildUploadDisplayState,
   ingestionStatusLabel,
   isRetryableIngestionStatus,
   isTerminalIngestionStatus,
@@ -46,6 +47,18 @@ test('hides failed main progress while retaining the graph not-started state', (
       failed: 0,
       estimatedRemainingSeconds: null,
     }),
-    true,
+    true
   );
+});
+
+test('builds failed upload display state with graph zero progress', () => {
+  const state = buildUploadDisplayState('FAILED', {
+    status: 'NOT_STARTED',
+    completed: 0,
+    total: 0,
+    failed: 0,
+    estimatedRemainingSeconds: null,
+  });
+  expectEqual(state.showMainIngestionProgress, false);
+  expectEqual(state.showGraphProgress, true);
 });

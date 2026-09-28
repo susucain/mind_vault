@@ -59,17 +59,17 @@
       <text class="upload-stage">{{uploadStatus || 'UPLOADED'}}</text>
     </view>
     <van-progress percentage="{{uploadProgress}}" color="#087f78" stroke-width="6" />
-    <view wx:if="{{uploadStageProgress && uploadStatus !== 'READY'}}" class="upload-process">
+    <view wx:if="{{uploadStageProgress && showMainIngestionProgress}}" class="upload-process">
       <text>{{uploadStageProgress.completed}}/{{uploadStageProgress.total}}</text>
       <text>{{uploadEta}}</text>
     </view>
     <van-progress
-      wx:if="{{uploadStageProgress && uploadStatus !== 'READY'}}"
+      wx:if="{{uploadStageProgress && showMainIngestionProgress}}"
       percentage="{{uploadStageProgress.percent}}"
       color="#4d8fba"
       stroke-width="4"
     />
-    <view wx:if="{{uploadGraph}}" class="upload-process">
+    <view wx:if="{{uploadGraph && showGraphProgress}}" class="upload-process">
       <text>{{uploadGraphLabel}} {{uploadGraph.completed}}/{{uploadGraph.total}}</text>
       <text>{{uploadGraph.estimatedRemainingSeconds === null ? '正在估算' : uploadEta}}</text>
     </view>

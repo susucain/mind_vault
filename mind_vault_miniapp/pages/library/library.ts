@@ -12,15 +12,18 @@ import {
   Dataset,
   DocumentItem,
   DocumentProcess,
+  DocumentProgressEvent,
   DocumentProcessStatus,
 } from '../../types/api';
 import { showRequestError } from '../../utils/feedback';
 import { chooseKnowledgeFile, SelectedFile } from '../../utils/file-picker';
 import { selectAvailableDatasetId } from '../../utils/dataset-selection';
 import {
+  buildUploadDisplayState,
   formatRemainingSeconds,
   graphStatusLabel,
   ingestionStatusLabel,
+  isTerminalIngestionStatus,
   isRetryableIngestionStatus,
 } from '../../utils/document-ingestion';
 import { appendDocumentPage } from '../../utils/document-pagination';
@@ -30,6 +33,8 @@ let progressStream: { abort: () => void } | null = null;
 let progressReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let libraryRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let datasetSearchTimer: ReturnType<typeof setTimeout> | null = null;
+let statusRequestInFlight = false;
+const STATUS_FALLBACK_INTERVAL_MS = 10_000;
 const RECENT_DATASETS_KEY = 'mind_vault_recent_datasets';
 
 type LibraryDocumentItem = DocumentItem & {
@@ -71,6 +76,8 @@ Page({
     uploadGraph: null as DocumentProcess['graph'] | null,
     uploadEta: '',
     uploadGraphLabel: '',
+    showMainIngestionProgress: false,
+    showGraphProgress: false,
     uploadError: '',
     retryingDocumentId: '',
   },
@@ -84,7 +91,7 @@ Page({
       (!['READY', 'FAILED', 'DELETED'].includes(this.data.uploadStatus) ||
         this.data.uploadGraph?.status === 'PROCESSING')
     ) {
-      void this.pollDocumentStatus(this.data.uploadDocumentId);
+      void this.refreshDocumentSnapshot(this.data.uploadDocumentId);
     }
   },
 
@@ -209,6 +216,12 @@ Page({
       uploadFileName: file.name,
       uploadDocumentId: '',
       uploadStatus: 'UPLOADED',
+      uploadStageProgress: null,
+      uploadGraph: null,
+      uploadEta: '',
+      uploadGraphLabel: '',
+      showMainIngestionProgress: true,
+      showGraphProgress: false,
       uploadError: '',
     });
     try {
@@ -221,7 +234,7 @@ Page({
         uploadDocumentId: result.documentId,
         uploadStatus: result.status,
       });
-      void this.pollDocumentStatus(result.documentId);
+      void this.refreshDocumentSnapshot(result.documentId);
       await this.loadLibrary();
     } catch (error) {
       this.setData({
@@ -241,7 +254,7 @@ Page({
     try {
       const result = await retryDocumentProcess(documentId);
       this.setData({ uploadStatus: result.status, uploadError: '' });
-      void this.pollDocumentStatus(documentId);
+      void this.refreshDocumentSnapshot(documentId);
     } catch (error) {
       showRequestError(error);
     }
@@ -359,38 +372,77 @@ Page({
     void this.loadDocuments(false);
   },
 
-  async pollDocumentStatus(documentId: string) {
-    this.stopPolling();
+  async refreshDocumentSnapshot(documentId: string) {
+    if (statusRequestInFlight || !documentId) return;
+    statusRequestInFlight = true;
     try {
       const process = await getDocumentProcess(documentId);
-      this.setData({
-        uploadStatus: process.status,
-        uploadError: process.errorMessage ?? '',
-        uploadStageProgress: process.stageProgress,
-        uploadGraph: process.graph ?? null,
-        uploadEta: formatRemainingSeconds(
-          process.graph?.estimatedRemainingSeconds ??
-            process.stageProgress.estimatedRemainingSeconds
-        ),
-        uploadGraphLabel: graphStatusLabel(process.graph?.status),
-      });
-      const graphProcessing = process.graph?.status === 'PROCESSING';
-      if (process.status === 'READY' && !graphProcessing) {
-        await this.loadLibrary();
-        return;
-      }
-      if (process.status === 'FAILED' || process.status === 'DELETED') return;
-      if (process.status === 'READY') await this.loadLibrary();
-      pollingTimer = setTimeout(() => {
-        void this.pollDocumentStatus(documentId);
-      }, 1500);
+      this.applyDocumentProcess(process);
+      if (isTerminalIngestionStatus(process.status)) this.stopPolling();
     } catch (error) {
       this.setData({
         uploadStatus: 'FAILED',
         uploadError: '无法获取文档处理状态',
       });
       showRequestError(error);
+    } finally {
+      statusRequestInFlight = false;
     }
+  },
+
+  applyDocumentProcess(process: DocumentProcess) {
+    const graph = process.graph ?? null;
+    this.setData({
+      uploadStatus: process.status,
+      uploadError: process.errorMessage ?? '',
+      uploadStageProgress: process.stageProgress,
+      uploadGraph: graph,
+      uploadEta: formatRemainingSeconds(
+        graph?.estimatedRemainingSeconds ??
+          process.stageProgress.estimatedRemainingSeconds
+      ),
+      uploadGraphLabel: graphStatusLabel(graph?.status),
+      ...buildUploadDisplayState(process.status, graph),
+    });
+  },
+
+  applyProgressEvent(event: DocumentProgressEvent) {
+    const graph = event.graph ?? this.data.uploadGraph;
+    const status =
+      event.stage === 'graph' ? this.data.uploadStatus : event.status;
+    this.setData({
+      uploadStatus: status,
+      uploadError: event.errorMessage ?? this.data.uploadError,
+      uploadStageProgress:
+        event.stage === 'graph'
+          ? this.data.uploadStageProgress
+          : {
+              completed: event.completed,
+              total: event.total,
+              percent: event.percent,
+              estimatedRemainingSeconds: null,
+            },
+      uploadGraph: graph,
+      uploadEta: formatRemainingSeconds(
+        graph?.estimatedRemainingSeconds ??
+          this.data.uploadStageProgress?.estimatedRemainingSeconds
+      ),
+      uploadGraphLabel: graphStatusLabel(graph?.status),
+      ...buildUploadDisplayState(status, graph),
+    });
+    if (isTerminalIngestionStatus(status)) this.stopPolling();
+  },
+
+  startFallbackPolling() {
+    this.stopPolling();
+    const documentId = this.data.uploadDocumentId;
+    if (!documentId || isTerminalIngestionStatus(this.data.uploadStatus))
+      return;
+    pollingTimer = setTimeout(async () => {
+      pollingTimer = null;
+      await this.refreshDocumentSnapshot(documentId);
+      this.startFallbackPolling();
+    }, STATUS_FALLBACK_INTERVAL_MS);
   },
 
   stopPolling() {
@@ -401,6 +453,10 @@ Page({
 
   subscribeProgress() {
     this.stopProgressStream();
+    const documentId = this.data.uploadDocumentId;
+    if (documentId && !isTerminalIngestionStatus(this.data.uploadStatus)) {
+      void this.refreshDocumentSnapshot(documentId);
+    }
     progressStream = streamLibraryDocumentProgress(
       (event) => {
         if (event.event !== 'progress') return;
@@ -409,7 +465,9 @@ Page({
             ? event.data.documentId
             : '';
         if (documentId && documentId === this.data.uploadDocumentId) {
-          void this.pollDocumentStatus(documentId);
+          const progress = documentProgressEvent(event.data);
+          if (progress) this.applyProgressEvent(progress);
+          this.stopPolling();
         }
         if (libraryRefreshTimer) clearTimeout(libraryRefreshTimer);
         libraryRefreshTimer = setTimeout(() => {
@@ -421,6 +479,7 @@ Page({
         if (!this.data.selectedDatasetId) {
           return;
         }
+        this.startFallbackPolling();
         progressReconnectTimer = setTimeout(() => {
           progressReconnectTimer = null;
           this.subscribeProgress();
@@ -452,6 +511,42 @@ function inputValue(detail: unknown): string {
     return detail.value;
   }
   return '';
+}
+
+function documentProgressEvent(
+  data: Record<string, unknown>
+): DocumentProgressEvent | null {
+  const status = data.status;
+  const documentId = data.documentId;
+  const stage = data.stage;
+  const completed = data.completed;
+  const total = data.total;
+  const percent = data.percent;
+  if (
+    typeof status !== 'string' ||
+    typeof documentId !== 'string' ||
+    typeof stage !== 'string' ||
+    typeof completed !== 'number' ||
+    typeof total !== 'number' ||
+    typeof percent !== 'number'
+  ) {
+    return null;
+  }
+  return {
+    documentId,
+    stage,
+    status: status as DocumentProcessStatus,
+    completed,
+    total,
+    percent,
+    errorCode: typeof data.errorCode === 'string' ? data.errorCode : null,
+    errorMessage:
+      typeof data.errorMessage === 'string' ? data.errorMessage : null,
+    graph:
+      data.graph && typeof data.graph === 'object'
+        ? (data.graph as DocumentProgressEvent['graph'])
+        : null,
+  };
 }
 
 function withIngestionState(documents: DocumentItem[]): LibraryDocumentItem[] {

@@ -1,31 +1,41 @@
 import { DocumentProcessStatus, GraphProgress } from '../types/api';
 
 export function isRetryableIngestionStatus(
-  status: DocumentProcessStatus | null | undefined,
+  status: DocumentProcessStatus | null | undefined
 ): boolean {
   return status === 'FAILED' || status === 'UPLOADED';
 }
 
 export function isTerminalIngestionStatus(
-  status: DocumentProcessStatus | '',
+  status: DocumentProcessStatus | ''
 ): boolean {
   return status === 'READY' || status === 'FAILED' || status === 'DELETED';
 }
 
 export function shouldShowMainIngestionProgress(
-  status: DocumentProcessStatus | '',
+  status: DocumentProcessStatus | ''
 ): boolean {
   return Boolean(status) && !isTerminalIngestionStatus(status);
 }
 
 export function shouldShowGraphProgress(
-  graph: GraphProgress | null | undefined,
+  graph: GraphProgress | null | undefined
 ): boolean {
   return graph !== null && graph !== undefined;
 }
 
+export function buildUploadDisplayState(
+  status: DocumentProcessStatus | '',
+  graph: GraphProgress | null | undefined
+) {
+  return {
+    showMainIngestionProgress: shouldShowMainIngestionProgress(status),
+    showGraphProgress: shouldShowGraphProgress(graph),
+  };
+}
+
 export function ingestionStatusLabel(
-  status: DocumentProcessStatus | null | undefined,
+  status: DocumentProcessStatus | null | undefined
 ): string {
   switch (status) {
     case 'READY':
@@ -52,7 +62,7 @@ export function ingestionStatusLabel(
 }
 
 export function graphStatusLabel(
-  status: 'NOT_STARTED' | 'PROCESSING' | 'READY' | 'FAILED' | null | undefined,
+  status: 'NOT_STARTED' | 'PROCESSING' | 'READY' | 'FAILED' | null | undefined
 ): string {
   switch (status) {
     case 'PROCESSING':
@@ -67,7 +77,7 @@ export function graphStatusLabel(
 }
 
 export function formatRemainingSeconds(
-  seconds: number | null | undefined,
+  seconds: number | null | undefined
 ): string {
   if (seconds === null || seconds === undefined) return '正在估算';
   if (seconds < 60) return `预计 ${seconds} 秒`;
