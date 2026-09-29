@@ -38,3 +38,5 @@ export interface UploadItem {
   documentId?: string;
   error?: ApiError;
 }
+
+export type Upload = UploadItem;
