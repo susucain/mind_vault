@@ -158,10 +158,11 @@ export class ChatService {
           summary,
           history,
         };
-        result =
-          options.signal || options.emitStage
-            ? await this.agent.invoke(agentInput, options)
-            : await this.agent.invoke(agentInput);
+        // sessionId 只用于把 trace 归到同一条会话下，不进模型输入
+        result = await this.agent.invoke(agentInput, {
+          ...options,
+          sessionId: conversationId,
+        });
       }
     } catch (error) {
       if (!userMessage) {

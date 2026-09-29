@@ -1,5 +1,10 @@
 import { InterviewAgentService } from './interview-agent.service';
 
+/** Langfuse 未启用时的形态：直接执行，不做任何包装 */
+const tracingOff = {
+  trace: (_context: unknown, fn: () => unknown) => fn(),
+} as never;
+
 function buildAgent() {
   const models = {
     generateQuestion: jest
@@ -31,6 +36,7 @@ function buildAgent() {
     models as never,
     retrieval as never,
     memories as never,
+    tracingOff,
   );
   return { agent, models, retrieval, memories };
 }

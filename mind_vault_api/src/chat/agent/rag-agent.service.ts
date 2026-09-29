@@ -3,6 +3,7 @@ import { RetrievalService } from '../../retrieval/retrieval.service';
 import { RetrievalHit } from '../../retrieval/retrieval-hit';
 import { MemoryService } from '../../memory/memory.service';
 import { MemoryItem } from '../../memory/memory.types';
+import { LangfuseService } from '../../observability/langfuse.service';
 import { RagModelService } from './rag-model.service';
 import {
   AnswerMode,
@@ -22,10 +23,11 @@ export class RagAgentService {
     private readonly models: RagModelService,
     private readonly retrieval: RetrievalService,
     private readonly memories: MemoryService,
+    private readonly langfuse: LangfuseService,
   ) {}
 
-  /** 编排入口：改写 → 长期记忆召回 → 意图路由 → 门控 →（命中则检索）→ 回答 */
-  async invoke(
+  /** 编排入口：整条问答链路记作一条 trace，内部每次模型调用是它的子节点 */
+  invoke(
     input: {
       ownerId: string;
       question: string;
@@ -36,7 +38,45 @@ export class RagAgentService {
     options: {
       signal?: AbortSignal;
       emitStage?: (stage: RagStage) => void;
+      sessionId?: string;
     } = {},
+  ): Promise<RagState> {
+    const { sessionId, ...runOptions } = options;
+    return this.langfuse.trace(
+      {
+        name: 'chat.ask',
+        userId: input.ownerId,
+        sessionId,
+        tags: ['chat', 'ask'],
+        input: {
+          question: input.question,
+          datasetIds: input.datasetIds,
+          historyTurns: input.history?.length ?? 0,
+        },
+        output: (state) => ({
+          answerMode: state.answerMode,
+          confidence: state.confidence,
+          citedChunkIds: state.citedChunkIds,
+          usedTools: state.usedTools,
+        }),
+      },
+      () => this.run(input, runOptions),
+    );
+  }
+
+  /** 改写 → 长期记忆召回 → 意图路由 → 门控 →（命中则检索）→ 回答 */
+  private async run(
+    input: {
+      ownerId: string;
+      question: string;
+      datasetIds: string[];
+      summary?: string;
+      history?: HistoryTurn[];
+    },
+    options: {
+      signal?: AbortSignal;
+      emitStage?: (stage: RagStage) => void;
+    },
   ): Promise<RagState> {
     const runStage = async <T>(
       stage: RagStage,
@@ -116,7 +156,18 @@ export class RagAgentService {
     },
     options: { signal?: AbortSignal } = {},
   ): Promise<string> {
-    return this.models.summarize(input, options);
+    return this.langfuse.trace(
+      {
+        name: 'chat.summarize',
+        tags: ['chat', 'summarize'],
+        input: {
+          previousSummaryChars: input.previousSummary?.length ?? 0,
+          turns: input.turns.length,
+        },
+        output: (summary) => ({ summaryChars: summary.length }),
+      },
+      () => this.models.summarize(input, options),
+    );
   }
 
   /**

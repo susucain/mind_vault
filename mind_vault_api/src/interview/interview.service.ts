@@ -43,6 +43,8 @@ export class InterviewService {
     onStage?: StageReporter,
   ) {
     await this.datasets.findOne(ownerId, dto.datasetId);
+    // 先生成 id：出题这一步就带上它，trace 才能和这次会话归到一组
+    const sessionId = nextSnowflakeId();
     const question = await this.agent.generateQuestion({
       ownerId,
       datasetId: dto.datasetId,
@@ -51,10 +53,11 @@ export class InterviewService {
       focus: dto.focus,
       jobDescription: dto.jobDescription,
       hits: [],
+      sessionId,
       onStage,
     });
     const session = this.sessions.create({
-      id: nextSnowflakeId(),
+      id: sessionId,
       ownerId,
       datasetId: dto.datasetId,
       topic: dto.topic,
@@ -104,6 +107,7 @@ export class InterviewService {
       question,
       answer: dto.answer,
       topic: session.topic,
+      sessionId: id,
       onStage,
     })) as {
       evaluation: InterviewEvaluation;
@@ -228,6 +232,7 @@ export class InterviewService {
       question: sourceTurn.question,
       answer: dto.answer,
       topic: sourceSession.topic,
+      sessionId: sourceSession.id,
     })) as { evaluation: InterviewEvaluation; citations: string[] };
     const evaluation = result.evaluation;
     const score =
@@ -292,6 +297,7 @@ export class InterviewService {
       jobDescription: session.jobDescription,
       askedQuestions: asked.map((turn) => turn.question),
       hits: [],
+      sessionId: session.id,
       onStage,
     });
     return next.question;

@@ -111,13 +111,17 @@ describe('ChatService', () => {
     expect(agent.summarize).not.toHaveBeenCalled();
     expect(conversations.save).toHaveBeenCalledWith(conversation);
     expect(memories.extractFromTurns).not.toHaveBeenCalled();
-    expect(agent.invoke).toHaveBeenCalledWith({
-      ownerId: 'user_1',
-      question: '继续说说',
-      datasetIds: ['dataset_1'],
-      summary: undefined,
-      history: turnsOf(all.slice(-8)),
-    });
+    expect(agent.invoke).toHaveBeenCalledWith(
+      {
+        ownerId: 'user_1',
+        question: '继续说说',
+        datasetIds: ['dataset_1'],
+        summary: undefined,
+        history: turnsOf(all.slice(-8)),
+      },
+      // sessionId 只用于把 trace 归到同一条会话下，不进模型输入
+      { sessionId: 'conversation_1' },
+    );
   });
 
   it('compacts the overflow into the conversation summary and advances the cursor', async () => {
@@ -136,6 +140,7 @@ describe('ChatService', () => {
     );
     expect(agent.invoke).toHaveBeenCalledWith(
       expect.objectContaining({ summary: '新摘要' }),
+      { sessionId: 'conversation_1' },
     );
     // 长期记忆抽取挂在压缩之后，输入正是刚被压缩的这批轮次
     expect(memories.extractFromTurns).toHaveBeenCalledWith({
@@ -159,6 +164,7 @@ describe('ChatService', () => {
     expect(memories.extractFromTurns).not.toHaveBeenCalled();
     expect(agent.invoke).toHaveBeenCalledWith(
       expect.objectContaining({ summary: '旧摘要' }),
+      { sessionId: 'conversation_1' },
     );
   });
 
@@ -282,6 +288,7 @@ describe('ChatService', () => {
 
     expect(agent.invoke).toHaveBeenCalledWith(
       expect.objectContaining({ datasetIds: ['dataset_1'] }),
+      { sessionId: 'conversation_1' },
     );
   });
 

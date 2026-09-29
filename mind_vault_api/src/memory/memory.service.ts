@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { nextSnowflakeId } from '../common/snowflake-id';
 import { EmbeddingService } from '../embedding/embedding.service';
+import { LangfuseService } from '../observability/langfuse.service';
 import { UserMemoryEntity } from './entities/user-memory.entity';
 import { MemoryModelService } from './memory-model.service';
 import {
@@ -34,6 +35,7 @@ export class MemoryService {
     private readonly memories: Repository<UserMemoryEntity>,
     private readonly embedding: EmbeddingService,
     private readonly model: MemoryModelService,
+    private readonly langfuse: LangfuseService,
   ) {}
 
   /**
@@ -96,6 +98,24 @@ export class MemoryService {
     conversationId: string;
     turns: { role: string; content: string }[];
   }): Promise<number> {
+    return this.langfuse.trace(
+      {
+        name: 'memory.extract',
+        userId: input.ownerId,
+        sessionId: input.conversationId,
+        tags: ['memory', 'extract'],
+        input: { turns: input.turns.length },
+        output: (saved) => ({ saved }),
+      },
+      () => this.runExtraction(input),
+    );
+  }
+
+  private async runExtraction(input: {
+    ownerId: string;
+    conversationId: string;
+    turns: { role: string; content: string }[];
+  }): Promise<number> {
     if (input.turns.length === 0) return 0;
     const candidates = await this.model.extract(input.turns);
     let saved = 0;
@@ -118,6 +138,27 @@ export class MemoryService {
   }
 
   async handleExplicit(input: {
+    ownerId: string;
+    conversationId: string;
+    question: string;
+    summary?: string;
+    history: { role: 'user' | 'assistant'; content: string }[];
+    signal?: AbortSignal;
+  }): Promise<ExplicitMemoryResult> {
+    return this.langfuse.trace(
+      {
+        name: 'memory.explicit',
+        userId: input.ownerId,
+        sessionId: input.conversationId,
+        tags: ['memory', 'explicit'],
+        input: { question: input.question },
+        output: (result) => ({ action: result.action }),
+      },
+      () => this.runExplicit(input),
+    );
+  }
+
+  private async runExplicit(input: {
     ownerId: string;
     conversationId: string;
     question: string;

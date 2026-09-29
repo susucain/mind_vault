@@ -4,6 +4,7 @@ import { RetrievalService } from '../retrieval/retrieval.service';
 import { RetrievalHit } from '../retrieval/retrieval-hit';
 import { MemoryService } from '../memory/memory.service';
 import { MemoryNote } from '../memory/memory.types';
+import { LangfuseService } from '../observability/langfuse.service';
 import {
   InterviewModelService,
   InterviewEvaluation,
@@ -54,6 +55,7 @@ export class InterviewAgentService {
     private readonly models: InterviewModelService,
     private readonly retrieval: RetrievalService,
     private readonly memories: MemoryService,
+    private readonly langfuse: LangfuseService,
   ) {
     this.graph = new StateGraph(State)
       .addNode('retrieve', async (state, config) => {
@@ -84,7 +86,7 @@ export class InterviewAgentService {
       .compile();
   }
 
-  async generateQuestion(input: {
+  generateQuestion(input: {
     ownerId?: string;
     datasetId?: string;
     topic: string;
@@ -93,23 +95,40 @@ export class InterviewAgentService {
     jobDescription?: string | null;
     askedQuestions?: string[];
     hits: RetrievalHit[];
+    sessionId?: string;
     onStage?: StageReporter;
   }) {
-    const { onStage, ...payload } = input;
-    let hits = input.hits;
-    if (input.ownerId && input.datasetId) {
-      onStage?.('retrieving');
-      const result = await this.retrieval.hybrid({
-        ownerId: input.ownerId,
-        query: questionQuery(input.topic, input.focus),
-        datasetIds: [input.datasetId],
-        topK: 8,
-      });
-      hits = result.hits;
-    }
-    const memories = await this.loadPreferenceMemories(input.ownerId);
-    onStage?.('generating');
-    return this.models.generateQuestion({ ...payload, hits, memories });
+    const { onStage, sessionId, ...payload } = input;
+    return this.langfuse.trace(
+      {
+        name: 'interview.question',
+        userId: input.ownerId,
+        sessionId,
+        tags: ['interview', 'question'],
+        input: {
+          topic: input.topic,
+          intensity: input.intensity,
+          focus: input.focus,
+        },
+        output: (result) => ({ question: result.question }),
+      },
+      async () => {
+        let hits = input.hits;
+        if (input.ownerId && input.datasetId) {
+          onStage?.('retrieving');
+          const result = await this.retrieval.hybrid({
+            ownerId: input.ownerId,
+            query: questionQuery(input.topic, input.focus),
+            datasetIds: [input.datasetId],
+            topK: 8,
+          });
+          hits = result.hits;
+        }
+        const memories = await this.loadPreferenceMemories(input.ownerId);
+        onStage?.('generating');
+        return this.models.generateQuestion({ ...payload, hits, memories });
+      },
+    );
   }
 
   /**
@@ -137,16 +156,32 @@ export class InterviewAgentService {
     question: string;
     answer: string;
     topic: string;
+    sessionId?: string;
     onStage?: StageReporter;
   }) {
-    const { onStage, ...payload } = input;
-    return this.graph.invoke(
+    const { onStage, sessionId, ...payload } = input;
+    return this.langfuse.trace(
       {
-        ...payload,
-        hits: [],
-        citations: [],
+        name: 'interview.evaluate',
+        userId: input.ownerId,
+        sessionId,
+        tags: ['interview', 'evaluate'],
+        input: { question: input.question, answerChars: input.answer.length },
+        output: (state) => ({
+          evaluation: state.evaluation,
+          nextQuestion: state.nextQuestion,
+          citations: state.citations,
+        }),
       },
-      { configurable: { onStage } },
+      () =>
+        this.graph.invoke(
+          {
+            ...payload,
+            hits: [],
+            citations: [],
+          },
+          { configurable: { onStage } },
+        ),
     );
   }
 }

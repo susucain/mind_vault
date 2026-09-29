@@ -1,5 +1,10 @@
 import { GraphExtractionService } from './graph-extraction.service';
 
+/** Langfuse 未启用时的形态：直接执行，不做任何包装 */
+const tracingOff = {
+  trace: (_context: unknown, fn: () => unknown) => fn(),
+} as never;
+
 describe('GraphExtractionService', () => {
   it('limits oversized model extraction results before schema validation', async () => {
     const entities = Array.from({ length: 31 }, (_, index) => ({
@@ -25,7 +30,7 @@ describe('GraphExtractionService', () => {
         ) => Promise.resolve({ data: parse({ entities, relations }) }),
       ),
     };
-    const service = new GraphExtractionService(gateway as never);
+    const service = new GraphExtractionService(gateway as never, tracingOff);
 
     await expect(
       service.extract({ text: '内容' } as never),

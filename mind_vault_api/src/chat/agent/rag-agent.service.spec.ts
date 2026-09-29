@@ -1,5 +1,10 @@
 import { RagAgentService } from './rag-agent.service';
 
+/** Langfuse 未启用时的形态：直接执行，不做任何包装 */
+const tracingOff = {
+  trace: (_context: unknown, fn: () => unknown) => fn(),
+} as never;
+
 /** 默认不含长期记忆，需要断言的用例单独传入 mock */
 function buildAgent(models: unknown, retrieval: unknown, memories?: unknown) {
   return new RagAgentService(
@@ -8,6 +13,7 @@ function buildAgent(models: unknown, retrieval: unknown, memories?: unknown) {
     (memories ?? {
       recallMemories: jest.fn().mockResolvedValue([]),
     }) as never,
+    tracingOff,
   );
 }
 

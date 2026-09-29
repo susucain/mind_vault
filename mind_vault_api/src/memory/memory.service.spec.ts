@@ -2,6 +2,11 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { In } from 'typeorm';
 import { MemoryService } from './memory.service';
 
+/** Langfuse 未启用时的形态：直接执行，不做任何包装 */
+const tracingOff = {
+  trace: (_context: unknown, fn: () => unknown) => fn(),
+} as never;
+
 function buildService(
   input: {
     nearestRows?: unknown[];
@@ -43,6 +48,7 @@ function buildService(
     memories as never,
     embedding as never,
     model as never,
+    tracingOff,
   );
   return { service, memories, embedding, model, inserts, touches, queries };
 }

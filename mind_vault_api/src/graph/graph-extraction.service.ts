@@ -2,25 +2,45 @@ import { Injectable } from '@nestjs/common';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { DocumentChunk } from '../document/chunking/document-chunk';
 import { ModelGatewayService } from '../model/model-gateway.service';
+import { LangfuseService } from '../observability/langfuse.service';
 import { extractionSchema, GraphExtraction } from './graph-types';
 
 @Injectable()
 export class GraphExtractionService {
-  constructor(private readonly gateway: ModelGatewayService) {}
+  constructor(
+    private readonly gateway: ModelGatewayService,
+    private readonly langfuse: LangfuseService,
+  ) {}
 
-  async extract(chunk: DocumentChunk): Promise<GraphExtraction> {
-    const { data } = await this.gateway.invokeJson(
-      'fast',
-      [
-        new SystemMessage(
-          '你是知识图谱抽取器。只从提供原文中提取实体和关系。实体最多 30 个，关系最多 50 条。实体类型只能是 PERSON、PROJECT、TECHNOLOGY、CONCEPT、ORGANIZATION、EVENT。关系类型只能是 USES、USED_FOR、DEPENDS_ON、CAUSES、RELATED_TO、PART_OF、CREATED_BY、MENTIONED_WITH。不得编造。输出 JSON：{"entities":[{"name":"","type":""}],"relations":[{"source":"","target":"","type":"","confidence":0.0}]}。',
-        ),
-        new HumanMessage(`来源文档片段：\n${chunk.text}`),
-      ],
-      false,
-      (raw) => extractionSchema.parse(limitExtraction(raw)),
+  extract(chunk: DocumentChunk): Promise<GraphExtraction> {
+    return this.langfuse.trace(
+      {
+        name: 'graph.extract',
+        userId: chunk.ownerId,
+        // 图谱抽取是后台任务，没有用户会话，用文档与分块定位这次调用
+        tags: ['graph', 'extract'],
+        metadata: { documentId: chunk.documentId, chunkId: chunk.chunkId },
+        input: { textChars: chunk.text.length },
+        output: (result) => ({
+          entities: result.entities.length,
+          relations: result.relations.length,
+        }),
+      },
+      async () => {
+        const { data } = await this.gateway.invokeJson(
+          'fast',
+          [
+            new SystemMessage(
+              '你是知识图谱抽取器。只从提供原文中提取实体和关系。实体最多 30 个，关系最多 50 条。实体类型只能是 PERSON、PROJECT、TECHNOLOGY、CONCEPT、ORGANIZATION、EVENT。关系类型只能是 USES、USED_FOR、DEPENDS_ON、CAUSES、RELATED_TO、PART_OF、CREATED_BY、MENTIONED_WITH。不得编造。输出 JSON：{"entities":[{"name":"","type":""}],"relations":[{"source":"","target":"","type":"","confidence":0.0}]}。',
+            ),
+            new HumanMessage(`来源文档片段：\n${chunk.text}`),
+          ],
+          false,
+          (raw) => extractionSchema.parse(limitExtraction(raw)),
+        );
+        return data;
+      },
     );
-    return data;
   }
 }
 
