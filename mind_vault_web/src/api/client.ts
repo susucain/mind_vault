@@ -45,7 +45,7 @@ function isJsonPayload(body: RequestOptions['body']): body is Record<string, unk
   );
 }
 
-async function readError(response: Response): Promise<ApiRequestError> {
+export async function responseError(response: Response): Promise<ApiRequestError> {
   let payload: Partial<ApiErrorPayload> | undefined;
   try {
     payload = (await response.json()) as Partial<ApiErrorPayload>;
@@ -56,12 +56,14 @@ async function readError(response: Response): Promise<ApiRequestError> {
     ? payload.message.join(', ')
     : payload?.message || response.statusText || 'Request failed';
 
-  return new ApiRequestError({
+  const error = new ApiRequestError({
     status: payload?.statusCode ?? response.status,
     code: payload?.error || `HTTP_${response.status}`,
     message,
     requestId: response.headers.get('X-Request-Id') ?? undefined,
   });
+  if (error.status === 401) authExpiredHandler?.();
+  return error;
 }
 
 export function buildRequest(path: string, init: RequestOptions = {}): BuiltRequest {
@@ -100,9 +102,7 @@ export async function request<T>(
   }
 
   if (!response.ok) {
-    const error = await readError(response);
-    if (error.status === 401) authExpiredHandler?.();
-    throw error;
+    throw await responseError(response);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;

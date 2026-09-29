@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useSse } from './use-sse';
 import { setAccessTokenProvider } from '../api/client';
+import { setAuthExpiredRedirectHandler, useAuthStore } from '../stores/auth.store';
 
 function streamResponse(chunks: string[], signal?: AbortSignal): Response {
   const encoder = new TextEncoder();
@@ -24,6 +25,7 @@ function streamResponse(chunks: string[], signal?: AbortSignal): Response {
 describe('useSse', () => {
   afterEach(() => {
     setAccessTokenProvider(() => undefined);
+    setAuthExpiredRedirectHandler(undefined);
     vi.restoreAllMocks();
   });
 
@@ -41,6 +43,87 @@ describe('useSse', () => {
     const headers = new Headers(init?.headers);
     expect(headers.get('Authorization')).toBe('Bearer stream-token');
     expect(headers.get('X-Request-ID')).toEqual(expect.any(String));
+  });
+
+  it('normalizes a non-OK response and clears auth through the shared 401 handler', async () => {
+    setAuthExpiredRedirectHandler(vi.fn());
+    useAuthStore.getState().setSession({
+      token: 'expired-token',
+      user: { id: 'user-1' },
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          statusCode: 401,
+          message: 'Unauthorized',
+          error: 'Unauthorized',
+        }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    const { result } = renderHook(() => useSse());
+
+    await expect(
+      result.current.start('/conversations/c1/messages/stream', { onEvent: vi.fn() }),
+    ).rejects.toMatchObject({ status: 401, code: 'Unauthorized' });
+
+    expect(useAuthStore.getState()).toMatchObject({ token: undefined, user: undefined });
+  });
+
+  it('adapts representative chat controller frames without dropping backend stages', async () => {
+    // Source: mind_vault_api/src/chat/chat.controller.ts writeEvent() and RagStage values.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      streamResponse([
+        'event: stage\ndata: {"stage":"preparing"}\n\nevent: stage\ndata: {"stage":"retrieve"}\n\nevent: stage\ndata: {"stage":"answer"}\n\nevent: meta\ndata: {"messageId":"message-1"}\n\nevent: token\ndata: {"text":"Answer"}\n\nevent: done\ndata: {"confidence":0.9}\n\n',
+      ]),
+    );
+    const onEvent = vi.fn();
+    const { result } = renderHook(() => useSse());
+
+    await act(async () => {
+      await result.current.start('/conversations/c1/messages/stream', { onEvent });
+    });
+
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'status', backendStage: 'preparing' }),
+    );
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'status', status: 'searching', backendStage: 'retrieve' }),
+    );
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'status', status: 'answering', backendStage: 'answer' }),
+    );
+    expect(onEvent).toHaveBeenCalledWith({ type: 'message_start', messageId: 'message-1' });
+    expect(onEvent).toHaveBeenCalledWith({ type: 'token', content: 'Answer' });
+  });
+
+  it('adapts representative interview controller stage and result frames', async () => {
+    // Source: mind_vault_api/src/interview/interview.controller.ts openSseStream().
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      streamResponse([
+        'event: stage\ndata: {"stage":"preparing"}\n\nevent: stage\ndata: {"stage":"retrieving"}\n\nevent: stage\ndata: {"stage":"evaluating"}\n\nevent: stage\ndata: {"stage":"generating"}\n\nevent: result\ndata: {"id":"session-1","question":"Tell me about it"}\n\nevent: done\ndata: {}\n\n',
+      ]),
+    );
+    const onEvent = vi.fn();
+    const { result } = renderHook(() => useSse());
+
+    await act(async () => {
+      await result.current.start('/interview/sessions/stream', { onEvent });
+    });
+
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'status', status: 'searching', backendStage: 'retrieving' }),
+    );
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'status', status: 'reranking', backendStage: 'evaluating' }),
+    );
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'status', status: 'answering', backendStage: 'generating' }),
+    );
+    expect(onEvent).toHaveBeenCalledWith({
+      type: 'result',
+      result: { id: 'session-1', question: 'Tell me about it' },
+    });
   });
 
   it('parses events split across chunks', async () => {

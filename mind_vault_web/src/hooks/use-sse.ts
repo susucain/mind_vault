@@ -1,17 +1,23 @@
 import { useCallback, useRef, useState } from 'react';
-import { buildRequest } from '../api/client';
+import { buildRequest, responseError, type RequestOptions } from '../api/client';
+import { ApiRequestError } from '../lib/errors';
 import type { Citation } from '../types/domain';
 
 export type StreamEvent =
   | { type: 'message_start'; messageId: string }
   | { type: 'token'; content: string }
   | { type: 'citation'; citation: Citation }
-  | { type: 'status'; status: 'searching' | 'reranking' | 'answering' }
+  | {
+      type: 'status';
+      status: 'searching' | 'reranking' | 'answering' | 'backend';
+      backendStage: string;
+    }
+  | { type: 'result'; result: unknown }
   | { type: 'done'; messageId: string }
   | { type: 'error'; code: string; message: string };
 
 export interface SseStartOptions {
-  init?: RequestInit;
+  init?: RequestOptions;
   onEvent: (event: StreamEvent) => void;
 }
 
@@ -32,11 +38,11 @@ function normalize(eventName: string, payload: unknown): StreamEvent | undefined
       return { type: 'citation', citation: payload as Citation };
     case 'status':
     case 'stage': {
-      const status = String(data.status ?? data.stage ?? '');
-      return status === 'searching' || status === 'reranking' || status === 'answering'
-        ? { type: 'status', status }
-        : undefined;
+      const backendStage = String(data.status ?? data.stage ?? '');
+      return { type: 'status', status: stageStatus(backendStage), backendStage };
     }
+    case 'result':
+      return { type: 'result', result: payload };
     case 'done':
       return { type: 'done', messageId: String(data.messageId ?? '') };
     case 'error':
@@ -44,6 +50,13 @@ function normalize(eventName: string, payload: unknown): StreamEvent | undefined
     default:
       return undefined;
   }
+}
+
+function stageStatus(stage: string): Extract<StreamEvent, { type: 'status' }>['status'] {
+  if (stage === 'retrieve' || stage === 'retrieving' || stage === 'searching') return 'searching';
+  if (stage === 'evaluating' || stage === 'reranking') return 'reranking';
+  if (stage === 'answer' || stage === 'generating' || stage === 'answering') return 'answering';
+  return 'backend';
 }
 
 export function useSse() {
@@ -65,7 +78,7 @@ export function useSse() {
     try {
       const built = buildRequest(path, { ...options.init, signal: controller.signal });
       const response = await fetch(built.url, built.init);
-      if (!response.ok) throw new Error(`Stream request failed (${response.status})`);
+      if (!response.ok) throw await responseError(response);
       if (!response.body) throw new Error('Stream response has no body');
 
       const reader = response.body.getReader();
@@ -109,6 +122,17 @@ export function useSse() {
       if (controller.signal.aborted) {
         setStatus('aborted');
         return;
+      }
+      if (caught instanceof ApiRequestError) {
+        const streamError = {
+          type: 'error' as const,
+          code: caught.code,
+          message: caught.message,
+        };
+        setError(streamError);
+        options.onEvent(streamError);
+        setStatus('error');
+        throw caught;
       }
       const streamError = {
         type: 'error' as const,
