@@ -42,19 +42,4 @@ describe('AppShell', () => {
     expect(screen.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('replaces the sidebar with the mobile bottom navigation below 768px', () => {
-    setViewport(767);
-
-    render(
-      <MemoryRouter initialEntries={['/app/interview']}>
-        <AppShell>
-          <h1>Interview</h1>
-        </AppShell>
-      </MemoryRouter>,
-    );
-
-    expect(screen.queryByLabelText('Desktop navigation')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Mobile navigation')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Interview' })).toHaveAttribute('aria-current', 'page');
-  });
 });

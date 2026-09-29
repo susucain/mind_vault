@@ -33,4 +33,35 @@ describe('router', () => {
     });
     expect(router.state.location.pathname).toBe('/app/overview');
   });
+
+  it('redirects the authenticated app root to overview', async () => {
+    useAuthStore.getState().setSession({ token: 'test-token', user: { id: 'user-1' } });
+    await router.navigate('/app');
+
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Overview' })).toBeInTheDocument();
+    });
+    expect(router.state.location.pathname).toBe('/app/overview');
+  });
+
+  it.each([
+    '/app/library/documents',
+    '/app/library/datasets/dataset-1',
+    '/app/library/folders',
+    '/app/library/tags',
+    '/app/library/archive',
+    '/app/chat',
+    '/app/interview/sessions',
+  ])('protects the registered placeholder route %s', async (path) => {
+    useAuthStore.getState().clear();
+    await router.navigate(path);
+
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/login');
+    });
+  });
 });

@@ -49,6 +49,18 @@ const navigation: NavigationItem[] = [
   },
 ];
 
+const mobileNavigation: NavigationItem[] = [
+  navigation[0],
+  navigation[1],
+  navigation[3],
+  {
+    label: 'Account',
+    to: '/app/settings/account',
+    icon: Settings,
+    match: (pathname) => pathname.startsWith('/app/settings'),
+  },
+];
+
 type ViewportMode = 'mobile' | 'compact' | 'desktop';
 
 function getViewportMode(): ViewportMode {
@@ -106,11 +118,10 @@ export function DesktopSidebar({ compact }: { compact: boolean }) {
 
 export function MobileBottomNav() {
   const { pathname } = useLocation();
-  const mobileItems = navigation.filter((item) => item.label !== 'Settings');
 
   return (
     <nav aria-label="Mobile navigation" className="mobile-bottom-nav">
-      {mobileItems.map((item) => {
+      {mobileNavigation.map((item) => {
         const Icon = item.icon;
         const active = isActive(item, pathname);
         return (
