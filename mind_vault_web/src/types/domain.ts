@@ -1,0 +1,78 @@
+export type DocumentStatus =
+  | 'pending'
+  | 'uploading'
+  | 'processing'
+  | 'ready'
+  | 'failed'
+  | 'archived'
+  | 'deleted';
+
+export interface DocumentLocator {
+  page?: number;
+  slide?: number;
+  sheet?: string;
+  cellRange?: string;
+  lineStart?: number;
+  lineEnd?: number;
+  jsonPath?: string;
+}
+
+export interface Citation {
+  id: string;
+  documentId: string;
+  documentName: string;
+  excerpt: string;
+  locator: DocumentLocator;
+}
+
+export interface Conversation {
+  id: string;
+  title: string;
+  datasetIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ChatMessageRole = 'user' | 'assistant' | 'system';
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  role: ChatMessageRole;
+  content: string;
+  citations: Citation[];
+  createdAt: string;
+}
+
+export type InterviewSessionStatus = 'created' | 'active' | 'completed' | 'abandoned';
+
+export interface InterviewSession {
+  id: string;
+  datasetId: string;
+  title: string;
+  status: InterviewSessionStatus;
+  questionCount: number;
+  answeredCount: number;
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface ReviewItem {
+  id: string;
+  sessionId: string;
+  prompt: string;
+  answer?: string;
+  feedback?: string;
+  score?: number;
+  locator?: DocumentLocator;
+  nextReviewAt?: string;
+}
+
+export interface Dataset {
+  id: string;
+  name: string;
+  description?: string;
+  documentCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
