@@ -1,12 +1,15 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
-import { LoginPage, ProtectedLayout } from './layouts';
-import {
-  ConversationPage,
-  DocumentPage,
-  InterviewSessionPage,
-  PlaceholderPage,
-} from './pages';
+import { ProtectedLayout } from './layouts';
+import { ConversationPage, InterviewSessionPage, PlaceholderPage } from './pages';
 import { APP_PATHS } from './navigation';
+import { LoginPage } from '../pages/auth/LoginPage';
+import { OverviewPage } from '../pages/overview/OverviewPage';
+import { LibraryPage } from '../pages/library/LibraryPage';
+import { DatasetsPage } from '../pages/library/DatasetsPage';
+import { DocumentDetailPage } from '../pages/library/DocumentDetailPage';
+import { DocumentPreviewPage } from '../pages/library/DocumentPreviewPage';
+import { MockLibraryPage } from '../pages/library/MockLibraryPage';
+import { ArchivePage } from '../pages/library/ArchivePage';
 
 export const router = createBrowserRouter([
   {
@@ -22,16 +25,16 @@ export const router = createBrowserRouter([
     element: <ProtectedLayout />,
     children: [
       { index: true, element: <Navigate replace to={APP_PATHS.overview} /> },
-      { path: 'overview', element: <PlaceholderPage title="Overview" /> },
-      { path: 'library', element: <PlaceholderPage title="Library" /> },
-      { path: 'library/documents', element: <PlaceholderPage title="Library" /> },
-      { path: 'library/datasets', element: <PlaceholderPage title="Datasets" /> },
-      { path: 'library/datasets/:datasetId', element: <PlaceholderPage title="Datasets" /> },
-      { path: 'library/folders', element: <PlaceholderPage title="Library" /> },
-      { path: 'library/tags', element: <PlaceholderPage title="Library" /> },
-      { path: 'library/archive', element: <PlaceholderPage title="Library" /> },
-      { path: 'library/documents/:documentId', element: <DocumentPage /> },
-      { path: 'library/documents/:documentId/preview', element: <DocumentPage preview /> },
+      { path: 'overview', element: <OverviewPage /> },
+      { path: 'library', element: <LibraryPage /> },
+      { path: 'library/documents', element: <LibraryPage /> },
+      { path: 'library/datasets', element: <DatasetsPage /> },
+      { path: 'library/datasets/:datasetId', element: <DatasetsPage /> },
+      { path: 'library/folders', element: <MockLibraryPage kind="folders" /> },
+      { path: 'library/tags', element: <MockLibraryPage kind="tags" /> },
+      { path: 'library/archive', element: <ArchivePage /> },
+      { path: 'library/documents/:documentId', element: <DocumentDetailPage /> },
+      { path: 'library/documents/:documentId/preview', element: <DocumentPreviewPage /> },
       { path: 'chat', element: <ConversationPage isNew /> },
       { path: 'chat/new', element: <ConversationPage isNew /> },
       { path: 'chat/:conversationId', element: <ConversationPage /> },

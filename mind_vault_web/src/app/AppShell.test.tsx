@@ -22,8 +22,8 @@ describe('AppShell', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('link', { name: 'Library' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/app/settings/account');
+    expect(screen.getByRole('link', { name: '知识库' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: '个人设置' })).toHaveAttribute('href', '/app/settings/account');
     expect(screen.getByRole('heading', { name: 'Library content' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Mobile navigation')).not.toBeInTheDocument();
   });
@@ -40,7 +40,7 @@ describe('AppShell', () => {
     );
 
     expect(screen.getByLabelText('Desktop navigation')).toHaveAttribute('data-compact', 'true');
-    expect(screen.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: '概览' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('replaces the sidebar with mobile navigation at 767px', () => {

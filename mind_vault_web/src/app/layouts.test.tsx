@@ -35,7 +35,7 @@ describe('authentication routes', () => {
 
     render(<RouterProvider router={router} />);
 
-    await user.click(await screen.findByRole('button', { name: 'Sign in' }));
+    await user.click(await screen.findByRole('button', { name: '进入工作台' }));
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/app/chat/conversation-1');
@@ -60,7 +60,7 @@ describe('authentication routes', () => {
 
     render(<RouterProvider router={router} />);
 
-    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    await user.click(screen.getByRole('button', { name: '进入工作台' }));
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/app/library');

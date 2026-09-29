@@ -86,12 +86,12 @@ function mockOnly(feature: string): void {
 
 export async function listFolders(): Promise<Folder[]> {
   mockOnly('Folders');
-  return [];
+  return [{ id: 'mock-folder-1', name: '求职准备' }, { id: 'mock-folder-2', name: '项目资料' }];
 }
 
 export async function listTags(): Promise<Tag[]> {
   mockOnly('Tags');
-  return [];
+  return [{ id: 'mock-tag-1', name: '系统设计' }, { id: 'mock-tag-2', name: '待复习' }];
 }
 
 export async function archiveDocument(_id: string): Promise<void> {

@@ -23,27 +23,27 @@ interface NavigationItem {
 }
 
 const navigation: NavigationItem[] = [
-  { label: 'Overview', to: APP_PATHS.overview, icon: Home },
+  { label: '概览', to: APP_PATHS.overview, icon: Home },
   {
-    label: 'Library',
+    label: '知识库',
     to: APP_PATHS.library,
     icon: FolderKanban,
     match: (pathname) => pathname.startsWith('/app/library'),
   },
   {
-    label: 'Chat',
+    label: '问答',
     to: APP_PATHS.chatNew,
     icon: MessageSquareText,
     match: (pathname) => pathname.startsWith('/app/chat'),
   },
   {
-    label: 'Interview',
+    label: '面试训练',
     to: APP_PATHS.interview,
     icon: BrainCircuit,
     match: (pathname) => pathname.startsWith('/app/interview'),
   },
   {
-    label: 'Settings',
+    label: '个人设置',
     to: APP_PATHS.settingsAccount,
     icon: Settings,
     match: (pathname) => pathname.startsWith('/app/settings'),
@@ -52,7 +52,7 @@ const navigation: NavigationItem[] = [
 
 const mobileNavigation: NavigationItem[] = [
   { ...navigation[0], label: '首页' },
-  { ...navigation[1], label: '知识库' },
+  { ...navigation[1] },
   { ...navigation[3], label: '面试' },
   {
     label: '我的',
@@ -157,7 +157,7 @@ export function AppShell({ children }: PropsWithChildren) {
         <header className="app-header">
           <div className="header-title">
             {mode === 'mobile' ? <BookOpen aria-hidden="true" size={20} /> : <PanelLeft aria-hidden="true" size={18} />}
-            <span>Workspace</span>
+            <span>工作台</span>
           </div>
           <button aria-label="Open command menu" className="icon-button" onClick={() => setCommandMenuOpen(true)} type="button">
             <Search aria-hidden="true" size={18} />

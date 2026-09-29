@@ -11,11 +11,26 @@ export interface Document {
   id: string;
   title: string;
   status: DocumentStatus | number;
+  summary?: string | null;
+  tags?: string | null;
+  remark?: string | null;
   sourceFileName?: string | null;
   sourceFileSize?: string | null;
   sourceFileExtension?: string | null;
+  wordCount?: number;
+  viewCount?: number;
   ingestionStage?: string | null;
+  ingestionStatus?: string | null;
   ingestionErrorMessage?: string | null;
+  ingestionProgress?: {
+    completed: number;
+    total: number;
+    percent: number;
+    estimatedRemainingSeconds?: number | null;
+  } | null;
+  content?: string;
+  sections?: DocumentSection[];
+  pageCount?: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -28,6 +43,12 @@ export interface DocumentLocator {
   lineStart?: number;
   lineEnd?: number;
   jsonPath?: string;
+}
+
+export interface DocumentSection {
+  heading?: string;
+  content?: string;
+  locator: DocumentLocator;
 }
 
 export interface Citation {
@@ -62,10 +83,14 @@ export type InterviewSessionStatus = 'created' | 'active' | 'completed' | 'aband
 export interface InterviewSession {
   id: string;
   datasetId: string;
-  title: string;
-  status: InterviewSessionStatus;
-  questionCount: number;
-  answeredCount: number;
+  title?: string;
+  topic?: string;
+  status: InterviewSessionStatus | string;
+  questionCount?: number;
+  answeredCount?: number;
+  currentIndex?: number;
+  totalQuestions?: number;
+  currentQuestion?: string | null;
   createdAt: string;
   completedAt?: string;
 }
@@ -73,7 +98,8 @@ export interface InterviewSession {
 export interface ReviewItem {
   id: string;
   sessionId: string;
-  prompt: string;
+  prompt?: string;
+  title?: string;
   answer?: string;
   feedback?: string;
   score?: number;
@@ -84,8 +110,8 @@ export interface ReviewItem {
 export interface Dataset {
   id: string;
   name: string;
-  description?: string;
-  documentCount: number;
+  description?: string | null;
+  documentCount?: number;
   createdAt: string;
   updatedAt: string;
 }

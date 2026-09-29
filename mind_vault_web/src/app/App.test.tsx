@@ -21,7 +21,7 @@ describe('App', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Sign in to Mind Vault' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '登录 Mind Vault' })).toBeInTheDocument();
     });
   });
 });

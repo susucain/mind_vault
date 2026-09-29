@@ -1,4 +1,5 @@
 import { jsonRequest, request } from './client';
+import { appConfig } from '../lib/config';
 
 export interface AuthUser {
   id: string;
@@ -21,6 +22,12 @@ interface DevLoginResponse {
 }
 
 export async function devLogin(input: DevLoginInput = {}): Promise<AuthSession> {
+  if (appConfig.enableMockApi) {
+    return {
+      token: 'mock-development-token',
+      user: { id: 'mock-user', nickname: input.nickname?.trim() || '演示用户' },
+    };
+  }
   const response = await jsonRequest<DevLoginResponse>('/auth/dev-login', 'POST', input);
   return { token: response.accessToken, user: response.user };
 }
