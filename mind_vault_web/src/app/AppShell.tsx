@@ -43,18 +43,18 @@ const navigation: NavigationItem[] = [
   },
   {
     label: 'Settings',
-    to: '/app/settings/profile',
+    to: '/app/settings/account',
     icon: Settings,
     match: (pathname) => pathname.startsWith('/app/settings'),
   },
 ];
 
 const mobileNavigation: NavigationItem[] = [
-  navigation[0],
-  navigation[1],
-  navigation[3],
+  { ...navigation[0], label: '首页' },
+  { ...navigation[1], label: '知识库' },
+  { ...navigation[3], label: '面试' },
   {
-    label: 'Account',
+    label: '我的',
     to: '/app/settings/account',
     icon: Settings,
     match: (pathname) => pathname.startsWith('/app/settings'),

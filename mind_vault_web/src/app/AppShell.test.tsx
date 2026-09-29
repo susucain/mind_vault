@@ -23,6 +23,7 @@ describe('AppShell', () => {
     );
 
     expect(screen.getByRole('link', { name: 'Library' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/app/settings/account');
     expect(screen.getByRole('heading', { name: 'Library content' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Mobile navigation')).not.toBeInTheDocument();
   });

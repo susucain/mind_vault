@@ -5,9 +5,6 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:4174',
     browserName: 'chromium',
-    launchOptions: {
-      executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    },
   },
   webServer: {
     command: 'pnpm dev --host 127.0.0.1 --port 4174',

@@ -79,8 +79,37 @@ export function Dialog({
   );
 }
 
-export function Drawer(props: Parameters<typeof Dialog>[0]) {
-  return <Dialog {...props} />;
+export function Drawer({
+  children,
+  onOpenChange,
+  open,
+  side = 'right',
+  title,
+  trigger,
+}: PropsWithChildren<{
+  onOpenChange?: (open: boolean) => void;
+  open?: boolean;
+  side?: 'right' | 'bottom';
+  title: string;
+  trigger?: ReactNode;
+}>) {
+  return (
+    <DialogPrimitive.Root onOpenChange={onOpenChange} open={open}>
+      {trigger ? <DialogPrimitive.Trigger asChild>{trigger}</DialogPrimitive.Trigger> : null}
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="drawer-overlay" />
+        <DialogPrimitive.Content className="drawer-content" data-side={side}>
+          <div className="dialog-header">
+            <DialogPrimitive.Title>{title}</DialogPrimitive.Title>
+            <DialogPrimitive.Close aria-label="Close drawer" className="icon-button">
+              <X size={18} />
+            </DialogPrimitive.Close>
+          </div>
+          {children}
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
 }
 
 export function Tooltip({ children, content }: PropsWithChildren<{ content: string }>) {
