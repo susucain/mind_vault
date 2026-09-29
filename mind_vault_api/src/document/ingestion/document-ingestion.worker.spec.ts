@@ -44,7 +44,10 @@ describe('DocumentIngestionWorker', () => {
       {} as never,
     );
 
-    await (worker as never).failStaleJobs();
+    const internals = worker as unknown as {
+      failStaleJobs: () => Promise<void>;
+    };
+    await internals.failStaleJobs();
 
     expect(staleJob).toMatchObject({
       status: IngestionJobStatus.Failed,
@@ -248,7 +251,9 @@ describe('DocumentIngestionWorker', () => {
       save: jest.fn(async (job) => job),
     };
     const storage = {
-      downloadBytes: jest.fn().mockResolvedValue(Buffer.from('# RustFS source')),
+      downloadBytes: jest
+        .fn()
+        .mockResolvedValue(Buffer.from('# RustFS source')),
     };
     const parser = {
       parseStructured: jest.fn().mockResolvedValue({
@@ -316,7 +321,9 @@ describe('DocumentIngestionWorker', () => {
       stageCompleted: 0,
       stageTotal: 0,
     };
-    const publisher = { publishProgress: jest.fn().mockResolvedValue(undefined) };
+    const publisher = {
+      publishProgress: jest.fn().mockResolvedValue(undefined),
+    };
     const worker = new DocumentIngestionWorker(
       {
         findOne: jest.fn().mockResolvedValue(job),
@@ -350,9 +357,11 @@ describe('DocumentIngestionWorker', () => {
       { downloadBytes: jest.fn() } as never,
       { get: jest.fn().mockReturnValue(false) } as never,
       {
-        chunk: jest.fn().mockReturnValue([
-          { chunkId: 'chunk_1', text: '标题\n正文', documentId: 'doc_1' },
-        ]),
+        chunk: jest
+          .fn()
+          .mockReturnValue([
+            { chunkId: 'chunk_1', text: '标题\n正文', documentId: 'doc_1' },
+          ]),
       } as never,
       {
         embedDocuments: jest
@@ -595,7 +604,10 @@ describe('DocumentIngestionWorker', () => {
 
     expect(index.deleteByDocument).toHaveBeenCalledWith('user_1', 'doc_1');
     expect(graph.deleteDocument).toHaveBeenCalledWith('user_1', 'doc_1');
-    expect(graphTasks.cancelActiveTasks).toHaveBeenCalledWith('user_1', 'doc_1');
+    expect(graphTasks.cancelActiveTasks).toHaveBeenCalledWith(
+      'user_1',
+      'doc_1',
+    );
     expect(graphTasks.enqueue).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({ chunkId: 'chunk_1', documentId: 'doc_1' }),

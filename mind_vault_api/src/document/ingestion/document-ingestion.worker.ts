@@ -186,8 +186,9 @@ export class DocumentIngestionWorker {
         'document.*',
       );
       await channel.prefetch(1);
-      await channel.consume('mind-vault.ingestion.worker', (message) =>
-        void this.handleMessage(channel, message),
+      await channel.consume(
+        'mind-vault.ingestion.worker',
+        (message) => void this.handleMessage(channel, message),
       );
       this.connection = connection;
       this.channel = channel;
