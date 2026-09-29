@@ -16,6 +16,7 @@ describe('Drawer', () => {
     await user.click(screen.getByRole('button', { name: 'Open filters' }));
 
     expect(screen.getByRole('dialog', { name: 'Filters' })).toHaveAttribute('data-side', 'right');
+    expect(screen.getByRole('dialog', { name: 'Filters' })).toHaveClass('drawer-content');
     expect(screen.getByText('Drawer content')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Close drawer' }));

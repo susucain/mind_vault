@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { CommandMenu, Tooltip } from '../components/ui';
 import { useAppStore } from '../stores/app.store';
+import { APP_PATHS } from './navigation';
 
 interface NavigationItem {
   label: string;
@@ -22,28 +23,28 @@ interface NavigationItem {
 }
 
 const navigation: NavigationItem[] = [
-  { label: 'Overview', to: '/app/overview', icon: Home },
+  { label: 'Overview', to: APP_PATHS.overview, icon: Home },
   {
     label: 'Library',
-    to: '/app/library',
+    to: APP_PATHS.library,
     icon: FolderKanban,
     match: (pathname) => pathname.startsWith('/app/library'),
   },
   {
     label: 'Chat',
-    to: '/app/chat/new',
+    to: APP_PATHS.chatNew,
     icon: MessageSquareText,
     match: (pathname) => pathname.startsWith('/app/chat'),
   },
   {
     label: 'Interview',
-    to: '/app/interview',
+    to: APP_PATHS.interview,
     icon: BrainCircuit,
     match: (pathname) => pathname.startsWith('/app/interview'),
   },
   {
     label: 'Settings',
-    to: '/app/settings/account',
+    to: APP_PATHS.settingsAccount,
     icon: Settings,
     match: (pathname) => pathname.startsWith('/app/settings'),
   },
@@ -55,7 +56,7 @@ const mobileNavigation: NavigationItem[] = [
   { ...navigation[3], label: '面试' },
   {
     label: '我的',
-    to: '/app/settings/account',
+    to: APP_PATHS.settingsAccount,
     icon: Settings,
     match: (pathname) => pathname.startsWith('/app/settings'),
   },
@@ -89,7 +90,7 @@ export function DesktopSidebar({ compact }: { compact: boolean }) {
 
   return (
     <aside aria-label="Desktop navigation" className="desktop-sidebar" data-compact={compact}>
-      <Link aria-label="Mind Vault overview" className="brand" to="/app/overview">
+      <Link aria-label="Mind Vault overview" className="brand" to={APP_PATHS.overview}>
         <BookOpen aria-hidden="true" size={20} />
         {!compact ? <span>Mind Vault</span> : null}
       </Link>

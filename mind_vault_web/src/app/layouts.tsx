@@ -7,6 +7,21 @@ import { Button, Input, LoadingState } from '../components/ui';
 import { POST_LOGIN_REDIRECT_KEY, useAuthStore } from '../stores/auth.store';
 import { readStoredValue, removeStoredValue } from '../lib/storage';
 import { AppShell } from './AppShell';
+import { APP_PATHS } from './navigation';
+
+function redirectPathFromState(state: unknown): string | undefined {
+  if (!state || typeof state !== 'object' || !('from' in state)) return undefined;
+
+  const from = state.from;
+  if (typeof from === 'string') return from.startsWith('/') ? from : undefined;
+  if (!from || typeof from !== 'object' || !('pathname' in from) || typeof from.pathname !== 'string') {
+    return undefined;
+  }
+
+  const search = 'search' in from && typeof from.search === 'string' ? from.search : '';
+  const hash = 'hash' in from && typeof from.hash === 'string' ? from.hash : '';
+  return `${from.pathname}${search}${hash}`;
+}
 
 export function AuthLayout({ children }: PropsWithChildren) {
   return (
@@ -21,6 +36,7 @@ export function AuthLayout({ children }: PropsWithChildren) {
 }
 
 export function LoginPage() {
+  const location = useLocation();
   const navigate = useNavigate();
   const [nickname, setNickname] = useState('');
   const [error, setError] = useState<string>();
@@ -34,7 +50,10 @@ export function LoginPage() {
     try {
       const session = await devLogin({ nickname: nickname.trim() || undefined });
       setSession(session);
-      const redirectPath = readStoredValue<string>(POST_LOGIN_REDIRECT_KEY) || '/app/overview';
+      const redirectPath =
+        redirectPathFromState(location.state) ??
+        readStoredValue<string>(POST_LOGIN_REDIRECT_KEY) ??
+        APP_PATHS.overview;
       removeStoredValue(POST_LOGIN_REDIRECT_KEY);
       void navigate(redirectPath, { replace: true });
     } catch {

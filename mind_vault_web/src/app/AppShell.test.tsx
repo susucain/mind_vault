@@ -43,4 +43,47 @@ describe('AppShell', () => {
     expect(screen.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
   });
 
+  it('replaces the sidebar with mobile navigation at 767px', () => {
+    setViewport(767);
+
+    render(
+      <MemoryRouter initialEntries={['/app/interview']}>
+        <AppShell>
+          <h1>Interview</h1>
+        </AppShell>
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByLabelText('Desktop navigation')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Mobile navigation')).toBeInTheDocument();
+  });
+
+  it('keeps the compact sidebar at 979px', () => {
+    setViewport(979);
+
+    render(
+      <MemoryRouter initialEntries={['/app/overview']}>
+        <AppShell>
+          <h1>Overview</h1>
+        </AppShell>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText('Desktop navigation')).toHaveAttribute('data-compact', 'true');
+  });
+
+  it('uses the full desktop sidebar at 980px', () => {
+    setViewport(980);
+
+    render(
+      <MemoryRouter initialEntries={['/app/overview']}>
+        <AppShell>
+          <h1>Overview</h1>
+        </AppShell>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText('Desktop navigation')).toHaveAttribute('data-compact', 'false');
+  });
+
 });

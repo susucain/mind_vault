@@ -6,11 +6,12 @@ import {
   InterviewSessionPage,
   PlaceholderPage,
 } from './pages';
+import { APP_PATHS } from './navigation';
 
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <Navigate replace to="/app/overview" />,
+    element: <Navigate replace to={APP_PATHS.overview} />,
   },
   {
     path: '/login',
@@ -20,7 +21,7 @@ export const router = createBrowserRouter([
     path: '/app',
     element: <ProtectedLayout />,
     children: [
-      { index: true, element: <Navigate replace to="overview" /> },
+      { index: true, element: <Navigate replace to={APP_PATHS.overview} /> },
       { path: 'overview', element: <PlaceholderPage title="Overview" /> },
       { path: 'library', element: <PlaceholderPage title="Library" /> },
       { path: 'library/documents', element: <PlaceholderPage title="Library" /> },
@@ -45,6 +46,6 @@ export const router = createBrowserRouter([
   },
   {
     path: '*',
-    element: <Navigate replace to="/app/overview" />,
+    element: <Navigate replace to={APP_PATHS.overview} />,
   },
 ]);
