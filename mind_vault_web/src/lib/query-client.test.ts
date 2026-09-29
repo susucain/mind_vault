@@ -15,9 +15,14 @@ describe('queryClient', () => {
       throw new Error('expected a retry function');
     }
 
+    expect(retry(0, new Error('network unavailable'))).toBe(true);
+    expect(retry(0, errorWithStatus(408))).toBe(true);
+    expect(retry(0, errorWithStatus(429))).toBe(true);
     expect(retry(0, errorWithStatus(500))).toBe(true);
     expect(retry(1, errorWithStatus(500))).toBe(false);
-    expect(retry(0, errorWithStatus(401))).toBe(false);
-    expect(retry(0, errorWithStatus(403))).toBe(false);
+
+    for (const status of [400, 401, 403, 404, 422]) {
+      expect(retry(0, errorWithStatus(status))).toBe(false);
+    }
   });
 });

@@ -7,7 +7,13 @@ type RetryableError = {
 export function shouldRetry(failureCount: number, error: unknown) {
   const status = (error as RetryableError | null)?.status;
 
-  if (status === 401 || status === 403) {
+  const retryableStatus =
+    status === undefined ||
+    status === 408 ||
+    status === 429 ||
+    (status >= 500 && status <= 599);
+
+  if (!retryableStatus) {
     return false;
   }
 

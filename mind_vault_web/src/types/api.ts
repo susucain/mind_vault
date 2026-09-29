@@ -2,8 +2,20 @@ export interface ApiError {
   status: number;
   code: string;
   message: string;
+  /** Normalized from the X-Request-Id response header. */
   requestId?: string;
   details?: Record<string, unknown>;
+}
+
+export interface ApiErrorPayload {
+  statusCode: number;
+  message: string | string[];
+  error: string;
+}
+
+/** Nest sends the request id in this response header, not in the JSON payload. */
+export interface ApiErrorHeaders {
+  'X-Request-Id'?: string;
 }
 
 export interface PageResult<T> {
@@ -11,7 +23,7 @@ export interface PageResult<T> {
   page: number;
   pageSize: number;
   total: number;
-  hasNext: boolean;
+  hasNext?: boolean;
 }
 
 export type UploadStatus =
