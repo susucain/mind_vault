@@ -1,13 +1,27 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import { App } from './App';
+import { router } from './router';
+import { useAuthStore } from '../stores/auth.store';
 
 describe('App', () => {
-  it('renders the application shell at the root route', () => {
-    window.history.pushState({}, '', '/');
+  afterEach(async () => {
+    useAuthStore.getState().clear();
+    await act(async () => {
+      await router.navigate('/login');
+    });
+  });
+
+  it('renders the login route for an unauthenticated visitor', async () => {
+    useAuthStore.getState().clear();
+    await act(async () => {
+      await router.navigate('/login');
+    });
 
     render(<App />);
 
-    expect(screen.getByRole('heading', { name: 'Mind Vault' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Sign in to Mind Vault' })).toBeInTheDocument();
+    });
   });
 });
