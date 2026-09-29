@@ -185,6 +185,7 @@ export class DocumentIngestionWorker {
         // 通配绑定，避免新增 operation 时漏绑导致消息被交换器丢弃
         'document.*',
       );
+      await channel.prefetch(1);
       await channel.consume('mind-vault.ingestion.worker', (message) =>
         void this.handleMessage(channel, message),
       );

@@ -65,6 +65,7 @@ describe('DocumentIngestionWorker', () => {
       assertExchange: jest.fn().mockResolvedValue(undefined),
       assertQueue: jest.fn().mockResolvedValue(undefined),
       bindQueue: jest.fn().mockResolvedValue(undefined),
+      prefetch: jest.fn().mockResolvedValue(undefined),
       consume: jest.fn().mockResolvedValue(undefined),
       on: jest.fn((event: string, handler: () => void) => {
         firstChannelHandlers.set(event, handler);
@@ -81,6 +82,7 @@ describe('DocumentIngestionWorker', () => {
       assertExchange: jest.fn().mockResolvedValue(undefined),
       assertQueue: jest.fn().mockResolvedValue(undefined),
       bindQueue: jest.fn().mockResolvedValue(undefined),
+      prefetch: jest.fn().mockResolvedValue(undefined),
       consume: jest.fn().mockResolvedValue(undefined),
       on: jest.fn(),
       close: jest.fn().mockResolvedValue(undefined),
@@ -121,6 +123,7 @@ describe('DocumentIngestionWorker', () => {
 
     expect(connectMock).toHaveBeenCalledTimes(2);
     expect(secondConnection.createChannel).toHaveBeenCalledTimes(1);
+    expect(secondChannel.prefetch).toHaveBeenCalledWith(1);
     expect(secondChannel.consume).toHaveBeenCalledWith(
       'mind-vault.ingestion.worker',
       expect.any(Function),
