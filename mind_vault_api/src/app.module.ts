@@ -25,6 +25,7 @@ import { InterviewTurnEntity } from './interview/entities/interview-turn.entity'
 import { ReviewItemEntity } from './interview/entities/review-item.entity';
 import { ReviewAttemptEntity } from './interview/entities/review-attempt.entity';
 import { ModelModule } from './model/model.module';
+import { ObservabilityModule } from './observability/observability.module';
 import { MemoryModule } from './memory/memory.module';
 import { UserMemoryEntity } from './memory/entities/user-memory.entity';
 import { AddReviewWorkspaceSchema1790380800000 } from './migrations/1790380800000-add-review-workspace-schema';
@@ -49,6 +50,7 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
     AuthModule,
     HealthModule,
     ModelModule,
+    ObservabilityModule,
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
     ...(standalone
       ? []

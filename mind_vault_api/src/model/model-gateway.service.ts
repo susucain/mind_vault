@@ -2,10 +2,14 @@ import { BadGatewayException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatOpenAI } from '@langchain/openai';
 import { AIMessage, BaseMessage, HumanMessage } from '@langchain/core/messages';
+import { LangfuseService } from '../observability/langfuse.service';
 
 @Injectable()
 export class ModelGatewayService {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly langfuse: LangfuseService,
+  ) {}
 
   getModelName(kind: 'fast' | 'reasoning'): string {
     return this.config.getOrThrow<string>(`models.${kind}`);
@@ -39,11 +43,16 @@ export class ModelGatewayService {
     options: { signal?: AbortSignal } = {},
   ): Promise<{ data: S; usage: Record<string, unknown> }> {
     const model = this.getChatModel(kind, thinking);
+    // 全项目唯一的模型出口：业务层只要开了 trace，这里的调用就会挂到那条 trace 下
+    const callbacks = this.langfuse.callbacks();
     let lastError: unknown;
     let conversation = messages;
     // 首次调用 + 一次带错误反馈的重试
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const response = await model.invoke(conversation, options);
+      const response = await model.invoke(
+        conversation,
+        callbacks.length > 0 ? { ...options, callbacks } : options,
+      );
       const content = jsonText(response.content);
       try {
         return {

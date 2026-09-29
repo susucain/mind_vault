@@ -44,6 +44,17 @@ export function buildConfiguration(env: EnvironmentInput = process.env) {
       // 默认 0.75 约等于余弦 0.5：低于它视为资料中没有相关内容，需要按真实语料校准。
       vectorMinScore: parseNumber(env.RETRIEVAL_VECTOR_MIN_SCORE, 0.75),
     },
+    langfuse: {
+      enabled: parseBoolean(env.LANGFUSE_ENABLED, false),
+      publicKey: env.LANGFUSE_PUBLIC_KEY,
+      secretKey: env.LANGFUSE_SECRET_KEY,
+      baseUrl: env.LANGFUSE_BASE_URL ?? 'https://cloud.langfuse.com',
+      // 用于在 Langfuse 里区分环境，默认跟随 NODE_ENV
+      environment:
+        env.LANGFUSE_TRACING_ENVIRONMENT ?? env.NODE_ENV ?? 'development',
+      // 批量导出间隔（秒）：进程被强杀时最多丢失这一段内的 span
+      flushInterval: parseNumber(env.LANGFUSE_FLUSH_INTERVAL, 2),
+    },
     infrastructure: {
       postgres: {
         host: env.POSTGRES_HOST ?? 'localhost',

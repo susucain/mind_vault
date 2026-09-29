@@ -3,9 +3,16 @@ import { BaseMessage, HumanMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import { ModelGatewayService } from './model-gateway.service';
 
+/** Langfuse 未启用时的形态：模型出口不下发任何回调 */
+const tracingOff = { callbacks: () => [] } as never;
+
+function buildGateway(config: unknown, tracing: unknown = tracingOff) {
+  return new ModelGatewayService(config as never, tracing as never);
+}
+
 describe('ModelGatewayService', () => {
   it('selects fast and reasoning ChatModels with explicit thinking configuration', () => {
-    const gateway = new ModelGatewayService({
+    const gateway = buildGateway({
       getOrThrow: jest.fn(
         (key: string) =>
           ({
@@ -21,7 +28,7 @@ describe('ModelGatewayService', () => {
             OPENAI_API_KEY: 'test-key',
           })[key] ?? fallback,
       ),
-    } as never);
+    });
 
     const fast = gateway.getChatModel('fast', false);
     const reasoning = gateway.getChatModel('reasoning', true);
@@ -37,7 +44,7 @@ describe('ModelGatewayService', () => {
   });
 
   it('只从 LLM_* 取端点与密钥，不受 OPENAI_* 变量影响', () => {
-    const gateway = new ModelGatewayService({
+    const gateway = buildGateway({
       get: jest.fn(
         (key: string, fallback: unknown) =>
           ({
@@ -48,7 +55,7 @@ describe('ModelGatewayService', () => {
             DASHSCOPE_API_KEY: 'dashscope-key',
           })[key] ?? fallback,
       ),
-    } as never);
+    });
 
     const internals = gateway as unknown as {
       apiKey: () => string;
@@ -59,7 +66,7 @@ describe('ModelGatewayService', () => {
   });
 
   it('未配置 LLM_API_KEY 时回退到 DASHSCOPE_API_KEY', () => {
-    const gateway = new ModelGatewayService({
+    const gateway = buildGateway({
       get: jest.fn(
         (key: string, fallback: unknown) =>
           ({
@@ -67,7 +74,7 @@ describe('ModelGatewayService', () => {
             OPENAI_API_KEY: 'openai-key',
           })[key] ?? fallback,
       ),
-    } as never);
+    });
 
     expect((gateway as unknown as { apiKey: () => string }).apiKey()).toBe(
       'dashscope-key',
@@ -75,11 +82,11 @@ describe('ModelGatewayService', () => {
   });
 
   it('requires a configured model name', () => {
-    const gateway = new ModelGatewayService({
+    const gateway = buildGateway({
       getOrThrow: jest.fn(() => {
         throw new Error('Configuration key "models.fast" does not exist');
       }),
-    } as never);
+    });
 
     expect(() => gateway.getChatModel('fast', false)).toThrow(
       'Configuration key "models.fast" does not exist',
@@ -87,7 +94,7 @@ describe('ModelGatewayService', () => {
   });
 
   it('omits response_format for Codex models that do not support it', () => {
-    const gateway = new ModelGatewayService({
+    const gateway = buildGateway({
       getOrThrow: jest.fn((key: string) =>
         key === 'models.fast' ? 'codex-auto-review' : undefined,
       ),
@@ -95,7 +102,7 @@ describe('ModelGatewayService', () => {
         (key: string, fallback: unknown) =>
           (({}) as Record<string, unknown>)[key] ?? fallback,
       ),
-    } as never);
+    });
 
     expect(gateway.getChatModel('fast', false).modelKwargs).not.toHaveProperty(
       'response_format',
@@ -103,7 +110,7 @@ describe('ModelGatewayService', () => {
   });
 
   it('parses JSON returned in structured text content', async () => {
-    const gateway = new ModelGatewayService({ get: jest.fn() } as never);
+    const gateway = buildGateway({ get: jest.fn() });
     jest.spyOn(gateway, 'getChatModel').mockReturnValue({
       invoke: jest.fn().mockResolvedValue({
         content: [{ type: 'text', text: '{"ok":true}' }],
@@ -124,7 +131,7 @@ describe('ModelGatewayService', () => {
   });
 
   it('passes an AbortSignal to the model invocation', async () => {
-    const gateway = new ModelGatewayService({ get: jest.fn() } as never);
+    const gateway = buildGateway({ get: jest.fn() });
     const invoke = jest.fn().mockResolvedValue({
       content: '{"ok":true}',
       usage_metadata: {},
@@ -145,8 +152,34 @@ describe('ModelGatewayService', () => {
     });
   });
 
+  it('开启监控时把 Langfuse 回调交给模型调用', async () => {
+    const handler = { name: 'langfuse-handler' } as never;
+    const gateway = buildGateway(
+      { get: jest.fn() },
+      {
+        callbacks: () => [handler],
+      },
+    );
+    const invoke = jest.fn().mockResolvedValue({
+      content: '{"ok":true}',
+      usage_metadata: {},
+    });
+    jest.spyOn(gateway, 'getChatModel').mockReturnValue({ invoke } as never);
+
+    await gateway.invokeJson(
+      'fast',
+      [new HumanMessage('test')],
+      false,
+      (raw) => raw as { ok: boolean },
+    );
+
+    expect(invoke).toHaveBeenCalledWith(expect.any(Array), {
+      callbacks: [handler],
+    });
+  });
+
   it('输出不符合格式时带上错误反馈重试一次', async () => {
-    const gateway = new ModelGatewayService({ get: jest.fn() } as never);
+    const gateway = buildGateway({ get: jest.fn() });
     const invoke = jest
       .fn()
       .mockResolvedValueOnce({
@@ -171,7 +204,7 @@ describe('ModelGatewayService', () => {
   });
 
   it('重试后仍不符合格式时抛出 BadGatewayException', async () => {
-    const gateway = new ModelGatewayService({ get: jest.fn() } as never);
+    const gateway = buildGateway({ get: jest.fn() });
     const invoke = jest.fn().mockResolvedValue({
       content: '不是 JSON',
       usage_metadata: {},
