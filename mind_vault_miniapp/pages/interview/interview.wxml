@@ -145,6 +145,7 @@
         border="{{false}}"
         placeholder="粘贴岗位描述原文"
         bind:change="updateJobDescription"
+        class="jd-input"
       />
       <van-button type="primary" block bind:click="closeJobDescription">完成</van-button>
     </view>
