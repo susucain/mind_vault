@@ -108,4 +108,79 @@ describe('useUploadQueue', () => {
     );
     expect(result.current.items[0]).toMatchObject({ status: 'uploading', failedStage: undefined });
   });
+
+  it('normalizes the backend READY status and currentStage after the two second poll', async () => {
+    uploadDocument.mockResolvedValue({ documentId: 'doc-1', jobId: 'job-1', status: 'UPLOADED' });
+    getDocumentStatus.mockResolvedValue({
+      status: 'READY',
+      currentStage: 'ready',
+      errorMessage: null,
+    });
+    const { result } = renderHook(() => useUploadQueue());
+
+    act(() => result.current.enqueue([createFile('a.txt')], 'dataset-1'));
+    await vi.waitFor(() => expect(result.current.items[0]).toMatchObject({ status: 'processing' }));
+    expect(getDocumentStatus).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+
+    expect(result.current.items[0]).toMatchObject({
+      status: 'ready',
+      progress: 100,
+      failedStage: 'ready',
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_000);
+    });
+    expect(getDocumentStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('normalizes FAILED and persists currentStage and errorMessage', async () => {
+    uploadDocument.mockResolvedValue({ documentId: 'doc-1', jobId: 'job-1', status: 'UPLOADED' });
+    getDocumentStatus.mockResolvedValue({
+      status: 'FAILED',
+      currentStage: 'embedding',
+      errorMessage: 'embedding worker failed',
+    });
+    const { result } = renderHook(() => useUploadQueue());
+
+    act(() => result.current.enqueue([createFile('a.txt')], 'dataset-1'));
+    await vi.waitFor(() => expect(result.current.items[0]).toMatchObject({ status: 'processing' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+
+    expect(result.current.items[0]).toMatchObject({
+      status: 'failed',
+      failedStage: 'embedding',
+      errorMessage: 'embedding worker failed',
+    });
+  });
+
+  it('stops polling when the backend returns CANCELLED', async () => {
+    uploadDocument.mockResolvedValue({ documentId: 'doc-1', jobId: 'job-1', status: 'UPLOADED' });
+    getDocumentStatus.mockResolvedValue({
+      status: 'CANCELLED',
+      currentStage: 'cancelled',
+      errorMessage: null,
+    });
+    const { result } = renderHook(() => useUploadQueue());
+
+    act(() => result.current.enqueue([createFile('a.txt')], 'dataset-1'));
+    await vi.waitFor(() => expect(result.current.items[0]).toMatchObject({ status: 'processing' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+
+    expect(result.current.items[0]).toMatchObject({
+      status: 'cancelled',
+      failedStage: 'cancelled',
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_000);
+    });
+    expect(getDocumentStatus).toHaveBeenCalledTimes(1);
+  });
 });

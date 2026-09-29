@@ -8,6 +8,11 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: BodyInit | Record<string, unknown> | unknown[] | null;
 }
 
+export interface BuiltRequest {
+  url: string;
+  init: RequestInit;
+}
+
 let accessTokenProvider: AccessTokenProvider = () => undefined;
 let authExpiredHandler: AuthExpiredHandler | undefined;
 
@@ -59,10 +64,7 @@ async function readError(response: Response): Promise<ApiRequestError> {
   });
 }
 
-export async function request<T>(
-  path: string,
-  init: RequestOptions = {},
-): Promise<T> {
+export function buildRequest(path: string, init: RequestOptions = {}): BuiltRequest {
   const headers = new Headers(init.headers);
   const token = accessTokenProvider();
   const body = isJsonPayload(init.body) ? JSON.stringify(init.body) : init.body;
@@ -73,9 +75,21 @@ export async function request<T>(
     headers.set('Content-Type', 'application/json');
   }
 
+  return {
+    url: apiUrl(path),
+    init: { ...init, body, headers },
+  };
+}
+
+export async function request<T>(
+  path: string,
+  init: RequestOptions = {},
+): Promise<T> {
+  const built = buildRequest(path, init);
+
   let response: Response;
   try {
-    response = await fetch(apiUrl(path), { ...init, body, headers });
+    response = await fetch(built.url, built.init);
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new ApiRequestError({

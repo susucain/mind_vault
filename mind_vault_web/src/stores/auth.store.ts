@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { setAccessTokenProvider } from '../api/client';
+import { setAccessTokenProvider, setAuthExpiredHandler } from '../api/client';
 import type { AuthUser } from '../api/auth';
 import { readStoredValue, removeStoredValue, writeStoredValue } from '../lib/storage';
 
@@ -36,3 +36,4 @@ export const useAuthStore = create<AuthState>((set) => ({
 }));
 
 setAccessTokenProvider(() => useAuthStore.getState().token);
+setAuthExpiredHandler(() => useAuthStore.getState().clear());

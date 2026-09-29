@@ -28,9 +28,9 @@ export interface UploadDocumentResult {
 }
 
 export interface DocumentProcessingStatus {
-  status: 'queued' | 'uploading' | 'processing' | 'ready' | 'failed' | 'cancelled';
-  stage?: string;
-  errorMessage?: string;
+  status: string;
+  currentStage?: string | null;
+  errorMessage?: string | null;
 }
 
 function queryString(query: object): string {

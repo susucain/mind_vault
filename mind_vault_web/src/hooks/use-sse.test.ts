@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useSse } from './use-sse';
+import { setAccessTokenProvider } from '../api/client';
 
 function streamResponse(chunks: string[], signal?: AbortSignal): Response {
   const encoder = new TextEncoder();
@@ -21,7 +22,26 @@ function streamResponse(chunks: string[], signal?: AbortSignal): Response {
 }
 
 describe('useSse', () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    setAccessTokenProvider(() => undefined);
+    vi.restoreAllMocks();
+  });
+
+  it('uses the API URL and authenticated headers from the shared client builder', async () => {
+    setAccessTokenProvider(() => 'stream-token');
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(streamResponse(['data: [DONE]\n\n']));
+    const { result } = renderHook(() => useSse());
+
+    await act(async () => {
+      await result.current.start('/conversations/c1/messages/stream', { onEvent: vi.fn() });
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/v1/conversations/c1/messages/stream', expect.any(Object));
+    const [, init] = fetchMock.mock.calls[0]!;
+    const headers = new Headers(init?.headers);
+    expect(headers.get('Authorization')).toBe('Bearer stream-token');
+    expect(headers.get('X-Request-ID')).toEqual(expect.any(String));
+  });
 
   it('parses events split across chunks', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(

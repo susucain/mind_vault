@@ -58,7 +58,11 @@ describe('request', () => {
   });
 
   it('serializes plain request bodies as JSON but preserves FormData', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true }), {
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    ).mockResolvedValueOnce(
       new Response(JSON.stringify({ ok: true }), {
         headers: { 'Content-Type': 'application/json' },
       }),
@@ -69,6 +73,14 @@ describe('request', () => {
     const [, init] = fetchMock.mock.calls[0]!;
     expect(init?.body).toBe('{"name":"Notes"}');
     expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
+
+    const form = new FormData();
+    form.append('file', new File(['content'], 'notes.txt'));
+    await request('/documents/upload', { method: 'POST', body: form });
+
+    const [, formInit] = fetchMock.mock.calls[1]!;
+    expect(formInit?.body).toBe(form);
+    expect(new Headers(formInit?.headers).has('Content-Type')).toBe(false);
   });
 
   it('notifies the registered handler for unauthorized responses', async () => {

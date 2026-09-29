@@ -25,6 +25,19 @@ function errorDetails(error: unknown): { failedStage?: string; errorMessage: str
   return { errorMessage: error instanceof Error ? error.message : 'Upload failed' };
 }
 
+function normalizeStatus(status: string): 'processing' | 'ready' | 'failed' | 'cancelled' {
+  switch (status.toLowerCase()) {
+    case 'ready':
+      return 'ready';
+    case 'failed':
+      return 'failed';
+    case 'cancelled':
+      return 'cancelled';
+    default:
+      return 'processing';
+  }
+}
+
 export function useUploadQueue() {
   const items = useUploadStore((state) => state.items);
   const add = useUploadStore((state) => state.add);
@@ -46,18 +59,21 @@ export function useUploadQueue() {
       }
       try {
         const status = await getDocumentStatus(current.documentId);
-        const nextStatus = status.status;
+        const nextStatus = normalizeStatus(status.status);
         if (nextStatus === 'ready' || nextStatus === 'failed' || nextStatus === 'cancelled') {
           update(current.localId, {
             status: nextStatus,
             progress: nextStatus === 'ready' ? 100 : current.progress,
-            failedStage: status.stage,
-            errorMessage: status.errorMessage,
+            failedStage: status.currentStage ?? undefined,
+            errorMessage: status.errorMessage ?? undefined,
           });
           stop();
           return;
         }
-        update(current.localId, { status: 'processing', failedStage: status.stage });
+        update(current.localId, {
+          status: 'processing',
+          failedStage: status.currentStage ?? undefined,
+        });
       } catch (error) {
         const details = errorDetails(error);
         update(current.localId, { status: 'failed', ...details });

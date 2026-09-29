@@ -15,7 +15,14 @@ export interface AuthSession {
   user: AuthUser;
 }
 
-export const devLogin = (input: DevLoginInput = {}) =>
-  jsonRequest<AuthSession>('/auth/dev-login', 'POST', input);
+interface DevLoginResponse {
+  accessToken: string;
+  user: AuthUser;
+}
+
+export async function devLogin(input: DevLoginInput = {}): Promise<AuthSession> {
+  const response = await jsonRequest<DevLoginResponse>('/auth/dev-login', 'POST', input);
+  return { token: response.accessToken, user: response.user };
+}
 
 export const getCurrentUser = () => request<{ user: AuthUser }>('/me');

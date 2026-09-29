@@ -1,4 +1,4 @@
-import { jsonRequest, request } from './client';
+import { jsonRequest, request, type RequestOptions } from './client';
 import type { ChatMessage, Conversation } from '../types/domain';
 
 export const listConversations = () => request<Conversation[]>('/conversations');
@@ -10,3 +10,10 @@ export const listMessages = (id: string) => request<ChatMessage[]>(`/conversatio
 export const createMessage = (id: string, content: string) =>
   jsonRequest<ChatMessage>(`/conversations/${id}/messages`, 'POST', { content });
 export const streamMessagesPath = (id: string) => `/conversations/${id}/messages/stream`;
+export const createMessageStreamRequest = (id: string, content: string) => ({
+  path: streamMessagesPath(id),
+  init: {
+    method: 'POST',
+    body: { content },
+  } satisfies RequestOptions,
+});

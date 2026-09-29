@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { buildRequest } from '../api/client';
 import type { Citation } from '../types/domain';
 
 export type StreamEvent =
@@ -62,7 +63,8 @@ export function useSse() {
     setError(undefined);
 
     try {
-      const response = await fetch(path, { ...options.init, signal: controller.signal });
+      const built = buildRequest(path, { ...options.init, signal: controller.signal });
+      const response = await fetch(built.url, built.init);
       if (!response.ok) throw new Error(`Stream request failed (${response.status})`);
       if (!response.body) throw new Error('Stream response has no body');
 
