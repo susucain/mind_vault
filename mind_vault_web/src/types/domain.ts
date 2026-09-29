@@ -7,6 +7,19 @@ export type DocumentStatus =
   | 'archived'
   | 'deleted';
 
+export interface Document {
+  id: string;
+  title: string;
+  status: DocumentStatus | number;
+  sourceFileName?: string | null;
+  sourceFileSize?: string | null;
+  sourceFileExtension?: string | null;
+  ingestionStage?: string | null;
+  ingestionErrorMessage?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface DocumentLocator {
   page?: number;
   slide?: number;
