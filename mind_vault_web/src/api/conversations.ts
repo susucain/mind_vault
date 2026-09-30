@@ -16,7 +16,24 @@ export const createConversation = (input: { datasetIds: string[]; title?: string
   jsonRequest<Conversation>('/conversations', 'POST', input);
 export const updateConversation = (id: string, datasetIds: string[]) =>
   jsonRequest<Conversation>(`/conversations/${id}`, 'PATCH', { datasetIds });
-export const listMessages = (id: string) => request<ChatMessage[]>(`/conversations/${id}/messages`);
+type BackendCitation = ChatMessage['citations'][number] & { quote?: string };
+type BackendMessage = Omit<ChatMessage, 'citations'> & { citations?: BackendCitation[] };
+
+function normalizeMessage(message: BackendMessage): ChatMessage {
+  return {
+    ...message,
+    citations: (message.citations ?? []).map((citation) => ({
+      ...citation,
+      documentName: citation.documentName || citation.documentId,
+      excerpt: citation.excerpt || citation.quote || '',
+    })),
+  };
+}
+
+export async function listMessages(id: string): Promise<ChatMessage[]> {
+  const response = await request<ChatMessage[] | { items: ChatMessage[] }>(`/conversations/${id}/messages`);
+  return (Array.isArray(response) ? response : response.items).map(normalizeMessage);
+}
 export const createMessage = (id: string, content: string) =>
   jsonRequest<ChatMessage>(`/conversations/${id}/messages`, 'POST', { content });
 export const streamMessagesPath = (id: string) => `/conversations/${id}/messages/stream`;

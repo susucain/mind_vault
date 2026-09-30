@@ -1,5 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { EmptyState, StatusBadge } from '../components/ui';
+import { ChatPage } from '../pages/chat/ChatPage';
+export { ChatPage };
 
 const pageDescriptions: Record<string, string> = {
   Overview: 'Your workspace overview will be available here.',
@@ -48,19 +50,7 @@ export function DocumentPage({ preview = false }: { preview?: boolean }) {
 }
 
 export function ConversationPage({ isNew = false }: { isNew?: boolean }) {
-  const { conversationId } = useParams();
-  return (
-    <section className="page-section">
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">Chat</p>
-          <h1>{isNew ? 'New conversation' : 'Conversation'}</h1>
-        </div>
-        {!isNew ? <StatusBadge>{conversationId ?? 'Unknown conversation'}</StatusBadge> : null}
-      </div>
-      <EmptyState description="The conversation workspace will be available here." title="Chat is not available yet" />
-    </section>
-  );
+  return <ChatPage isNew={isNew} />;
 }
 
 export function InterviewSessionPage({ feedback = false }: { feedback?: boolean }) {

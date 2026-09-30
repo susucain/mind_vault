@@ -1,6 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { ProtectedLayout } from './layouts';
-import { ConversationPage, InterviewSessionPage, PlaceholderPage } from './pages';
+import { ChatPage, InterviewSessionPage, PlaceholderPage } from './pages';
 import { APP_PATHS } from './navigation';
 import { LoginPage } from '../pages/auth/LoginPage';
 import { OverviewPage } from '../pages/overview/OverviewPage';
@@ -35,9 +35,9 @@ export const router = createBrowserRouter([
       { path: 'library/archive', element: <ArchivePage /> },
       { path: 'library/documents/:documentId', element: <DocumentDetailPage /> },
       { path: 'library/documents/:documentId/preview', element: <DocumentPreviewPage /> },
-      { path: 'chat', element: <ConversationPage isNew /> },
-      { path: 'chat/new', element: <ConversationPage isNew /> },
-      { path: 'chat/:conversationId', element: <ConversationPage /> },
+      { path: 'chat', element: <ChatPage isNew /> },
+      { path: 'chat/new', element: <ChatPage isNew /> },
+      { path: 'chat/:conversationId', element: <ChatPage /> },
       { path: 'interview', element: <PlaceholderPage title="Interview" /> },
       { path: 'interview/new', element: <PlaceholderPage title="New interview" /> },
       { path: 'interview/sessions', element: <PlaceholderPage title="Interview" /> },

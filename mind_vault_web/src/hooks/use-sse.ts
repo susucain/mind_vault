@@ -4,7 +4,7 @@ import { ApiRequestError } from '../lib/errors';
 import type { Citation } from '../types/domain';
 
 export type StreamEvent =
-  | { type: 'message_start'; messageId: string }
+  | { type: 'message_start'; messageId: string; meta?: Record<string, unknown> }
   | { type: 'token'; content: string }
   | { type: 'citation'; citation: Citation }
   | {
@@ -31,11 +31,20 @@ function normalize(eventName: string, payload: unknown): StreamEvent | undefined
   switch (eventName) {
     case 'meta':
     case 'message_start':
-      return { type: 'message_start', messageId: String(data.messageId ?? data.id ?? '') };
+      return Object.keys(data).length > 1
+        ? { type: 'message_start', messageId: String(data.messageId ?? data.id ?? ''), meta: data }
+        : { type: 'message_start', messageId: String(data.messageId ?? data.id ?? '') };
     case 'token':
       return { type: 'token', content: String(data.text ?? data.content ?? '') };
     case 'citation':
-      return { type: 'citation', citation: payload as Citation };
+      return {
+        type: 'citation',
+        citation: {
+          ...(payload as Citation & { quote?: string }),
+          documentName: String(data.documentName ?? data.documentId ?? ''),
+          excerpt: String(data.excerpt ?? data.quote ?? ''),
+        },
+      };
     case 'status':
     case 'stage': {
       const backendStage = String(data.status ?? data.stage ?? '');
