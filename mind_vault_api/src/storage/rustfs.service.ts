@@ -9,53 +9,98 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 
+export interface ObjectStorageEnvironment {
+  [key: string]: string | undefined;
+}
+
+export interface ObjectStorageConfig {
+  bucket: string;
+  endpoint: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  forcePathStyle: boolean;
+  autoCreateBucket: boolean;
+  provider: 'oss' | 's3';
+}
+
+export function resolveObjectStorageConfig(
+  env: ObjectStorageEnvironment,
+): ObjectStorageConfig {
+  const ossConfigured = Boolean(
+    env.OSS_BUCKET_NAME ||
+    env.OSS_ACCESS_KEY_ID ||
+    env.OSS_ACCESS_KEY_SECRET ||
+    env.OSS_ENDPOINT,
+  );
+
+  if (ossConfigured) {
+    const region = env.OSS_REGION ?? 'oss-cn-hangzhou';
+    return {
+      bucket: env.OSS_BUCKET_NAME ?? 'mind-vault',
+      endpoint: env.OSS_ENDPOINT ?? `https://${region}.aliyuncs.com`,
+      region,
+      accessKeyId: env.OSS_ACCESS_KEY_ID ?? '',
+      secretAccessKey: env.OSS_ACCESS_KEY_SECRET ?? '',
+      forcePathStyle: false,
+      autoCreateBucket: false,
+      provider: 'oss',
+    };
+  }
+
+  return {
+    bucket: env.S3_BUCKET ?? env.RUSTFS_BUCKET ?? 'mind-vault',
+    endpoint: env.S3_ENDPOINT ?? env.RUSTFS_ENDPOINT ?? 'http://localhost:9000',
+    region: env.S3_REGION ?? env.RUSTFS_REGION ?? 'us-east-1',
+    accessKeyId: env.S3_ACCESS_KEY ?? env.RUSTFS_ACCESS_KEY ?? 'rustfsadmin',
+    secretAccessKey:
+      env.S3_SECRET_KEY ?? env.RUSTFS_SECRET_KEY ?? 'rustfsadmin',
+    forcePathStyle: true,
+    autoCreateBucket: true,
+    provider: 's3',
+  };
+}
+
 @Injectable()
 export class RustfsService {
   private readonly logger = new Logger(RustfsService.name);
   private readonly client: S3Client;
   private readonly bucket: string;
+  private readonly autoCreateBucket: boolean;
   private bucketReady = false;
 
   constructor(private readonly config: ConfigService) {
-    this.bucket =
-      process.env.S3_BUCKET ??
-      process.env.RUSTFS_BUCKET ??
-      config.get<string>('S3_BUCKET') ??
-      config.get<string>('RUSTFS_BUCKET') ??
-      config.get<string>('rustfs.bucket') ??
-      'mind-vault';
+    const configured = (name: string) =>
+      config.get<string>(name) ?? process.env[name];
+    const storage = resolveObjectStorageConfig({
+      ...process.env,
+      OSS_ENDPOINT: configured('OSS_ENDPOINT'),
+      OSS_ACCESS_KEY_ID: configured('OSS_ACCESS_KEY_ID'),
+      OSS_ACCESS_KEY_SECRET: configured('OSS_ACCESS_KEY_SECRET'),
+      OSS_REGION: configured('OSS_REGION'),
+      OSS_BUCKET_NAME: configured('OSS_BUCKET_NAME'),
+      S3_ENDPOINT: configured('S3_ENDPOINT'),
+      S3_ACCESS_KEY: configured('S3_ACCESS_KEY'),
+      S3_SECRET_KEY: configured('S3_SECRET_KEY'),
+      S3_BUCKET: configured('S3_BUCKET'),
+      RUSTFS_ENDPOINT: configured('RUSTFS_ENDPOINT'),
+      RUSTFS_ACCESS_KEY: configured('RUSTFS_ACCESS_KEY'),
+      RUSTFS_SECRET_KEY: configured('RUSTFS_SECRET_KEY'),
+      RUSTFS_BUCKET: configured('RUSTFS_BUCKET'),
+    });
+    this.bucket = storage.bucket;
+    this.autoCreateBucket = storage.autoCreateBucket;
     this.client = new S3Client({
-      endpoint:
-        process.env.S3_ENDPOINT ??
-        process.env.RUSTFS_ENDPOINT ??
-        config.get<string>('S3_ENDPOINT') ??
-        config.get<string>('RUSTFS_ENDPOINT') ??
-        config.get<string>('rustfs.endpoint') ??
-        'http://localhost:9000',
-      region:
-        process.env.S3_REGION ??
-        process.env.RUSTFS_REGION ??
-        config.get<string>('S3_REGION') ??
-        config.get<string>('RUSTFS_REGION') ??
-        'us-east-1',
-      forcePathStyle: true,
+      endpoint: storage.endpoint,
+      region: storage.region,
+      forcePathStyle: storage.forcePathStyle,
       credentials: {
-        accessKeyId:
-          process.env.S3_ACCESS_KEY ??
-          process.env.RUSTFS_ACCESS_KEY ??
-          config.get<string>('S3_ACCESS_KEY') ??
-          config.get<string>('RUSTFS_ACCESS_KEY') ??
-          'rustfsadmin',
-        secretAccessKey:
-          process.env.S3_SECRET_KEY ??
-          process.env.RUSTFS_SECRET_KEY ??
-          config.get<string>('S3_SECRET_KEY') ??
-          config.get<string>('RUSTFS_SECRET_KEY') ??
-          'rustfsadmin',
+        accessKeyId: storage.accessKeyId,
+        secretAccessKey: storage.secretAccessKey,
       },
     });
     this.logger.log(
-      `RustFS configured: endpoint=${config.get<string>('S3_ENDPOINT') ?? config.get<string>('RUSTFS_ENDPOINT') ?? config.get<string>('rustfs.endpoint')}, bucket=${this.bucket}`,
+      `Object storage configured: provider=${storage.provider}, endpoint=${storage.endpoint}, bucket=${this.bucket}`,
     );
   }
 
@@ -64,7 +109,8 @@ export class RustfsService {
       this.config.get<boolean>('STORAGE_ENABLED') ??
       this.config.get<boolean>('RUSTFS_ENABLED') ??
       this.config.get<boolean>('rustfs.enabled') ??
-      this.config.get<string>('S3_ENDPOINT') !== undefined
+      (this.config.get<string>('OSS_BUCKET_NAME') !== undefined ||
+        this.config.get<string>('S3_ENDPOINT') !== undefined)
     );
   }
 
@@ -108,10 +154,16 @@ export class RustfsService {
 
   private async ensureBucket() {
     if (!this.isEnabled() || this.bucketReady) return;
-    try {
+    if (this.autoCreateBucket) {
+      try {
+        await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
+      } catch {
+        await this.client.send(
+          new CreateBucketCommand({ Bucket: this.bucket }),
+        );
+      }
+    } else {
       await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
-    } catch {
-      await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }));
     }
     this.bucketReady = true;
   }

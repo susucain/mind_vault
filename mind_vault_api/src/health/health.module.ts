@@ -47,7 +47,9 @@ import { createConnection } from 'node:net';
                 check: () => probe('localhost', 9200),
               },
               { name: 'neo4j', check: () => probe('localhost', 7687) },
-              { name: 'rustfs', check: () => probe('localhost', 9000) },
+              ...(config.get<string>('OSS_BUCKET_NAME')
+                ? []
+                : [{ name: 'rustfs', check: () => probe('localhost', 9000) }]),
             ]
           : [];
         return new HealthService(dependencies);
