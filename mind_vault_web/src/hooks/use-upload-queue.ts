@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { getDocumentStatus, uploadDocument } from '../api/documents';
+import { getDocumentStatus, retryDocument, uploadDocument } from '../api/documents';
 import { isApiError } from '../lib/errors';
 import { useUploadStore, type QueuedUpload } from '../stores/upload.store';
 
@@ -42,6 +42,7 @@ export function useUploadQueue() {
   const items = useUploadStore((state) => state.items);
   const add = useUploadStore((state) => state.add);
   const update = useUploadStore((state) => state.update);
+  const remove = useUploadStore((state) => state.remove);
   const controllers = useRef(new Map<string, AbortController>());
   const pollers = useRef(new Map<string, number>());
 
@@ -64,6 +65,8 @@ export function useUploadQueue() {
           update(current.localId, {
             status: nextStatus,
             progress: nextStatus === 'ready' ? 100 : current.progress,
+            currentStage: status.currentStage ?? undefined,
+            stageProgress: status.stageProgress,
             failedStage: status.currentStage ?? undefined,
             errorMessage: status.errorMessage ?? undefined,
           });
@@ -72,7 +75,9 @@ export function useUploadQueue() {
         }
         update(current.localId, {
           status: 'processing',
-          failedStage: status.currentStage ?? undefined,
+          currentStage: status.currentStage ?? undefined,
+          progress: status.stageProgress.percent,
+          stageProgress: status.stageProgress,
         });
       } catch (error) {
         const details = errorDetails(error);
@@ -89,14 +94,15 @@ export function useUploadQueue() {
     controllers.current.set(item.localId, controller);
     update(item.localId, { status: 'uploading', progress: 0 });
     try {
-      const response = await uploadDocument(item.file, { datasetId: item.datasetId }, controller.signal);
+      const response = await uploadDocument(item.file, { datasetId: item.datasetId }, { signal: controller.signal });
       if (controller.signal.aborted) return;
       update(item.localId, {
         status: 'processing',
         documentId: response.documentId,
-        progress: 100,
+        progress: 0,
+        currentStage: 'uploaded',
       });
-      poll({ ...item, documentId: response.documentId, status: 'processing', progress: 100 });
+      poll({ ...item, documentId: response.documentId, status: 'processing', progress: 0, currentStage: 'uploaded' });
     } catch (error) {
       if (controller.signal.aborted) return;
       update(item.localId, { status: 'failed', ...errorDetails(error) });
@@ -134,6 +140,8 @@ export function useUploadQueue() {
   }, [add]);
 
   const cancel = useCallback((localId: string) => {
+    const item = useUploadStore.getState().items.find((candidate) => candidate.localId === localId);
+    if (!item || item.status === 'processing') return;
     controllers.current.get(localId)?.abort();
     const poller = pollers.current.get(localId);
     if (poller !== undefined) window.clearInterval(poller);
@@ -141,17 +149,44 @@ export function useUploadQueue() {
     update(localId, { status: 'cancelled' });
   }, [update]);
 
-  const retry = useCallback((localId: string) => {
+  const retry = useCallback(async (localId: string) => {
     const item = useUploadStore.getState().items.find((candidate) => candidate.localId === localId);
     if (!item || item.status !== 'failed') return;
+    if (item.documentId) {
+      try {
+        await retryDocument(item.documentId);
+        const next = {
+          ...item,
+          status: 'processing' as const,
+          progress: 0,
+          currentStage: 'retry_pending',
+          stageProgress: undefined,
+          failedStage: undefined,
+          errorMessage: undefined,
+        };
+        update(localId, next);
+        poll(next);
+      } catch (error) {
+        update(localId, { status: 'failed', ...errorDetails(error) });
+      }
+      return;
+    }
     update(localId, {
       status: 'queued',
       progress: 0,
-      documentId: undefined,
+      currentStage: undefined,
+      stageProgress: undefined,
       failedStage: undefined,
       errorMessage: undefined,
     });
-  }, [update]);
+  }, [poll, update]);
 
-  return { items, enqueue, cancel, retry };
+  const stopTracking = useCallback((localId: string) => {
+    const poller = pollers.current.get(localId);
+    if (poller !== undefined) window.clearInterval(poller);
+    pollers.current.delete(localId);
+    remove(localId);
+  }, [remove]);
+
+  return { items, enqueue, cancel, retry, stopTracking };
 }

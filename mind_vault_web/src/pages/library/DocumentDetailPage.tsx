@@ -1,22 +1,20 @@
-import { ArrowLeft, Check, Circle, Eye, FileText } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Eye, FileText } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { Button, LoadingState, StatusBadge } from '../../components/ui';
-import { documentStatus, documentStatusLabel, documentTone, formatDate, formatFileSize } from '../../features/documents/document-utils';
-import { useDocument } from '../../features/documents/use-document';
+import { documentStatusLabel, documentTone, formatDate, formatFileSize } from '../../features/documents/document-utils';
+import { useDocument, useDocumentStatus } from '../../features/documents/use-document';
 import { LibraryNav } from '../../features/library/LibraryNav';
-
-const stages = ['上传', '解析', '分块', '向量索引', '可问答'];
 
 export function DocumentDetailPage() {
   const { documentId } = useParams();
   const query = useDocument(documentId);
+  const statusQuery = useDocumentStatus(documentId);
 
   if (query.isPending) return <LoadingState label="加载文档" />;
   if (query.isError || !query.data) return <section className="state-panel state-panel--error"><h2>文档加载失败</h2><Button onClick={() => void query.refetch()} variant="secondary">重试</Button></section>;
   const document = query.data;
-  const ready = documentStatus(document) === 'ready';
-  const coverage = ready ? 100 : document.ingestionProgress?.percent ?? 0;
   const tags = document.tags?.split(',').map((tag) => tag.trim()).filter(Boolean) ?? [];
+  const processing = statusQuery.data;
 
   return (
     <section className="document-detail page-section">
@@ -49,15 +47,25 @@ export function DocumentDetailPage() {
         <aside className="document-side">
           <section className="workspace-panel">
             <h2>索引覆盖</h2>
-            <div className="coverage-value"><strong>{coverage}%</strong><span>可检索内容</span></div>
-            <progress max="100" value={coverage} />
+            {statusQuery.isPending ? <LoadingState label="加载处理进度" /> : statusQuery.isError ? (
+              <div className="widget-state"><span>处理状态加载失败</span><Button onClick={() => void statusQuery.refetch()} variant="secondary">重试</Button></div>
+            ) : (
+              <>
+                <div className="coverage-value"><strong>{processing?.stageProgress.percent ?? 0}%</strong><span>当前阶段进度</span></div>
+                <progress max="100" value={processing?.stageProgress.percent ?? 0} />
+              </>
+            )}
           </section>
           <section className="workspace-panel">
             <h2>处理阶段</h2>
-            <ol className="stage-list">{stages.map((stage, index) => {
-              const complete = ready || index < Math.ceil((coverage / 100) * stages.length);
-              return <li data-complete={complete} key={stage}>{complete ? <Check size={15} /> : <Circle size={15} />}<span>{stage}</span></li>;
-            })}</ol>
+            {processing ? (
+              <div className="current-stage">
+                <span>当前阶段</span>
+                <strong>{processing.currentStage || processing.status}</strong>
+                <span>{processing.stageProgress.completed} / {processing.stageProgress.total}</span>
+                {processing.errorMessage ? <p className="form-error"><AlertCircle size={15} />{processing.errorMessage}</p> : null}
+              </div>
+            ) : <p className="widget-empty">暂无处理状态。</p>}
           </section>
         </aside>
       </div>

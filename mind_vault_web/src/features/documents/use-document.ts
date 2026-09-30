@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getDocument } from '../../api/documents';
+import { getDocument, getDocumentStatus } from '../../api/documents';
 import { appConfig } from '../../lib/config';
 import type { Document } from '../../types/domain';
 
@@ -31,5 +31,23 @@ export function useDocument(documentId?: string) {
     enabled: Boolean(documentId),
     queryKey: ['documents', documentId],
     queryFn: () => appConfig.enableMockApi ? Promise.resolve({ ...mockDocument, id: documentId! }) : getDocument(documentId!),
+  });
+}
+
+export function useDocumentStatus(documentId?: string) {
+  return useQuery({
+    enabled: Boolean(documentId),
+    queryKey: ['documents', documentId, 'status'],
+    queryFn: () => appConfig.enableMockApi
+      ? Promise.resolve({
+          documentId: documentId!,
+          jobId: 'mock-job-1',
+          status: 'READY',
+          currentStage: 'ready',
+          retryCount: 0,
+          errorMessage: null,
+          stageProgress: { completed: 5, total: 5, percent: 100, estimatedRemainingSeconds: null },
+        })
+      : getDocumentStatus(documentId!),
   });
 }

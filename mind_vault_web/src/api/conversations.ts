@@ -1,7 +1,17 @@
 import { jsonRequest, request, type RequestOptions } from './client';
+import { appConfig } from '../lib/config';
 import type { ChatMessage, Conversation } from '../types/domain';
 
-export const listConversations = () => request<Conversation[]>('/conversations');
+const mockConversations: Conversation[] = [
+  { id: 'mock-c1', title: '系统设计资料问答', datasetIds: ['mock-d1'], createdAt: '2026-09-29', updatedAt: '2026-09-30' },
+  { id: 'mock-c2', title: 'React 性能复盘', datasetIds: ['mock-d2'], createdAt: '2026-09-28', updatedAt: '2026-09-29' },
+];
+
+export async function listConversations(): Promise<Conversation[]> {
+  if (appConfig.enableMockApi) return mockConversations;
+  const response = await request<{ items: Conversation[] }>('/conversations');
+  return response.items;
+}
 export const createConversation = (input: { datasetIds: string[]; title?: string }) =>
   jsonRequest<Conversation>('/conversations', 'POST', input);
 export const updateConversation = (id: string, datasetIds: string[]) =>

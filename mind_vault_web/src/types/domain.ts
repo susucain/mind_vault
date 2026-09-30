@@ -46,8 +46,10 @@ export interface DocumentLocator {
 }
 
 export interface DocumentSection {
+  sectionId?: string;
   heading?: string;
   content?: string;
+  order?: number;
   locator: DocumentLocator;
 }
 

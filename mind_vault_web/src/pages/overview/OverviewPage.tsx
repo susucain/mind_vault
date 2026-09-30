@@ -1,8 +1,8 @@
-import { ArrowRight, FileText, FolderKanban, MessageSquareText, Plus, RotateCcw, Send, Sparkles, type LucideIcon } from 'lucide-react';
+import { ArrowRight, Eye, FileText, MessageSquareText, Plus, RotateCcw, Send, Sparkles, type LucideIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Button, LoadingState, StatusBadge } from '../../components/ui';
-import { documentStatusLabel, documentTone, formatDate } from '../../features/documents/document-utils';
-import { useContinueInterview, useOverviewStats, usePendingReviewItems, useRecentDocuments } from '../../features/overview/queries';
+import { Button, LoadingState, StatusBadge, Tooltip } from '../../components/ui';
+import { documentStatusLabel, documentTone, fileType, formatDate, formatFileSize } from '../../features/documents/document-utils';
+import { useContinueInterview, useConversations, useDocumentCount, usePendingReviewItems, useRecentDocuments } from '../../features/overview/queries';
 import { useAuthStore } from '../../stores/auth.store';
 
 const prompts = ['总结最近上传的资料', '比较两份方案的差异', '从资料中生成面试题', '找出项目风险点'];
@@ -16,11 +16,37 @@ function WidgetError({ label, retry }: { label: string; retry: () => void }) {
   );
 }
 
+function StatItem({
+  Icon,
+  error,
+  label,
+  loading,
+  retry,
+  value,
+}: {
+  Icon: LucideIcon;
+  error: boolean;
+  label: string;
+  loading: boolean;
+  retry: () => void;
+  value?: number;
+}) {
+  return (
+    <article className="stat-item">
+      <Icon aria-hidden="true" size={19} />
+      {loading ? <LoadingState label={`加载${label}`} /> : error ? (
+        <WidgetError label={`${label === '问答会话' ? '会话统计' : label}加载失败`} retry={retry} />
+      ) : <div><strong>{value ?? 0}</strong><span>{label}</span></div>}
+    </article>
+  );
+}
+
 export function OverviewPage() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const recent = useRecentDocuments();
-  const stats = useOverviewStats();
+  const documentCount = useDocumentCount();
+  const conversations = useConversations();
   const interview = useContinueInterview();
   const reviews = usePendingReviewItems();
 
@@ -55,23 +81,14 @@ export function OverviewPage() {
       </section>
 
       <section aria-label="工作台统计" className="stats-grid">
-        {stats.isPending ? <LoadingState label="加载统计" /> : stats.isError ? (
-          <WidgetError label="统计加载失败" retry={() => void stats.refetch()} />
-        ) : ([
-          ['文件', stats.data.documents, FileText],
-          ['资料集', stats.data.datasets, FolderKanban],
-          ['可问答', stats.data.ready, MessageSquareText],
-        ] satisfies Array<[string, number, LucideIcon]>).map(([label, value, Icon]) => (
-          <article className="stat-item" key={String(label)}>
-            <Icon aria-hidden="true" size={19} />
-            <div><strong>{String(value)}</strong><span>{String(label)}</span></div>
-          </article>
-        ))}
+        <StatItem Icon={FileText} error={documentCount.isError} label="资料文件" loading={documentCount.isPending} retry={() => void documentCount.refetch()} value={documentCount.data} />
+        <StatItem Icon={MessageSquareText} error={conversations.isError} label="问答会话" loading={conversations.isPending} retry={() => void conversations.refetch()} value={conversations.data?.length} />
+        <StatItem Icon={RotateCcw} error={reviews.isError} label="待复习" loading={reviews.isPending} retry={() => void reviews.refetch()} value={reviews.data?.total} />
       </section>
 
       <div className="overview-grid">
         <section className="workspace-panel recent-panel">
-          <div className="section-heading"><h2>最近文件</h2><Link to="/app/library">查看全部<ArrowRight size={15} /></Link></div>
+          <div className="section-heading"><h2>最近资料</h2><Link to="/app/library">查看全部<ArrowRight size={15} /></Link></div>
           {recent.isPending ? <LoadingState label="加载最近文件" /> : recent.isError ? (
             <WidgetError label="最近文件加载失败" retry={() => void recent.refetch()} />
           ) : recent.data.items.length === 0 ? <p className="widget-empty">上传第一份资料开始使用。</p> : (
@@ -79,9 +96,15 @@ export function OverviewPage() {
               {recent.data.items.map((document) => (
                 <li key={document.id}>
                   <FileText aria-hidden="true" size={18} />
-                  <Link to={`/app/library/documents/${document.id}`}>{document.title}</Link>
+                  <div className="recent-document-copy">
+                    <Link to={`/app/library/documents/${document.id}`}>{document.title}</Link>
+                    <span>{fileType(document).toUpperCase()} · {formatFileSize(document.sourceFileSize)} · {formatDate(document.createdAt)}</span>
+                  </div>
                   <StatusBadge tone={documentTone(document)}>{documentStatusLabel(document)}</StatusBadge>
-                  <time>{formatDate(document.createdAt)}</time>
+                  <div className="recent-document-actions">
+                    <Tooltip content="查看详情"><Link aria-label={`查看 ${document.title}`} className="icon-button" to={`/app/library/documents/${document.id}`}><FileText size={16} /></Link></Tooltip>
+                    <Tooltip content="预览原文"><Link aria-label={`预览 ${document.title}`} className="icon-button" to={`/app/library/documents/${document.id}/preview`}><Eye size={16} /></Link></Tooltip>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -97,6 +120,11 @@ export function OverviewPage() {
               <Link className="continue-item" to={`/app/interview/sessions/${interview.data[0].id}`}>
                 <strong>{interview.data[0].title || '进行中的面试'}</strong>
                 <span>已完成 {interview.data[0].answeredCount ?? interview.data[0].currentIndex ?? 0}/{interview.data[0].questionCount ?? interview.data[0].totalQuestions ?? 0} 题</span>
+                <progress
+                  aria-label={`${interview.data[0].title || '进行中的面试'}进度`}
+                  max="100"
+                  value={Math.round(((interview.data[0].answeredCount ?? interview.data[0].currentIndex ?? 0) / Math.max(1, interview.data[0].questionCount ?? interview.data[0].totalQuestions ?? 0)) * 100)}
+                />
               </Link>
             ) : <p className="widget-empty">暂无进行中的面试。</p>}
           </section>

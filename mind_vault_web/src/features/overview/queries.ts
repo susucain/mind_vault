@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { listDatasets } from '../../api/datasets';
+import { listConversations } from '../../api/conversations';
 import { listDocuments } from '../../api/documents';
 import { listInterviewSessions, listReviewItems } from '../../api/interview';
 import { appConfig } from '../../lib/config';
-import { mockDatasets, mockDocuments, mockReviewItems, mockSessions } from './mock-data';
+import { mockDocuments, mockReviewItems, mockSessions } from './mock-data';
 
 export function useRecentDocuments() {
   return useQuery({
@@ -14,23 +14,19 @@ export function useRecentDocuments() {
   });
 }
 
-export function useOverviewStats() {
+export function useDocumentCount() {
   return useQuery({
-    queryKey: ['overview', 'stats'],
-    queryFn: async () => {
-      if (appConfig.enableMockApi) {
-        return { documents: mockDocuments.length, datasets: mockDatasets.length, ready: 2 };
-      }
-      const [documents, datasets] = await Promise.all([
-        listDocuments({ page: 1, pageSize: 100 }),
-        listDatasets({ page: 1, pageSize: 1 }),
-      ]);
-      return {
-        documents: documents.total,
-        datasets: datasets.total,
-        ready: documents.items.filter((item) => item.status === 1 || item.status === 'ready').length,
-      };
-    },
+    queryKey: ['overview', 'document-count'],
+    queryFn: () => appConfig.enableMockApi
+      ? Promise.resolve(mockDocuments.length)
+      : listDocuments({ page: 1, pageSize: 1 }).then((response) => response.total),
+  });
+}
+
+export function useConversations() {
+  return useQuery({
+    queryKey: ['overview', 'conversations'],
+    queryFn: listConversations,
   });
 }
 

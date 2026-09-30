@@ -4,17 +4,29 @@ import { listDocuments } from '../../api/documents';
 import { appConfig } from '../../lib/config';
 import { mockDocuments } from '../overview/mock-data';
 
-export function useDocuments(datasetId?: string) {
+interface DocumentsQuery {
+  title?: string;
+  datasetId?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export function useDocuments(query: DocumentsQuery = {}) {
   return useQuery({
-    queryKey: ['documents', { datasetId }],
+    queryKey: ['documents', query],
     queryFn: () => appConfig.enableMockApi
       ? Promise.resolve({
-          items: datasetId ? mockDocuments.filter(() => datasetId === 'mock-d1' || datasetId === 'mock-d2') : mockDocuments,
+          items: query.datasetId ? mockDocuments.filter(() => query.datasetId === 'mock-d1' || query.datasetId === 'mock-d2') : mockDocuments,
           page: 1,
-          pageSize: 100,
+          pageSize: query.pageSize ?? 100,
           total: mockDocuments.length,
         })
-      : listDocuments({ datasetId: datasetId || undefined, page: 1, pageSize: 100 }),
+      : listDocuments({
+          title: query.title || undefined,
+          datasetId: query.datasetId || undefined,
+          page: query.page ?? 1,
+          pageSize: query.pageSize ?? 10,
+        }),
   });
 }
 

@@ -58,6 +58,20 @@ describe('AppShell', () => {
     expect(screen.getByLabelText('Mobile navigation')).toBeInTheDocument();
   });
 
+  it('uses a fullscreen shell without top or bottom navigation for mobile preview routes', () => {
+    setViewport(390);
+
+    render(
+      <MemoryRouter initialEntries={['/app/library/documents/doc-1/preview?page=2']}>
+        <AppShell><h1>原文预览</h1></AppShell>
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole('banner')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Mobile navigation')).not.toBeInTheDocument();
+    expect(screen.getByRole('main')).toHaveClass('page-container--fullscreen');
+  });
+
   it('keeps the compact sidebar at 979px', () => {
     setViewport(979);
 

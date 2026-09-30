@@ -10,7 +10,7 @@ import { UploadQueue } from './UploadQueue';
 
 export function UploadPanel({ datasets }: { datasets: Dataset[] }) {
   const queryClient = useQueryClient();
-  const { cancel, enqueue, items, retry } = useUploadQueue();
+  const { cancel, enqueue, items, retry, stopTracking } = useUploadQueue();
   const inputRef = useRef<HTMLInputElement>(null);
   const readyIds = useRef(new Set<string>());
   const [datasetId, setDatasetId] = useState(datasets[0]?.id ?? '');
@@ -74,7 +74,7 @@ export function UploadPanel({ datasets }: { datasets: Dataset[] }) {
           <Upload size={16} />选择文件
         </Button>
       </div>
-      <UploadQueue cancel={cancel} items={items} retry={retry} />
+      <UploadQueue cancel={cancel} items={items} retry={(id) => void retry(id)} stopTracking={stopTracking} />
     </section>
   );
 }

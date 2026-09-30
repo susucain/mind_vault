@@ -1,4 +1,5 @@
 import { jsonRequest, request } from './client';
+import { appConfig } from '../lib/config';
 import type { PageResult } from '../types/api';
 import type { InterviewSession, ReviewItem } from '../types/domain';
 
@@ -21,14 +22,62 @@ function queryString(query: object): string {
 
 export const createInterviewSession = (input: InterviewSessionInput) =>
   jsonRequest<InterviewSession>('/interview/sessions', 'POST', input);
-export const listInterviewSessions = () => request<InterviewSession[]>('/interview/sessions');
+
+interface BackendInterviewSession extends Omit<InterviewSession, 'status'> {
+  status: string;
+}
+
+interface BackendSessionList {
+  items: BackendInterviewSession[];
+}
+
+const mockSessions: BackendInterviewSession[] = [{
+  id: 'mock-i1',
+  datasetId: 'mock-d1',
+  topic: 'system_design',
+  title: '系统设计训练',
+  status: 'IN_PROGRESS',
+  currentIndex: 3,
+  totalQuestions: 6,
+  currentQuestion: '如何设计高可用缓存？',
+  createdAt: '2026-09-29',
+}];
+
+const mockReviewItems: ReviewItem[] = [
+  { id: 'mock-r1', sessionId: 'mock-i1', title: '解释缓存一致性策略', prompt: '解释缓存一致性策略', nextReviewAt: '2026-09-30' },
+  { id: 'mock-r2', sessionId: 'mock-i1', title: '设计限流系统', prompt: '设计限流系统', nextReviewAt: '2026-09-30' },
+];
+
+function normalizeSession(session: BackendInterviewSession): InterviewSession {
+  const backendStatus = session.status.toUpperCase();
+  const status = backendStatus === 'IN_PROGRESS'
+    ? 'active'
+    : backendStatus === 'CREATED'
+      ? 'created'
+      : backendStatus === 'COMPLETED'
+        ? 'completed'
+        : session.status.toLowerCase();
+  return { ...session, status };
+}
+
+export async function listInterviewSessions(): Promise<InterviewSession[]> {
+  const response = appConfig.enableMockApi
+    ? { items: mockSessions }
+    : await request<BackendSessionList>('/interview/sessions');
+  return response.items.map(normalizeSession);
+}
 export const getInterviewSession = (id: string) => request<InterviewSession>(`/interview/sessions/${id}`);
 export const submitInterviewAnswer = (id: string, answer: string) =>
   jsonRequest<unknown>(`/interview/sessions/${id}/answers`, 'POST', { answer });
 export const finishInterviewSession = (id: string) =>
   jsonRequest<InterviewSession>(`/interview/sessions/${id}/finish`, 'POST');
-export const listReviewItems = (query: { status?: 'PENDING' | 'COMPLETED'; page?: number; pageSize?: number } = {}) =>
-  request<PageResult<ReviewItem>>(`/interview/review-items?${queryString(query)}`);
+export const listReviewItems = (query: { status?: 'PENDING' | 'COMPLETED'; page?: number; pageSize?: number } = {}) => {
+  if (appConfig.enableMockApi) {
+    const items = query.status === 'COMPLETED' ? [] : mockReviewItems;
+    return Promise.resolve({ items, total: items.length, page: query.page ?? 1, pageSize: query.pageSize ?? 20 });
+  }
+  return request<PageResult<ReviewItem>>(`/interview/review-items?${queryString(query)}`);
+};
 export const getReviewItem = (id: string) => request<ReviewItem>(`/interview/review-items/${id}`);
 export const submitReviewAnswer = (id: string, answer: string) =>
   jsonRequest<ReviewItem>(`/interview/review-items/${id}/answers`, 'POST', { answer });

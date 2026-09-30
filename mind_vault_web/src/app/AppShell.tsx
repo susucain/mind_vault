@@ -141,20 +141,22 @@ export function MobileBottomNav() {
   );
 }
 
-export function PageContainer({ children }: PropsWithChildren) {
-  return <main className="page-container">{children}</main>;
+export function PageContainer({ children, fullscreen = false }: PropsWithChildren<{ fullscreen?: boolean }>) {
+  return <main className={`page-container${fullscreen ? ' page-container--fullscreen' : ''}`}>{children}</main>;
 }
 
 export function AppShell({ children }: PropsWithChildren) {
   const mode = useViewportMode();
+  const { pathname } = useLocation();
+  const fullscreen = mode === 'mobile' && /^\/app\/library\/documents\/[^/]+\/preview$/.test(pathname);
   const commandMenuOpen = useAppStore((state) => state.commandMenuOpen);
   const setCommandMenuOpen = useAppStore((state) => state.setCommandMenuOpen);
 
   return (
-    <div className="app-frame">
-      {mode === 'mobile' ? null : <DesktopSidebar compact={mode === 'compact'} />}
+    <div className={`app-frame${fullscreen ? ' app-frame--fullscreen' : ''}`}>
+      {mode === 'mobile' || fullscreen ? null : <DesktopSidebar compact={mode === 'compact'} />}
       <div className="app-workspace">
-        <header className="app-header">
+        {!fullscreen ? <header className="app-header">
           <div className="header-title">
             {mode === 'mobile' ? <BookOpen aria-hidden="true" size={20} /> : <PanelLeft aria-hidden="true" size={18} />}
             <span>工作台</span>
@@ -162,11 +164,11 @@ export function AppShell({ children }: PropsWithChildren) {
           <button aria-label="Open command menu" className="icon-button" onClick={() => setCommandMenuOpen(true)} type="button">
             <Search aria-hidden="true" size={18} />
           </button>
-        </header>
-        <PageContainer>{children}</PageContainer>
+        </header> : null}
+        <PageContainer fullscreen={fullscreen}>{children}</PageContainer>
       </div>
-      {mode === 'mobile' ? <MobileBottomNav /> : null}
-      <CommandMenu onOpenChange={setCommandMenuOpen} open={commandMenuOpen} />
+      {mode === 'mobile' && !fullscreen ? <MobileBottomNav /> : null}
+      {!fullscreen ? <CommandMenu onOpenChange={setCommandMenuOpen} open={commandMenuOpen} /> : null}
     </div>
   );
 }

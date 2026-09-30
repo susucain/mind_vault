@@ -11,7 +11,7 @@ for (const width of [1280, 980, 390]) {
     });
 
     await page.goto('/app/overview');
-    await expect(page.getByRole('heading', { exact: true, name: 'Overview' })).toBeVisible();
+    await expect(page.getByRole('heading', { exact: true, name: '你好，今天想整理什么？' })).toBeVisible();
 
     const widths = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,
