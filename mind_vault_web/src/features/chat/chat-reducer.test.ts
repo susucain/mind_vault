@@ -18,4 +18,14 @@ describe('chatReducer', () => {
     expect(state.status).toBe('interrupted');
     expect(state.draft?.content).toBe('已生成');
   });
+
+  it('materializes a result-only frame without duplicating streamed text', () => {
+    let state = chatReducer(initialChatState(), { type: 'event', event: { type: 'token', content: 'partial' } });
+    state = chatReducer(state, {
+      type: 'event',
+      event: { type: 'result', result: { answer: '最终答案', citations: [{ id: 'c1', documentId: 'd1', documentName: '资料', excerpt: '片段', locator: { page: 2 } }] } },
+    });
+    expect(state.draft).toMatchObject({ content: '最终答案', tokens: 4, citations: [{ id: 'c1' }] });
+    expect(materializeDraft(state).at(-1)?.content).toBe('最终答案');
+  });
 });

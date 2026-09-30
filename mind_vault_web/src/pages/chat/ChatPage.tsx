@@ -32,6 +32,7 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
   const [scopeOpen, setScopeOpen] = useState(false);
   const [selectedDatasets, setSelectedDatasets] = useState<string[]>([]);
   const [favorite, setFavorite] = useState(false);
+  const [lastPrompt, setLastPrompt] = useState('');
   const sse = useSse();
   const conversations = useQuery({ queryKey: ['chat', 'conversations'], queryFn: listConversations });
   const conversationId = routeId ?? createdConversationId;
@@ -41,8 +42,10 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
   const updateScope = useMutation({ mutationFn: (ids: string[]) => updateConversation(conversationId!, ids), onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] }); setScopeOpen(false); } });
 
   useEffect(() => {
-    if (messages.data) dispatch({ type: 'history', messages: messages.data });
-  }, [messages.data]);
+    if (!messages.data || state.status === 'loading' || state.status === 'streaming' || state.status === 'interrupted') return;
+    if (createdConversationId && !messages.data.length) return;
+    dispatch({ type: 'history', messages: messages.data });
+  }, [createdConversationId, messages.data, state.status]);
 
   const activeConversation = conversations.data?.find((item) => item.id === conversationId);
   const scopeIds = selectedDatasets.length ? selectedDatasets : activeConversation?.datasetIds ?? [];
@@ -50,23 +53,28 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
   const lastQuestion = [...state.messages].reverse().find((message) => message.role === 'user')?.content;
   const busy = state.status === 'loading' || state.status === 'streaming';
 
-  async function sendMessage(event?: FormEvent, content = input) {
+  async function sendMessage(event?: FormEvent, content = input, mode: 'new' | 'retry' | 'continue' = 'new') {
     event?.preventDefault();
-    const question = content.trim();
+    const question = (mode === 'continue' ? lastPrompt : content).trim();
     if (!question || busy) return;
+    if (mode !== 'continue') setLastPrompt(question);
     let id = conversationId;
-    if (!id) {
-      const created = await create.mutateAsync({ datasetIds: selectedDatasets.length ? selectedDatasets : datasets.data?.items.slice(0, 1).map((item) => item.id) ?? [], title: question.slice(0, 28) });
-      id = created.id;
-      setCreatedConversationId(id);
-      navigate(`/app/chat/${id}`, { replace: true });
-      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
-    }
-    const user: ChatMessage = { id: `local-${Date.now()}`, conversationId: id, role: 'user', content: question, citations: [], createdAt: new Date().toISOString() };
-    dispatch({ type: 'begin', conversationId: id, user });
-    setInput('');
-    const request = createMessageStreamRequest(id, question);
     try {
+      if (!id) {
+        const created = await create.mutateAsync({ datasetIds: selectedDatasets.length ? selectedDatasets : datasets.data?.items.slice(0, 1).map((item) => item.id) ?? [], title: question.slice(0, 28) });
+        id = created.id;
+        setCreatedConversationId(id);
+        navigate(`/app/chat/${id}`, { replace: true });
+        void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
+      }
+      if (mode === 'continue') {
+        dispatch({ type: 'resume' });
+      } else if (mode === 'new' || !conversationId) {
+        const user: ChatMessage = { id: `local-${Date.now()}`, conversationId: id, role: 'user', content: question, citations: [], createdAt: new Date().toISOString() };
+        dispatch({ type: 'begin', conversationId: id, user });
+      }
+      setInput('');
+      const request = createMessageStreamRequest(id, question);
       await sse.start(request.path, { init: request.init, onEvent: (streamEvent: StreamEvent) => dispatch({ type: 'event', event: streamEvent }) });
       void queryClient.invalidateQueries({ queryKey: ['chat', 'messages', id] });
       void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
@@ -92,7 +100,7 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
       <div className="chat-workspace">
         <aside aria-label="会话历史" className="chat-history"><div className="chat-panel-heading"><h2>会话历史</h2><button aria-label="新建对话" className="icon-button" onClick={() => navigate('/app/chat/new')} type="button"><Plus size={17} /></button></div>{conversations.isPending ? <LoadingState label="加载会话" /> : conversations.isError ? <ErrorState onRetry={() => void conversations.refetch()} title="历史加载失败" /> : conversations.data?.length ? <ConversationList activeId={conversationId} items={conversations.data} onSelect={selectConversation} /> : <p className="chat-muted">还没有会话</p>}</aside>
         <main className="chat-main">
-          <div className="chat-scroll">{!state.messages.length && !state.draft ? <EmptyState title="从资料中开始提问" description="选择资料范围，输入问题，答案会附带可定位的原文引用。" /> : <div className="message-list">{state.messages.map((message) => <MessageBubble key={message.id} message={message} />)}{state.draft ? <AssistantMessage draft={state.draft} /> : null}</div>}{state.status === 'error' ? <div className="chat-error" role="alert"><span>{state.error || '回答失败'}</span><Button onClick={() => lastQuestion && void sendMessage(undefined, lastQuestion)} variant="secondary"><RefreshCw size={14} />重试</Button></div> : null}{state.status === 'interrupted' ? <div className="chat-interrupted" role="status">回答已停止，已保留当前内容。<Button onClick={() => void sendMessage(undefined, '继续生成')} variant="ghost">继续生成</Button></div> : null}</div>
+          <div className="chat-scroll">{!state.messages.length && !state.draft ? <EmptyState title="从资料中开始提问" description="选择资料范围，输入问题，答案会附带可定位的原文引用。" /> : <div className="message-list">{state.messages.map((message) => <MessageBubble key={message.id} message={message} />)}{state.draft ? <AssistantMessage draft={state.draft} /> : null}</div>}{state.status === 'error' ? <div className="chat-error" role="alert"><span>{state.error || '回答失败'}</span><Button onClick={() => void sendMessage(undefined, lastPrompt || lastQuestion, 'retry')} variant="secondary"><RefreshCw size={14} />重试</Button></div> : null}{state.status === 'interrupted' ? <div className="chat-interrupted" role="status">回答已停止，已保留当前内容。<Button onClick={() => void sendMessage(undefined, lastPrompt, 'continue')} variant="ghost">继续生成</Button></div> : null}</div>
           <div className="chat-composer-wrap"><div className="prompt-chips">{prompts.map((prompt) => <button key={prompt} onClick={() => setInput(prompt)} type="button">{prompt}</button>)}</div><form className="chat-composer" onSubmit={(event) => void sendMessage(event)}><textarea aria-label="输入问题" onChange={(event) => setInput(event.target.value)} placeholder="询问你的资料…" rows={2} value={input} />{busy ? <Button aria-label="停止生成" onClick={() => { sse.abort(); dispatch({ type: 'interrupted' }); }} type="button" variant="secondary"><Pause size={17} /></Button> : <Button aria-label="发送问题" disabled={!input.trim() || create.isPending} type="submit"><Send size={17} /></Button>}</form><p className="chat-composer-hint">回答由资料范围生成，请核对引用原文。</p></div>
         </main>
         <aside aria-label="引用" className="chat-citations"><div className="chat-panel-heading"><h2>引用 {citations.length ? `(${citations.length})` : ''}</h2><button aria-label="关闭引用栏" className="icon-button chat-mobile-only" onClick={() => setCitationsOpen(false)} type="button"><X size={17} /></button></div>{citations.length ? citations.map((citation) => <CitationCard citation={citation} key={citation.id} />) : <div className="chat-empty-side"><FileText size={22} /><span>生成回答后显示来源</span></div>}</aside>

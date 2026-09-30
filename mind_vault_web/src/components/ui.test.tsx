@@ -19,7 +19,7 @@ describe('Drawer', () => {
     expect(screen.getByRole('dialog', { name: 'Filters' })).toHaveClass('drawer-content');
     expect(screen.getByText('Drawer content')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Close drawer' }));
+    await user.click(screen.getByRole('button', { name: '关闭抽屉' }));
 
     expect(screen.queryByRole('dialog', { name: 'Filters' })).not.toBeInTheDocument();
   });

@@ -101,7 +101,7 @@ export function Drawer({
         <DialogPrimitive.Content className="drawer-content" data-side={side}>
           <div className="dialog-header">
             <DialogPrimitive.Title>{title}</DialogPrimitive.Title>
-            <DialogPrimitive.Close aria-label="Close drawer" className="icon-button">
+            <DialogPrimitive.Close aria-label="关闭抽屉" className="icon-button">
               <X size={18} />
             </DialogPrimitive.Close>
           </div>

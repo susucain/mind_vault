@@ -165,6 +165,25 @@ describe('useSse', () => {
     expect(result.current.error).toMatchObject({ code: 'MALFORMED_SSE' });
   });
 
+  it('ignores heartbeat comment frames and empty data frames without ending the stream', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      streamResponse([
+        ': ping\n\nevent: heartbeat\n\n',
+        'event: token\ndata: {"text":"kept"}\n\nevent: done\ndata: {}\n\n',
+      ]),
+    );
+    const onEvent = vi.fn();
+    const { result } = renderHook(() => useSse());
+
+    await act(async () => {
+      await result.current.start('/stream', { onEvent });
+    });
+
+    expect(onEvent).toHaveBeenCalledWith({ type: 'token', content: 'kept' });
+    expect(onEvent).toHaveBeenCalledWith({ type: 'done', messageId: '' });
+    expect(onEvent.mock.calls.filter(([event]) => event.type === 'done')).toHaveLength(1);
+  });
+
   it('aborts without discarding events received before aborting', async () => {
     let releaseSecondChunk: (() => void) | undefined;
     const encoder = new TextEncoder();

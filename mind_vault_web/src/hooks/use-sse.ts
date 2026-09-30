@@ -111,14 +111,23 @@ export function useSse() {
             .filter((line) => line.startsWith('data:'))
             .map((line) => line.slice(5).trimStart())
             .join('\n');
-          if (!rawData || rawData === '[DONE]') {
+          if (!rawData) {
+            continue;
+          }
+          if (rawData === '[DONE]') {
             options.onEvent({ type: 'done', messageId: '' });
             stopped = true;
             break;
           }
           try {
             const event = normalize(eventName, JSON.parse(rawData));
-            if (event) options.onEvent(event);
+            if (event) {
+              options.onEvent(event);
+              if (event.type === 'done') {
+                stopped = true;
+                break;
+              }
+            }
           } catch {
             const malformed = { type: 'error', code: 'MALFORMED_SSE', message: 'Malformed SSE JSON payload' } as const;
             setError(malformed);
