@@ -67,7 +67,7 @@ export function useUploadQueue() {
             progress: nextStatus === 'ready' ? 100 : current.progress,
             currentStage: status.currentStage ?? undefined,
             stageProgress: status.stageProgress,
-            failedStage: status.currentStage ?? undefined,
+            failedStage: nextStatus === 'failed' ? status.currentStage ?? undefined : undefined,
             errorMessage: status.errorMessage ?? undefined,
           });
           stop();

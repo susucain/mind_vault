@@ -135,7 +135,7 @@ describe('useUploadQueue', () => {
     expect(result.current.items[0]).toMatchObject({
       status: 'ready',
       progress: 100,
-      failedStage: 'ready',
+      failedStage: undefined,
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4_000);
@@ -163,6 +163,29 @@ describe('useUploadQueue', () => {
       status: 'failed',
       failedStage: 'embedding',
       errorMessage: 'embedding worker failed',
+    });
+  });
+
+  it('does not expose a non-failure stage as failedStage for cancelled jobs', async () => {
+    uploadDocument.mockResolvedValue({ documentId: 'doc-1', jobId: 'job-1', status: 'UPLOADED' });
+    getDocumentStatus.mockResolvedValue({
+      status: 'CANCELLED',
+      currentStage: 'cancelled',
+      errorMessage: null,
+      stageProgress: { completed: 1, total: 5, percent: 20 },
+    });
+    const { result } = renderHook(() => useUploadQueue());
+
+    act(() => result.current.enqueue([createFile('a.txt')], 'dataset-1'));
+    await vi.waitFor(() => expect(result.current.items[0]).toMatchObject({ status: 'processing' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+
+    expect(result.current.items[0]).toMatchObject({
+      status: 'cancelled',
+      currentStage: 'cancelled',
+      failedStage: undefined,
     });
   });
 

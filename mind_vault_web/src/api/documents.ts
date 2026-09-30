@@ -44,6 +44,13 @@ export interface DocumentProcessingStatus {
   };
 }
 
+export interface RetryDocumentResult {
+  documentId: string;
+  jobId: string;
+  status: string;
+  retryCount: number;
+}
+
 function queryString(query: object): string {
   const params = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
@@ -75,7 +82,8 @@ export async function getDocument(id: string): Promise<Document> {
 }
 export const getDocumentStatus = (id: string) =>
   request<DocumentProcessingStatus>(`/documents/${id}/status`);
-export const retryDocument = (id: string) => jsonRequest<Document>(`/documents/${id}/retry`, 'POST');
+export const retryDocument = (id: string) =>
+  jsonRequest<RetryDocumentResult>(`/documents/${id}/retry`, 'POST');
 export const reindexDocument = (id: string) => jsonRequest<Document>(`/documents/${id}/reindex`, 'POST');
 export const deleteDocument = (id: string) => request<void>(`/documents/${id}`, { method: 'DELETE' });
 

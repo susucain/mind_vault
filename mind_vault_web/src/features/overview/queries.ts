@@ -33,7 +33,10 @@ export function useConversations() {
 export function useContinueInterview() {
   return useQuery({
     queryKey: ['overview', 'continue-interview'],
-    queryFn: () => appConfig.enableMockApi ? Promise.resolve(mockSessions) : listInterviewSessions(),
+    queryFn: async () => {
+      const sessions = appConfig.enableMockApi ? mockSessions : await listInterviewSessions();
+      return sessions.filter((session) => ['active', 'created', 'in_progress', 'in-progress'].includes(session.status.toLowerCase()));
+    },
   });
 }
 

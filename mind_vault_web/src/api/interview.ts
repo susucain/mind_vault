@@ -31,6 +31,52 @@ interface BackendSessionList {
   items: BackendInterviewSession[];
 }
 
+export interface ReviewItemRecord extends ReviewItem {
+  sourceTurnId: string;
+  status: 'PENDING' | 'COMPLETED';
+  reason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string | null;
+  lastReviewedAt?: string | null;
+}
+
+export interface InterviewTurnResponse {
+  id: string;
+  sessionId: string;
+  ownerId: string;
+  question: string;
+  answer: string;
+  evaluation: Record<string, unknown>;
+  citationIds: string[];
+  createdAt: string;
+}
+
+export interface ReviewAttemptResponse {
+  id: string;
+  reviewItemId: string;
+  ownerId: string;
+  answer: string;
+  evaluation: Record<string, unknown>;
+  citationIds: string[];
+  score: string;
+  createdAt: string;
+}
+
+export interface ReviewItemDetailResponse {
+  item: ReviewItemRecord;
+  sourceTurn: InterviewTurnResponse | null;
+  sourceTopic: string | null;
+  attempts: ReviewAttemptResponse[];
+}
+
+export interface SubmitReviewAnswerResponse {
+  attempt: ReviewAttemptResponse;
+  item: ReviewItemRecord;
+  autoCompleted: boolean;
+  score: number;
+}
+
 const mockSessions: BackendInterviewSession[] = [{
   id: 'mock-i1',
   datasetId: 'mock-d1',
@@ -78,8 +124,9 @@ export const listReviewItems = (query: { status?: 'PENDING' | 'COMPLETED'; page?
   }
   return request<PageResult<ReviewItem>>(`/interview/review-items?${queryString(query)}`);
 };
-export const getReviewItem = (id: string) => request<ReviewItem>(`/interview/review-items/${id}`);
+export const getReviewItem = (id: string) =>
+  request<ReviewItemDetailResponse>(`/interview/review-items/${id}`);
 export const submitReviewAnswer = (id: string, answer: string) =>
-  jsonRequest<ReviewItem>(`/interview/review-items/${id}/answers`, 'POST', { answer });
+  jsonRequest<SubmitReviewAnswerResponse>(`/interview/review-items/${id}/answers`, 'POST', { answer });
 export const updateReviewItem = (id: string, status: 'PENDING' | 'COMPLETED') =>
   jsonRequest<ReviewItem>(`/interview/review-items/${id}`, 'PATCH', { status });
