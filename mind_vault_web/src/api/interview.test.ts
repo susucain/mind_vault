@@ -1,8 +1,25 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getReviewItem, listInterviewSessions, submitReviewAnswer } from './interview';
+import { createInterviewSessionStream, getReviewItem, listInterviewSessions, submitReviewAnswer } from './interview';
 
 describe('interview API contracts', () => {
   afterEach(() => vi.restoreAllMocks());
+
+  it('builds the session stream request with a path and JSON body', () => {
+    expect(createInterviewSessionStream({
+      datasetId: 'dataset-1',
+      topic: 'system_design',
+      intensity: 'deep',
+      totalQuestions: 5,
+    })).toEqual({
+      path: '/interview/sessions/stream',
+      body: {
+        datasetId: 'dataset-1',
+        topic: 'system_design',
+        intensity: 'deep',
+        totalQuestions: 5,
+      },
+    });
+  });
 
   it('unwraps the backend items envelope and normalizes IN_PROGRESS', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({

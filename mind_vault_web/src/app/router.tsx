@@ -1,6 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { ProtectedLayout } from './layouts';
-import { ChatPage, InterviewSessionPage, PlaceholderPage } from './pages';
+import { ChatPage, PlaceholderPage } from './pages';
 import { APP_PATHS } from './navigation';
 import { LoginPage } from '../pages/auth/LoginPage';
 import { OverviewPage } from '../pages/overview/OverviewPage';
@@ -10,6 +10,11 @@ import { DocumentDetailPage } from '../pages/library/DocumentDetailPage';
 import { DocumentPreviewPage } from '../pages/library/DocumentPreviewPage';
 import { MockLibraryPage } from '../pages/library/MockLibraryPage';
 import { ArchivePage } from '../pages/library/ArchivePage';
+import { InterviewPage } from '../pages/interview/InterviewPage';
+import { NewInterviewPage } from '../pages/interview/NewInterviewPage';
+import { InterviewSessionPage } from '../pages/interview/InterviewSessionPage';
+import { InterviewFeedbackPage } from '../pages/interview/InterviewFeedbackPage';
+import { ReviewItemsPage } from '../pages/interview/ReviewItemsPage';
 
 export const router = createBrowserRouter([
   {
@@ -38,12 +43,13 @@ export const router = createBrowserRouter([
       { path: 'chat', element: <ChatPage isNew /> },
       { path: 'chat/new', element: <ChatPage isNew /> },
       { path: 'chat/:conversationId', element: <ChatPage /> },
-      { path: 'interview', element: <PlaceholderPage title="Interview" /> },
-      { path: 'interview/new', element: <PlaceholderPage title="New interview" /> },
-      { path: 'interview/sessions', element: <PlaceholderPage title="Interview" /> },
+      { path: 'interview', element: <InterviewPage /> },
+      { path: 'interview/new', element: <NewInterviewPage /> },
+      { path: 'interview/sessions', element: <InterviewPage /> },
       { path: 'interview/sessions/:sessionId', element: <InterviewSessionPage /> },
-      { path: 'interview/sessions/:sessionId/feedback', element: <InterviewSessionPage feedback /> },
-      { path: 'interview/review-items', element: <PlaceholderPage title="Review items" /> },
+      { path: 'interview/sessions/:sessionId/feedback', element: <InterviewFeedbackPage /> },
+      { path: 'interview/review-items', element: <ReviewItemsPage /> },
+      { path: 'interview/review-items/:itemId', element: <ReviewItemsPage /> },
       { path: 'settings/*', element: <PlaceholderPage title="Settings" /> },
     ],
   },

@@ -12,6 +12,15 @@ export interface InterviewSessionInput {
   totalQuestions?: number;
 }
 
+export interface InterviewAnswerResult {
+  turn?: InterviewTurnResponse;
+  evaluation?: Record<string, unknown>;
+  citations?: string[];
+  nextQuestion?: string | null;
+  reviewItems?: ReviewItemRecord[];
+  status?: string;
+}
+
 function queryString(query: object): string {
   const params = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
@@ -89,9 +98,29 @@ const mockSessions: BackendInterviewSession[] = [{
   createdAt: '2026-09-29',
 }];
 
-const mockReviewItems: ReviewItem[] = [
-  { id: 'mock-r1', sessionId: 'mock-i1', title: '解释缓存一致性策略', prompt: '解释缓存一致性策略', nextReviewAt: '2026-09-30' },
-  { id: 'mock-r2', sessionId: 'mock-i1', title: '设计限流系统', prompt: '设计限流系统', nextReviewAt: '2026-09-30' },
+const mockReviewItems: ReviewItemRecord[] = [
+  {
+    id: 'mock-r1',
+    sessionId: 'mock-i1',
+    sourceTurnId: 'mock-turn-1',
+    title: '解释缓存一致性策略',
+    prompt: '解释缓存一致性策略',
+    nextReviewAt: '2026-09-30',
+    status: 'PENDING',
+    createdAt: '2026-09-29T08:00:00Z',
+    updatedAt: '2026-09-29T08:00:00Z',
+  },
+  {
+    id: 'mock-r2',
+    sessionId: 'mock-i1',
+    sourceTurnId: 'mock-turn-2',
+    title: '设计限流系统',
+    prompt: '设计限流系统',
+    nextReviewAt: '2026-09-30',
+    status: 'PENDING',
+    createdAt: '2026-09-29T08:05:00Z',
+    updatedAt: '2026-09-29T08:05:00Z',
+  },
 ];
 
 function normalizeSession(session: BackendInterviewSession): InterviewSession {
@@ -112,9 +141,16 @@ export async function listInterviewSessions(): Promise<InterviewSession[]> {
     : await request<BackendSessionList>('/interview/sessions');
   return response.items.map(normalizeSession);
 }
-export const getInterviewSession = (id: string) => request<InterviewSession>(`/interview/sessions/${id}`);
+export async function getInterviewSession(id: string): Promise<InterviewSession & { turns?: InterviewTurnResponse[] }> {
+  const response = await request<InterviewSession & { turns?: InterviewTurnResponse[] } | { data: InterviewSession & { turns?: InterviewTurnResponse[] } }>(`/interview/sessions/${id}`);
+  return 'data' in response ? response.data : response;
+}
 export const submitInterviewAnswer = (id: string, answer: string) =>
-  jsonRequest<unknown>(`/interview/sessions/${id}/answers`, 'POST', { answer });
+  jsonRequest<InterviewAnswerResult>(`/interview/sessions/${id}/answers`, 'POST', { answer });
+export const submitInterviewAnswerStream = (id: string, answer: string) =>
+  ({ path: `/interview/sessions/${id}/answers/stream`, body: { answer } });
+export const createInterviewSessionStream = (input: InterviewSessionInput) =>
+  ({ path: '/interview/sessions/stream', body: { ...input } });
 export const finishInterviewSession = (id: string) =>
   jsonRequest<InterviewSession>(`/interview/sessions/${id}/finish`, 'POST');
 export const listReviewItems = (query: { status?: 'PENDING' | 'COMPLETED'; page?: number; pageSize?: number } = {}) => {
@@ -122,11 +158,11 @@ export const listReviewItems = (query: { status?: 'PENDING' | 'COMPLETED'; page?
     const items = query.status === 'COMPLETED' ? [] : mockReviewItems;
     return Promise.resolve({ items, total: items.length, page: query.page ?? 1, pageSize: query.pageSize ?? 20 });
   }
-  return request<PageResult<ReviewItem>>(`/interview/review-items?${queryString(query)}`);
+  return request<PageResult<ReviewItemRecord>>(`/interview/review-items?${queryString(query)}`);
 };
 export const getReviewItem = (id: string) =>
   request<ReviewItemDetailResponse>(`/interview/review-items/${id}`);
 export const submitReviewAnswer = (id: string, answer: string) =>
   jsonRequest<SubmitReviewAnswerResponse>(`/interview/review-items/${id}/answers`, 'POST', { answer });
 export const updateReviewItem = (id: string, status: 'PENDING' | 'COMPLETED') =>
-  jsonRequest<ReviewItem>(`/interview/review-items/${id}`, 'PATCH', { status });
+  jsonRequest<ReviewItemRecord>(`/interview/review-items/${id}`, 'PATCH', { status });
