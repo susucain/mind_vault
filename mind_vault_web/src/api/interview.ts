@@ -14,7 +14,7 @@ export interface InterviewSessionInput {
 
 export interface InterviewAnswerResult {
   turn?: InterviewTurnResponse;
-  evaluation?: Record<string, unknown>;
+  evaluation?: InterviewEvaluation;
   citations?: string[];
   nextQuestion?: string | null;
   reviewItems?: ReviewItemRecord[];
@@ -40,14 +40,17 @@ interface BackendSessionList {
   items: BackendInterviewSession[];
 }
 
-export interface ReviewItemRecord extends ReviewItem {
-  sourceTurnId: string;
-  status: 'PENDING' | 'COMPLETED';
-  reason?: string | null;
-  createdAt: string;
-  updatedAt: string;
-  completedAt?: string | null;
-  lastReviewedAt?: string | null;
+export type ReviewItemRecord = ReviewItem;
+
+export interface InterviewEvaluation {
+  accuracy: number;
+  depth: number;
+  structure: number;
+  clarity: number;
+  strengths: string[];
+  gaps: string[];
+  followUp: string;
+  reviewItems: string[];
 }
 
 export interface InterviewTurnResponse {
@@ -56,7 +59,7 @@ export interface InterviewTurnResponse {
   ownerId: string;
   question: string;
   answer: string;
-  evaluation: Record<string, unknown>;
+  evaluation: InterviewEvaluation;
   citationIds: string[];
   createdAt: string;
 }
@@ -101,22 +104,16 @@ const mockSessions: BackendInterviewSession[] = [{
 const mockReviewItems: ReviewItemRecord[] = [
   {
     id: 'mock-r1',
-    sessionId: 'mock-i1',
     sourceTurnId: 'mock-turn-1',
     title: '解释缓存一致性策略',
-    prompt: '解释缓存一致性策略',
-    nextReviewAt: '2026-09-30',
     status: 'PENDING',
     createdAt: '2026-09-29T08:00:00Z',
     updatedAt: '2026-09-29T08:00:00Z',
   },
   {
     id: 'mock-r2',
-    sessionId: 'mock-i1',
     sourceTurnId: 'mock-turn-2',
     title: '设计限流系统',
-    prompt: '设计限流系统',
-    nextReviewAt: '2026-09-30',
     status: 'PENDING',
     createdAt: '2026-09-29T08:05:00Z',
     updatedAt: '2026-09-29T08:05:00Z',

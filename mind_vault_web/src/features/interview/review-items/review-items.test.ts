@@ -6,7 +6,6 @@ describe('filterReviewItems', () => {
   const items: ReviewItemRecord[] = [
     {
       id: '1',
-      sessionId: 'session-1',
       sourceTurnId: 'turn-1',
       title: '缓存一致性',
       status: 'PENDING',
@@ -16,7 +15,6 @@ describe('filterReviewItems', () => {
     },
     {
       id: '2',
-      sessionId: 'session-1',
       sourceTurnId: 'turn-2',
       title: '限流算法',
       status: 'COMPLETED',

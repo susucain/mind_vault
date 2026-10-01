@@ -442,4 +442,28 @@ select:focus, textarea:focus { border-color: var(--mv-blue); box-shadow: 0 0 0 3
   .chat-header__actions .button { display: none; }
   .message-list { gap: 22px; }
   .chat-scroll > .state-panel { margin-top: 12vh; }
+  .interview-continue { flex-direction: column; gap: 16px; padding: 16px; }
+  .interview-progress { width: 100%; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto; }
+  .interview-empty { align-items: flex-start; flex-wrap: wrap; }
+  .interview-empty .button { margin-left: 0; }
+  .interview-stats { grid-template-columns: 1fr; }
+  .interview-stats article + article { border-top: 1px solid var(--mv-line); border-left: 0; }
+  .choice-grid, .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .interview-session-page { min-height: auto; gap: 14px; }
+  .session-header { align-items: flex-start; flex-wrap: wrap; }
+  .session-header .button { margin-left: auto; }
+  .session-progress { min-width: 0; }
+  .session-progress span { white-space: nowrap; }
+  .session-layout, .interview-grid, .feedback-grid, .review-detail-grid { grid-template-columns: minmax(0, 1fr); }
+  .question-panel { padding: 18px 16px; }
+  .question-panel h2 { margin: 22px 0 16px; }
+  .answer-actions { justify-content: stretch; flex-wrap: wrap; }
+  .answer-actions .button { flex: 1 1 140px; }
+  .feedback-score-panel { grid-template-columns: minmax(0, 1fr); padding: 16px; }
+  .dimension-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .review-toolbar { align-items: stretch; flex-direction: column; }
+  .review-search { width: 100%; }
+  .review-item-copy > div { align-items: flex-start; flex-wrap: wrap; }
+  .review-item-copy strong { white-space: normal; overflow-wrap: anywhere; }
+  .review-detail-grid .button { width: 100%; justify-content: center; }
 }

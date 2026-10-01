@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createInterviewSessionStream, getReviewItem, listInterviewSessions, submitReviewAnswer } from './interview';
+import { createInterviewSessionStream, getReviewItem, listInterviewSessions, listReviewItems, submitReviewAnswer } from './interview';
 
 describe('interview API contracts', () => {
   afterEach(() => vi.restoreAllMocks());
@@ -9,6 +9,8 @@ describe('interview API contracts', () => {
       datasetId: 'dataset-1',
       topic: 'system_design',
       intensity: 'deep',
+      focus: '缓存与高可用',
+      jobDescription: '负责平台基础设施建设',
       totalQuestions: 5,
     })).toEqual({
       path: '/interview/sessions/stream',
@@ -16,6 +18,8 @@ describe('interview API contracts', () => {
         datasetId: 'dataset-1',
         topic: 'system_design',
         intensity: 'deep',
+        focus: '缓存与高可用',
+        jobDescription: '负责平台基础设施建设',
         totalQuestions: 5,
       },
     });
@@ -61,6 +65,19 @@ describe('interview API contracts', () => {
       sourceTopic: 'system_design',
       attempts: [expect.objectContaining({ id: 'attempt-1' })],
     });
+  });
+
+  it('passes the review status filter to the backend', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 50,
+    }), { headers: { 'Content-Type': 'application/json' } }));
+
+    await listReviewItems({ status: 'COMPLETED', page: 1, pageSize: 50 });
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toContain('/interview/review-items?status=COMPLETED&page=1&pageSize=50');
   });
 
   it('keeps the review answer response envelope', async () => {

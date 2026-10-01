@@ -57,7 +57,7 @@ describe('OverviewPage', () => {
       { id: 'i1', title: '系统设计训练', status: 'active', currentIndex: 2, totalQuestions: 5 },
     ] as never);
     vi.mocked(listReviewItems).mockResolvedValue({
-      items: [{ id: 'r1', prompt: '解释 CAP 定理' }, { id: 'r2', prompt: '说明缓存一致性' }],
+      items: [{ id: 'r1', title: '解释 CAP 定理' }, { id: 'r2', title: '说明缓存一致性' }],
       page: 1,
       pageSize: 5,
       total: 2,
@@ -88,7 +88,7 @@ describe('OverviewPage', () => {
       { id: 'i1', title: '系统设计训练', status: 'active', currentIndex: 2, totalQuestions: 5 },
     ] as never);
     vi.mocked(listReviewItems).mockResolvedValue({
-      items: [{ id: 'r1', prompt: '解释 CAP 定理' }],
+      items: [{ id: 'r1', title: '解释 CAP 定理' }],
       page: 1,
       pageSize: 5,
       total: 1,

@@ -133,7 +133,7 @@ export function OverviewPage() {
             {reviews.isPending ? <LoadingState label="加载复习项" /> : reviews.isError ? (
               <WidgetError label="复习项加载失败" retry={() => void reviews.refetch()} />
             ) : reviews.data.items.length ? (
-              <ul className="review-list">{reviews.data.items.slice(0, 3).map((item) => <li key={item.id}>{item.prompt || item.title}</li>)}</ul>
+              <ul className="review-list">{reviews.data.items.slice(0, 3).map((item) => <li key={item.id}>{item.title || '待复习问题'}</li>)}</ul>
             ) : <p className="widget-empty">今天没有待复习内容。</p>}
           </section>
         </div>

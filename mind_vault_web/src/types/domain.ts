@@ -99,14 +99,15 @@ export interface InterviewSession {
 
 export interface ReviewItem {
   id: string;
-  sessionId: string;
-  prompt?: string;
-  title?: string;
-  answer?: string;
-  feedback?: string;
-  score?: number;
-  locator?: DocumentLocator;
-  nextReviewAt?: string;
+  sourceTurnId: string;
+  title: string;
+  reason?: string | null;
+  status: 'PENDING' | 'COMPLETED';
+  dueAt?: string | null;
+  completedAt?: string | null;
+  lastReviewedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Dataset {

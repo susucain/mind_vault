@@ -16,6 +16,6 @@ export const mockSessions: InterviewSession[] = [
 ];
 
 export const mockReviewItems: ReviewItem[] = [
-  { id: 'mock-r1', sessionId: 'mock-i1', title: '解释缓存一致性策略', prompt: '解释缓存一致性策略', nextReviewAt: '2026-09-30' },
-  { id: 'mock-r2', sessionId: 'mock-i1', title: '设计限流系统', prompt: '设计限流系统', nextReviewAt: '2026-09-30' },
+  { id: 'mock-r1', sourceTurnId: 'mock-turn-1', title: '解释缓存一致性策略', status: 'PENDING', reason: '补充一致性边界', createdAt: '2026-09-29', updatedAt: '2026-09-29' },
+  { id: 'mock-r2', sourceTurnId: 'mock-turn-2', title: '设计限流系统', status: 'PENDING', reason: '补充限流取舍', createdAt: '2026-09-29', updatedAt: '2026-09-29' },
 ];
