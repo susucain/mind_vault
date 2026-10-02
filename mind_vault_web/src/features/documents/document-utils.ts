@@ -1,6 +1,22 @@
 import type { Document, DocumentStatus } from '../../types/domain';
+import { Archive, CircleCheck, CircleX, Clock3, LoaderCircle, TriangleAlert, Upload } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 export const P0_EXTENSIONS = ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'txt', 'md', 'csv', 'json'] as const;
+
+export const documentStatusPresentation: Record<DocumentStatus, {
+  label: string;
+  tone: 'pending' | 'uploading' | 'processing' | 'success' | 'danger' | 'archived';
+  icon: LucideIcon;
+}> = {
+  pending: { label: '等待处理', tone: 'pending', icon: Clock3 },
+  uploading: { label: '上传中', tone: 'uploading', icon: Upload },
+  processing: { label: '处理中', tone: 'processing', icon: LoaderCircle },
+  ready: { label: '可问答', tone: 'success', icon: CircleCheck },
+  failed: { label: '处理失败', tone: 'danger', icon: TriangleAlert },
+  archived: { label: '已归档', tone: 'archived', icon: Archive },
+  deleted: { label: '已删除', tone: 'danger', icon: CircleX },
+};
 
 export function documentStatus(document: Document): DocumentStatus {
   if (typeof document.status === 'string') return document.status;
@@ -11,16 +27,7 @@ export function documentStatus(document: Document): DocumentStatus {
 }
 
 export function documentStatusLabel(document: Document): string {
-  const labels: Record<DocumentStatus, string> = {
-    pending: '等待处理',
-    uploading: '上传中',
-    processing: '处理中',
-    ready: '可问答',
-    failed: '处理失败',
-    archived: '已归档',
-    deleted: '已删除',
-  };
-  return labels[documentStatus(document)];
+  return documentStatusPresentation[documentStatus(document)].label;
 }
 
 export function documentTone(document: Document): 'neutral' | 'success' | 'warning' | 'danger' {
