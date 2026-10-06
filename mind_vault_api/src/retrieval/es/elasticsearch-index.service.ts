@@ -1,8 +1,20 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentChunk } from '../../document/chunking/document-chunk';
+import {
+  HighlightSegment,
+  RetrievalHit,
+  RetrievalPage,
+} from '../retrieval-hit';
 
 export const ELASTICSEARCH_CLIENT = Symbol('ELASTICSEARCH_CLIENT');
+
+/** 高亮标记用不可见控制字符，避免与正文冲突，且服务端会切分为分段而非返回 HTML */
+const HIGHLIGHT_PRE = '\u0002';
+const HIGHLIGHT_POST = '\u0003';
+
+/** kNN 的 k 上限：k 即返回上限，超过后无法继续深翻页 */
+export const VECTOR_K_CAP = 100;
 
 interface ElasticsearchLike {
   indices: {
@@ -15,10 +27,12 @@ interface ElasticsearchLike {
   }): Promise<{ errors: boolean }>;
   search(input: unknown): Promise<{
     hits: {
+      total?: { value: number; relation?: string };
       hits: Array<{
         _id: string;
         _score?: number;
         _source: Record<string, unknown>;
+        highlight?: Record<string, string[]>;
       }>;
     };
   }>;
@@ -121,10 +135,24 @@ export class ElasticsearchIndexService {
     query: string;
     datasetIds?: string[];
     topK?: number;
-  }) {
+    page?: number;
+    pageSize?: number;
+    sort?: 'relevance' | 'recent';
+    from?: string;
+    to?: string;
+    highlight?: boolean;
+  }): Promise<RetrievalPage> {
+    const paginated = input.page !== undefined && input.pageSize !== undefined;
+    const size = paginated ? input.pageSize! : (input.topK ?? 30);
+    const offset = paginated ? (input.page! - 1) * input.pageSize! : 0;
+    const filters = this.filters(input.ownerId, input.datasetIds);
+    const range = this.rangeFilter(input.from, input.to);
+    if (range) filters.push(range);
     const result = await this.client.search({
       index: this.indexName,
-      size: input.topK ?? 30,
+      size,
+      ...(offset > 0 ? { from: offset } : {}),
+      ...(paginated ? { track_total_hits: true } : {}),
       query: {
         bool: {
           must: [
@@ -139,11 +167,19 @@ export class ElasticsearchIndexService {
           should: [
             { term: { titleKeyword: { value: input.query, boost: 5 } } },
           ],
-          filter: this.filters(input.ownerId, input.datasetIds),
+          filter: filters,
         },
       },
+      ...(input.sort === 'recent'
+        ? { sort: [{ updatedAt: { order: 'desc' } }] }
+        : {}),
+      ...(input.highlight ? { highlight: this.highlightSpec() } : {}),
     });
-    return this.toHits(result, 'keyword');
+    return {
+      hits: this.toHits(result, 'keyword'),
+      total: result.hits.total?.value ?? result.hits.hits.length,
+      truncated: false,
+    };
   }
 
   async vectorSearch(input: {
@@ -151,8 +187,21 @@ export class ElasticsearchIndexService {
     vector: number[];
     datasetIds?: string[];
     topK?: number;
-  }) {
-    const topK = input.topK ?? 30;
+    page?: number;
+    pageSize?: number;
+    sort?: 'relevance' | 'recent';
+    from?: string;
+    to?: string;
+  }): Promise<RetrievalPage> {
+    const paginated = input.page !== undefined && input.pageSize !== undefined;
+    const offset = paginated ? (input.page! - 1) * input.pageSize! : 0;
+    // 多取 1 条用于探测「是否还有下一页」；kNN 没有 total，k 即返回上限
+    const topK = paginated
+      ? Math.min(offset + input.pageSize! + 1, VECTOR_K_CAP)
+      : (input.topK ?? 30);
+    const filters = this.filters(input.ownerId, input.datasetIds);
+    const range = this.rangeFilter(input.from, input.to);
+    if (range) filters.push(range);
     const result = await this.client.search({
       index: this.indexName,
       knn: {
@@ -160,10 +209,22 @@ export class ElasticsearchIndexService {
         query_vector: input.vector,
         k: topK,
         num_candidates: Math.max(topK * 3, 100),
-        filter: this.filters(input.ownerId, input.datasetIds),
+        filter: filters,
       },
     });
-    return this.toHits(result, 'vector');
+    // kNN 不支持与 sort 组合，按时间排序只能在已召回集合内本地进行
+    const all =
+      input.sort === 'recent'
+        ? sortByUpdatedAtDesc(this.toHits(result, 'vector'))
+        : this.toHits(result, 'vector');
+    const hits = paginated ? all.slice(offset, offset + input.pageSize!) : all;
+    return {
+      hits,
+      total: all.length,
+      // 只有「k 被上限截断」且「确实召满上限」时才意味着无法继续深翻页
+      truncated:
+        paginated && topK >= VECTOR_K_CAP && all.length >= VECTOR_K_CAP,
+    };
   }
 
   async getByChunkIds(input: {
@@ -238,6 +299,28 @@ export class ElasticsearchIndexService {
     return filters;
   }
 
+  private rangeFilter(from?: string, to?: string) {
+    if (!from && !to) return null;
+    return {
+      range: {
+        updatedAt: {
+          ...(from ? { gte: from } : {}),
+          ...(to ? { lte: to } : {}),
+        },
+      },
+    };
+  }
+
+  private highlightSpec() {
+    return {
+      pre_tags: [HIGHLIGHT_PRE],
+      post_tags: [HIGHLIGHT_POST],
+      fields: {
+        text: { fragment_size: 240, number_of_fragments: 1 },
+      },
+    };
+  }
+
   private toHits(
     result: {
       hits: {
@@ -245,11 +328,12 @@ export class ElasticsearchIndexService {
           _id: string;
           _score?: number;
           _source: Record<string, unknown>;
+          highlight?: Record<string, string[]>;
         }>;
       };
     },
     source: 'keyword' | 'vector' | 'graph',
-  ) {
+  ): RetrievalHit[] {
     return result.hits.hits.map((hit) => ({
       chunkId: stringValue(hit._source.chunkId, hit._id),
       documentId: stringValue(hit._source.documentId),
@@ -257,14 +341,64 @@ export class ElasticsearchIndexService {
       parentContext: stringValue(hit._source.parentContext),
       locator: objectValue(hit._source.locator),
       titlePath: stringArray(hit._source.titlePath),
+      datasetIds: stringArray(hit._source.datasetIds),
+      highlight: splitHighlight(hit.highlight?.text?.[0]),
+      updatedAt: optionalString(hit._source.updatedAt),
       score: hit._score ?? 0,
       sources: [source],
     }));
   }
 }
 
+/**
+ * 把带高亮标记的片段切分为分段，并合并相邻同标记段 ——
+ * ik 分词会产生碎片化的相邻命中，直接渲染会出现「逐字高亮」的观感问题。
+ */
+function splitHighlight(fragment?: string): HighlightSegment[] | null {
+  if (!fragment) return null;
+  const segments: HighlightSegment[] = [];
+  let cursor = 0;
+  let hit = false;
+  while (cursor < fragment.length) {
+    const marker = hit ? HIGHLIGHT_POST : HIGHLIGHT_PRE;
+    const index = fragment.indexOf(marker, cursor);
+    if (index === -1) {
+      pushSegment(segments, fragment.slice(cursor), hit);
+      break;
+    }
+    pushSegment(segments, fragment.slice(cursor, index), hit);
+    cursor = index + 1;
+    hit = !hit;
+  }
+  return segments.length ? segments : null;
+}
+
+function pushSegment(
+  segments: HighlightSegment[],
+  text: string,
+  hit: boolean,
+): void {
+  if (!text) return;
+  const last = segments[segments.length - 1];
+  if (last && last.hit === hit) {
+    last.text += text;
+    return;
+  }
+  segments.push({ text, hit });
+}
+
+function sortByUpdatedAtDesc(hits: RetrievalHit[]): RetrievalHit[] {
+  return [...hits].sort((a, b) =>
+    (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''),
+  );
+}
+
 function stringValue(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value ? value : undefined;
 }
 
 function stringArray(value: unknown): string[] {
