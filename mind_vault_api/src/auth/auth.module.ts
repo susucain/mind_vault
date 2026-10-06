@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { buildConfiguration } from '../config/configuration';
+import { RustfsService } from '../storage/rustfs.service';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
 import { AuthService } from './auth.service';
@@ -26,7 +27,8 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
     ...(standalone ? [] : [TypeOrmModule.forFeature([UserEntity])]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, AuthGuard],
+  // RustfsService 直接注册：它只依赖 ConfigService，与 document.module 的既有做法一致
+  providers: [AuthService, AuthGuard, RustfsService],
   // JwtModule 必须一并导出：@UseGuards(AuthGuard) 是在使用方模块的注入上下文里
   // 构造 Guard 的，不导出则各业务模块解析不到 JwtService
   exports: [AuthGuard, JwtModule],

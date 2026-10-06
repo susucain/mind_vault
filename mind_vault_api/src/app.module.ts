@@ -36,6 +36,7 @@ import { AddInterviewTopicIntensity1790467200000 } from './migrations/1790467200
 import { RenameBehavioralTopicToJobFit1790553600000 } from './migrations/1790553600000-rename-behavioral-topic-to-job-fit';
 import { AddUserAccount1790812800000 } from './migrations/1790812800000-add-user-account';
 import { AddSearchHistory1790899200000 } from './migrations/1790899200000-add-search-history';
+import { AddUserAvatar1790985600000 } from './migrations/1790985600000-add-user-avatar';
 
 const standalone = buildConfiguration(process.env).runtime.standalone;
 
@@ -94,6 +95,7 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
                 RenameBehavioralTopicToJobFit1790553600000,
                 AddUserAccount1790812800000,
                 AddSearchHistory1790899200000,
+                AddUserAvatar1790985600000,
               ],
               migrationsRun: true,
             }),

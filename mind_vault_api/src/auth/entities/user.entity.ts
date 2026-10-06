@@ -24,6 +24,10 @@ export class UserEntity {
   @Column({ type: 'varchar', length: 64, nullable: true })
   nickname?: string | null;
 
+  /** 头像在对象存储里的 object key；为空表示使用前端派生的首字母默认头像 */
+  @Column({ name: 'avatar_key', type: 'varchar', length: 255, nullable: true })
+  avatarKey?: string | null;
+
   /** 1 可用 / 0 禁用 */
   @Column({ type: 'smallint', default: 1 })
   status: number;

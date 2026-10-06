@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { Repository } from 'typeorm';
 import { hashPassword, verifyPassword } from '../common/password';
+import { RustfsService } from '../storage/rustfs.service';
 import { AuthService } from './auth.service';
 import { UserEntity } from './entities/user.entity';
 
@@ -63,6 +64,7 @@ function serviceWith(options: {
       sign: options.sign ?? jest.fn(() => 'access-token'),
     } as unknown as JwtService,
     options.config ?? configWith({ 'auth.devLoginEnabled': true }),
+    { isEnabled: () => false } as unknown as RustfsService,
     options.repo,
   );
 }
