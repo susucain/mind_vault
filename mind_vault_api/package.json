@@ -8,7 +8,7 @@
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "start": "nest start",
+    "start": "PORT=3001 nest start",
     "start:standalone": "APP_STANDALONE=true HEALTH_CHECK_DEPENDENCIES=true nest start",
     "start:worker": "INGESTION_WORKER_ENABLED=true nest start --entryFile worker",
     "start:dev": "nest start --watch",
