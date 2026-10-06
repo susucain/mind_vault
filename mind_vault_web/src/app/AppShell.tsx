@@ -31,6 +31,12 @@ const navigation: NavigationItem[] = [
     match: (pathname) => pathname.startsWith('/app/library'),
   },
   {
+    label: '检索',
+    to: APP_PATHS.retrieval,
+    icon: Search,
+    match: (pathname) => pathname.startsWith('/app/retrieval'),
+  },
+  {
     label: '问答',
     to: APP_PATHS.chatNew,
     icon: MessageSquareText,
@@ -53,7 +59,8 @@ const navigation: NavigationItem[] = [
 const mobileNavigation: NavigationItem[] = [
   { ...navigation[0], label: '首页' },
   { ...navigation[1] },
-  { ...navigation[3], label: '面试' },
+  // navigation 顺序为 概览 / 知识库 / 检索 / 问答 / 面试训练 / 个人设置
+  { ...navigation[4], label: '面试' },
   {
     label: '我的',
     to: APP_PATHS.settingsAccount,

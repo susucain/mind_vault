@@ -6,8 +6,14 @@ import { POST_LOGIN_REDIRECT_KEY, useAuthStore } from '../stores/auth.store';
 import { ProtectedLayout, LoginPage } from './layouts';
 
 vi.mock('../api/auth', () => ({
-  devLogin: vi.fn().mockResolvedValue({ token: 'test-token', user: { id: 'user-1' } }),
+  login: vi.fn().mockResolvedValue({ token: 'test-token', user: { id: 'user-1' } }),
 }));
+
+async function submitLoginForm(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(await screen.findByLabelText('用户名'), 'dev');
+  await user.type(screen.getByLabelText('密码'), '123456');
+  await user.click(screen.getByRole('button', { name: '进入工作台' }));
+}
 
 describe('authentication routes', () => {
   beforeEach(() => {
@@ -35,7 +41,7 @@ describe('authentication routes', () => {
 
     render(<RouterProvider router={router} />);
 
-    await user.click(await screen.findByRole('button', { name: '进入工作台' }));
+    await submitLoginForm(user);
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/app/chat/conversation-1');
@@ -60,7 +66,7 @@ describe('authentication routes', () => {
 
     render(<RouterProvider router={router} />);
 
-    await user.click(screen.getByRole('button', { name: '进入工作台' }));
+    await submitLoginForm(user);
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/app/library');
