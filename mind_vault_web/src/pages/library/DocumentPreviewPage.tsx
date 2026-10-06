@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, FileText } from 'lucide-react';
+import { ArrowLeft, ArrowUp, ChevronLeft, ChevronRight, FileText, List } from 'lucide-react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import type { Components } from 'streamdown';
-import { Button, LoadingState } from '../../components/ui';
+import { Button, Drawer, LoadingState } from '../../components/ui';
 import { MarkdownViewer } from '../../features/chat';
 import { AssetImage } from '../../features/documents/AssetImage';
 import { DocumentLocatorView } from '../../features/documents/DocumentLocator';
+import { DocumentOutlineNav } from '../../features/documents/DocumentOutline';
+import { useActiveSection } from '../../features/documents/use-active-section';
+import {
+  READING_FONT_OPTIONS,
+  READING_LINE_OPTIONS,
+  readingStyle,
+  useReadingPreferences,
+} from '../../features/documents/reading-preferences';
+import { sectionDomId } from '../../features/documents/document-utils';
 import { useDocumentOutline, useDocumentSections } from '../../features/documents/use-document';
 import type { DocumentLocator, DocumentSection } from '../../types/domain';
 
@@ -39,9 +48,9 @@ function isTarget(section: DocumentSection, target: ReturnType<typeof selectedLo
     section.locator[key as keyof DocumentLocator] === value);
 }
 
-/** 正文块以 order 作为稳定且唯一的锚点（超长章节切分后 sectionId 会重复）。 */
-function sectionDomId(order: number): string {
-  return `section-${order}`;
+/** 平滑滚动；用户声明减少动效时改为即时跳转。 */
+function prefersReducedMotion(): boolean {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 }
 
 /**
@@ -178,15 +187,23 @@ export function DocumentPreviewPage() {
 
   // 顶部反向哨兵：加载更早内容，并补偿上插引起的滚动位移
   const { fetchPreviousPage, hasPreviousPage, isFetchingPreviousPage } = sectionsQuery;
+  /** 用户显式「回到顶部」期间置位：抑制上插补偿，否则视图会被推回原处。 */
+  const pinTopRef = useRef(false);
   const loadEarlier = useCallback(async () => {
     const anchorTop = window.scrollY;
     const anchorHeight = document.documentElement.scrollHeight;
     await fetchPreviousPage();
     requestAnimationFrame(() => {
+      if (pinTopRef.current) return;
       const delta = document.documentElement.scrollHeight - anchorHeight;
       if (delta !== 0) window.scrollTo({ top: anchorTop + delta });
     });
   }, [fetchPreviousPage]);
+
+  // 更早内容取完（或窗口被跳转重建）后，置顶意图即失效
+  useEffect(() => {
+    if (!hasPreviousPage) pinTopRef.current = false;
+  }, [hasPreviousPage]);
 
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -219,6 +236,64 @@ export function DocumentPreviewPage() {
     return () => observer.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  // 目录联动：已渲染正文块按 order 正序，作为 scroll-spy 的观测范围
+  const loadedOrderList = useMemo(
+    () => sections.map((section, index) => section.order ?? index),
+    [sections],
+  );
+  const { activeOrder, selectOrder } = useActiveSection(loadedOrderList);
+  const { preferences, update: updatePreferences } = useReadingPreferences();
+  const [outlineOpen, setOutlineOpen] = useState(false);
+
+  const activeIndex = useMemo(() => {
+    if (activeOrder === undefined) return 0;
+    const index = outlineSections.findIndex(
+      (section, position) => (section.order ?? position) === activeOrder,
+    );
+    return index < 0 ? 0 : index;
+  }, [activeOrder, outlineSections]);
+  const previousSection = activeIndex > 0 ? outlineSections[activeIndex - 1] : undefined;
+  const nextSection = activeIndex < outlineSections.length - 1 ? outlineSections[activeIndex + 1] : undefined;
+
+  /** 目录跳转：已渲染的平滑滚过去，未渲染的重建分页（复用深链机制）。 */
+  const goToSection = useCallback((order: number) => {
+    selectOrder(order);
+    setOutlineOpen(false);
+    if (loadedOrders.has(order)) {
+      document.getElementById(sectionDomId(order))?.scrollIntoView({
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+        block: 'start',
+      });
+      return;
+    }
+    setJumpOrder(order);
+    pinTopRef.current = false;
+  }, [loadedOrders, selectOrder]);
+
+  // 阅读进度：整页滚动比例（短文档无滚动时视为已读完）
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    const update = () => {
+      const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+      const ratio = scrollable > 0 ? window.scrollY / scrollable : 1;
+      const value = Math.min(100, Math.max(0, Math.round(ratio * 100)));
+      setProgress((previous) => (previous === value ? previous : value));
+    };
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
+  const scrollToTop = useCallback(() => {
+    // 上方还有更早内容时置顶抑制：否则加载回来的内容会把视图推回原处
+    pinTopRef.current = hasPreviousPage;
+    window.scrollTo({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', top: 0 });
+  }, [hasPreviousPage]);
+
   if (outlineQuery.isPending) return <LoadingState label="加载原文" />;
   if (outlineQuery.isError || !outline) {
     return <section className="state-panel state-panel--error"><h2>原文加载失败</h2><Button onClick={() => void outlineQuery.refetch()} variant="secondary">重试</Button></section>;
@@ -230,31 +305,87 @@ export function DocumentPreviewPage() {
 
   return (
     <section className="document-preview page-section">
+      <div
+        aria-label="阅读进度"
+        aria-valuemax={100}
+        aria-valuemin={0}
+        aria-valuenow={progress}
+        className="preview-progress"
+        role="progressbar"
+      >
+        <span aria-hidden="true" style={{ width: `${progress}%` }} />
+      </div>
       <header className="preview-header">
         <Link aria-label="返回文档详情" className="icon-button" to={`/app/library/documents/${outline.documentId}`}><ArrowLeft size={18} /></Link>
         <div><p className="eyebrow">原文预览</p><h1>{outline.title}</h1></div>
       </header>
+      <div className="preview-toolbar">
+        <button
+          className="preview-toolbar__option preview-toolbar__outline"
+          onClick={() => setOutlineOpen(true)}
+          type="button"
+        >
+          <List aria-hidden="true" size={14} />目录
+        </button>
+        <div aria-label="字号" className="preview-toolbar__group" role="group">
+          <span aria-hidden="true" className="preview-toolbar__label">字号</span>
+          {READING_FONT_OPTIONS.map((option) => (
+            <button
+              aria-label={`字号${option.label}`}
+              aria-pressed={preferences.fontSize === option.value}
+              className="preview-toolbar__option"
+              key={option.value}
+              onClick={() => updatePreferences({ fontSize: option.value })}
+              type="button"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <div aria-label="行距" className="preview-toolbar__group" role="group">
+          <span aria-hidden="true" className="preview-toolbar__label">行距</span>
+          {READING_LINE_OPTIONS.map((option) => (
+            <button
+              aria-label={`行距${option.label}`}
+              aria-pressed={preferences.lineHeight === option.value}
+              className="preview-toolbar__option"
+              key={option.value}
+              onClick={() => updatePreferences({ lineHeight: option.value })}
+              type="button"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <span aria-hidden="true" className="preview-toolbar__progress">{progress}%</span>
+        <div className="preview-toolbar__chapter">
+          <button
+            className="preview-toolbar__option"
+            disabled={!previousSection}
+            onClick={() => previousSection && goToSection(previousSection.order ?? 0)}
+            type="button"
+          >
+            <ChevronLeft aria-hidden="true" size={14} />上一章
+          </button>
+          <button
+            className="preview-toolbar__option"
+            disabled={!nextSection}
+            onClick={() => nextSection && goToSection(nextSection.order ?? 0)}
+            type="button"
+          >
+            下一章<ChevronRight aria-hidden="true" size={14} />
+          </button>
+          <button className="preview-toolbar__option" onClick={scrollToTop} type="button">
+            <ArrowUp aria-hidden="true" size={14} />回到顶部
+          </button>
+        </div>
+      </div>
       <div className="preview-layout">
         <nav aria-label="章节目录" className="preview-outline">
           <h2>章节</h2>
-          {outline.sections.map((section, index) => {
-            const order = section.order ?? index;
-            return (
-              <a
-                href={`#${sectionDomId(order)}`}
-                key={section.sectionId ?? index}
-                onClick={(event) => {
-                  if (loadedOrders.has(order)) return;
-                  event.preventDefault();
-                  setJumpOrder(order);
-                }}
-              >
-                {section.heading || `章节 ${index + 1}`}
-              </a>
-            );
-          })}
+          <DocumentOutlineNav activeOrder={activeOrder} onSelect={goToSection} sections={outlineSections} />
         </nav>
-        <article className="preview-content">
+        <article className="preview-content" style={readingStyle(preferences)}>
           <div className="preview-sentinel" ref={topSentinelRef} aria-hidden="true" />
           {sections.length ? sections.map((section, index) => (
             <section
@@ -277,6 +408,9 @@ export function DocumentPreviewPage() {
             : sections.length ? <p className="preview-end">已到底部</p> : null}
         </article>
       </div>
+      <Drawer onOpenChange={setOutlineOpen} open={outlineOpen} side="bottom" title="章节目录">
+        <DocumentOutlineNav activeOrder={activeOrder} onSelect={goToSection} sections={outlineSections} />
+      </Drawer>
     </section>
   );
 }

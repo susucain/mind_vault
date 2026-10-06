@@ -12,6 +12,11 @@ export function documentPreviewPath(documentId: string, locator: DocumentLocator
   return `/app/library/documents/${documentId}/preview${query ? `?${query}` : ''}`;
 }
 
+/** 正文块以 `order` 作为稳定且唯一的锚点（超长章节切分后 `sectionId` 会重复）。 */
+export function sectionDomId(order: number): string {
+  return `section-${order}`;
+}
+
 export const P0_EXTENSIONS = ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'txt', 'md', 'csv', 'json'] as const;
 
 export const documentStatusPresentation: Record<DocumentStatus, {
