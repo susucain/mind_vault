@@ -7,6 +7,7 @@ import { APP_PATHS } from '../../app/navigation';
 import { isApiError } from '../../lib/errors';
 import { readStoredValue, removeStoredValue } from '../../lib/storage';
 import { POST_LOGIN_REDIRECT_KEY, useAuthStore } from '../../stores/auth.store';
+import { clearPendingLogoutNotice, hasPendingLogoutNotice } from '../../features/settings/logout';
 import { AuthIllustration } from './AuthIllustration';
 import { AuthShell } from './AuthShell';
 
@@ -31,16 +32,18 @@ export function LoginPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const setSession = useAuthStore((state) => state.setSession);
-  // 只取一次初值：清空 history state 后仍能保留这条提示，而不是随路由更新立刻消失
-  const [notice] = useState(() => (isLoggedOut(location.state) ? '已退出登录' : null));
+  // 只取一次初值：清空 history state 后仍能保留这条提示，而不是随路由更新立刻消失。
+  // 标记（hasPendingLogoutNotice）比路由 state 更可靠——路由守卫的重定向会盖掉 state。
+  const [notice] = useState(() => (isLoggedOut(location.state) || hasPendingLogoutNotice() ? '已退出登录' : null));
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
 
-  // 提示只读一次：清掉 history state，避免刷新或前进后退时重复弹出
+  // 提示只读一次：清掉标记与 history state，避免刷新或前进后退时重复弹出
   useEffect(() => {
+    clearPendingLogoutNotice();
     if (!isLoggedOut(location.state)) return;
     void navigate(APP_PATHS.login, { replace: true, state: null });
   }, [location.state, navigate]);

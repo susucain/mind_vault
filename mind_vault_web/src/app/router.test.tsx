@@ -1,9 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { RouterProvider } from 'react-router-dom';
 import { router } from './router';
 import { useAuthStore } from '../stores/auth.store';
+import { clearPendingLogoutNotice, hasPendingLogoutNotice } from '../features/settings/logout';
 
 describe('router', () => {
   function renderRouter() {
@@ -12,6 +14,7 @@ describe('router', () => {
   }
 
   afterEach(async () => {
+    clearPendingLogoutNotice();
     useAuthStore.getState().clear();
     await router.navigate('/');
   });
@@ -70,5 +73,21 @@ describe('router', () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/login');
     });
+  });
+
+  it('shows the one-shot logout notice instead of losing it to the auth guard redirect', async () => {
+    const user = userEvent.setup();
+    useAuthStore.getState().setSession({ token: 'test-token', user: { id: 'user-1', nickname: '阿宝' } });
+    await router.navigate('/app/settings/security');
+
+    renderRouter();
+
+    await user.click(await screen.findByRole('button', { name: '退出登录' }));
+    await user.click(await screen.findByRole('button', { name: '确认退出' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('已退出登录');
+    expect(router.state.location.pathname).toBe('/login');
+    // 提示只读一次：登录页挂载后标记即被消费，再回登录页不会再弹
+    await waitFor(() => expect(hasPendingLogoutNotice()).toBe(false));
   });
 });
