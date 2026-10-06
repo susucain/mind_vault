@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowUp, ChevronLeft, ChevronRight, FileText, List } from 'lucide-react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import type { Components } from 'streamdown';
@@ -46,6 +46,10 @@ function isTarget(section: DocumentSection, target: ReturnType<typeof selectedLo
   const entries = Object.entries(target.locator).filter(([, value]) => value !== undefined);
   return entries.length > 0 && entries.every(([key, value]) =>
     section.locator[key as keyof DocumentLocator] === value);
+}
+
+function hasTarget(target: ReturnType<typeof selectedLocator>): boolean {
+  return Boolean(target.sectionId) || Object.values(target.locator).some((value) => value !== undefined);
 }
 
 /** 平滑滚动；用户声明减少动效时改为即时跳转。 */
@@ -184,7 +188,9 @@ export function DocumentPreviewPage() {
 
   const sectionsQuery = useDocumentSections(documentId, {
     startOrder: focusOrder,
-    enabled: outlineQuery.isSuccess,
+    // 深链定位要先用大纲把 locator 换算成 order，只能等大纲；无定位时正文首页
+    // 与大纲互不依赖，并行请求可省掉一次串行往返。
+    enabled: !hasTarget(target) || outlineQuery.isSuccess,
   });
 
   const sections = useMemo(() => {
@@ -217,16 +223,27 @@ export function DocumentPreviewPage() {
   const { fetchPreviousPage, hasPreviousPage, isFetchingPreviousPage } = sectionsQuery;
   /** 用户显式「回到顶部」期间置位：抑制上插补偿，否则视图会被推回原处。 */
   const pinTopRef = useRef(false);
+  /** 上插前的位置快照：补偿必须等 React 提交新内容之后再算高度差，
+   *  否则会量到 0（`fetchPreviousPage` 返回时产物尚未进 DOM），深链落点会被推走。 */
+  const anchorRef = useRef<{ firstOrder?: number; scrollHeight: number; scrollY: number } | null>(null);
   const loadEarlier = useCallback(async () => {
-    const anchorTop = window.scrollY;
-    const anchorHeight = document.documentElement.scrollHeight;
+    if (anchorRef.current) return;
+    anchorRef.current = {
+      firstOrder: sections[0]?.order,
+      scrollHeight: document.documentElement.scrollHeight,
+      scrollY: window.scrollY,
+    };
     await fetchPreviousPage();
-    requestAnimationFrame(() => {
-      if (pinTopRef.current) return;
-      const delta = document.documentElement.scrollHeight - anchorHeight;
-      if (delta !== 0) window.scrollTo({ top: anchorTop + delta });
-    });
-  }, [fetchPreviousPage]);
+  }, [fetchPreviousPage, sections]);
+
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current;
+    if (!anchor || sections[0]?.order === anchor.firstOrder) return;
+    anchorRef.current = null;
+    if (pinTopRef.current) return;
+    const delta = document.documentElement.scrollHeight - anchor.scrollHeight;
+    if (delta !== 0) window.scrollTo({ top: anchor.scrollY + delta });
+  }, [sections]);
 
   // 更早内容取完（或窗口被跳转重建）后，置顶意图即失效
   useEffect(() => {
