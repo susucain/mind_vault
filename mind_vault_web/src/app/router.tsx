@@ -2,7 +2,7 @@ import { lazy, Suspense, type ReactNode } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { LoadingState } from '../components/ui';
 import { ProtectedLayout } from './layouts';
-import { ChatPage, PlaceholderPage } from './pages';
+import { ChatPage } from './pages';
 import { APP_PATHS } from './navigation';
 import { LoginPage } from '../pages/auth/LoginPage';
 import { RegisterPage } from '../pages/auth/RegisterPage';
@@ -13,6 +13,10 @@ import { DocumentDetailPage } from '../pages/library/DocumentDetailPage';
 import { DocumentPreviewPage } from '../pages/library/DocumentPreviewPage';
 import { MockLibraryPage } from '../pages/library/MockLibraryPage';
 import { ArchivePage } from '../pages/library/ArchivePage';
+import { SettingsPage } from '../pages/settings/SettingsPage';
+import { AccountSection } from '../pages/settings/sections/AccountSection';
+import { MemorySection } from '../pages/settings/sections/MemorySection';
+import { SecuritySection } from '../pages/settings/sections/SecuritySection';
 
 /** 重页面按路由懒加载：检索页含 React Flow 与 d3-force，面试页含 SSE 与评分视图。 */
 // eslint-disable-next-line react-refresh/only-export-components
@@ -88,7 +92,17 @@ export const router = createBrowserRouter([
       { path: 'interview/sessions/:sessionId/feedback', element: lazyPage(<InterviewFeedbackPage />, '正在加载训练反馈…') },
       { path: 'interview/review-items', element: lazyPage(<ReviewItemsPage />, '正在加载复习中心…') },
       { path: 'interview/review-items/:itemId', element: lazyPage(<ReviewItemsPage />, '正在加载复习中心…') },
-      { path: 'settings/*', element: <PlaceholderPage title="Settings" /> },
+      {
+        path: 'settings',
+        element: <SettingsPage />,
+        children: [
+          { index: true, element: <Navigate replace to={APP_PATHS.settingsAccount} /> },
+          { path: 'account', element: <AccountSection /> },
+          { path: 'memory', element: <MemorySection /> },
+          { path: 'security', element: <SecuritySection /> },
+          { path: '*', element: <Navigate replace to={APP_PATHS.settingsAccount} /> },
+        ],
+      },
     ],
   },
   {

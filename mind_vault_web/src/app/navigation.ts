@@ -7,4 +7,6 @@ export const APP_PATHS = {
   chatNew: '/app/chat/new',
   interview: '/app/interview',
   settingsAccount: '/app/settings/account',
+  settingsMemory: '/app/settings/memory',
+  settingsSecurity: '/app/settings/security',
 } as const;

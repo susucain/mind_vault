@@ -1179,3 +1179,62 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
   .retrieval-card__head { grid-template-columns: minmax(0, 1fr); }
   .retrieval-card__head .locator-list { justify-content: flex-start; }
 }
+
+/* ---------- 个人设置页（分区导航 + 分区内容）---------- */
+.settings-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 24px; align-items: start; }
+.settings-nav { position: sticky; top: 20px; display: grid; gap: 4px; }
+.settings-nav__link {
+  min-width: 0;
+  min-height: 40px;
+  border-left: 2px solid transparent;
+  border-radius: 0 7px 7px 0;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--mv-muted-strong);
+  background: transparent;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.settings-nav__link:hover { color: var(--mv-ink); background: var(--mv-nav-active); }
+.settings-nav__link--active { border-left-color: var(--mv-primary); color: var(--mv-primary); background: var(--mv-primary-soft); font-weight: 600; }
+.settings-content { min-width: 0; display: grid; gap: 18px; }
+.settings-panel {
+  min-width: 0;
+  border: 1px solid var(--mv-line);
+  border-radius: 8px;
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+  background: var(--mv-surface);
+}
+
+/* 紧凑与移动端：单栏，分区导航改为横向可滚 tabs（不吸顶） */
+@media (max-width: 979px) {
+  .settings-layout { grid-template-columns: minmax(0, 1fr); }
+  .settings-nav {
+    position: static;
+    display: flex;
+    gap: 3px;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--mv-line);
+    scrollbar-width: none;
+  }
+  .settings-nav::-webkit-scrollbar { display: none; }
+  .settings-nav__link { flex: 0 0 auto; min-height: 42px; border-left: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 0 12px; }
+  .settings-nav__link--active { border-bottom-color: var(--mv-primary); background: transparent; }
+}
+
+@media (max-width: 767px) {
+  .settings-page { gap: 18px; }
+  .settings-nav { scroll-snap-type: x proximity; }
+  .settings-nav__link { scroll-snap-align: start; }
+  .settings-panel { padding: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-nav__link { transition: none; }
+}
