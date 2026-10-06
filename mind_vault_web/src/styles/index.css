@@ -641,6 +641,16 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .preview-content p, .preview-content pre { color: var(--mv-prose); font: inherit; font-size: 0.9rem; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
 .locator-list { display: flex; flex-wrap: wrap; gap: 5px; margin: 9px 0; }
 .locator-list span { border-radius: 4px; padding: 3px 6px; color: var(--mv-primary); background: var(--mv-primary-soft); font-size: 0.7rem; }
+.preview-sentinel { height: 1px; }
+.preview-skeleton { display: grid; gap: 10px; margin-top: 26px; }
+.preview-skeleton span { height: 12px; border-radius: 4px; background: linear-gradient(90deg, #ece7db 0%, #f5f1e8 50%, #ece7db 100%); background-size: 200% 100%; animation: preview-shimmer 1.2s linear infinite; }
+.preview-skeleton span:nth-child(2) { width: 92%; }
+.preview-skeleton span:nth-child(3) { width: 64%; }
+.preview-end { margin: 30px 0 4px; padding-top: 16px; border-top: 1px solid var(--mv-line); text-align: center; color: var(--mv-muted); font-size: 0.76rem; }
+.preview-retry { margin-top: 22px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--mv-muted-strong); font-size: 0.82rem; }
+
+@keyframes preview-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .preview-skeleton span { animation: none; } }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 /* ===== 问答页 ===== */

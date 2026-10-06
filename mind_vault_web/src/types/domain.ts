@@ -55,6 +55,22 @@ export interface DocumentSection {
   locator: DocumentLocator;
 }
 
+/** 文档大纲：仅章节元信息，不含正文（用于目录与深链定位）。 */
+export interface DocumentOutline {
+  documentId: string;
+  title: string;
+  pageCount: number;
+  totalSections: number;
+  sections: DocumentSection[];
+}
+
+/** 正文分页结果；`nextCursor` 为 null 表示已到底部。 */
+export interface DocumentSectionPage {
+  items: DocumentSection[];
+  nextCursor: number | null;
+  total: number;
+}
+
 export interface Citation {
   id: string;
   documentId: string;

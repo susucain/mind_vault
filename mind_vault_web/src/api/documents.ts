@@ -2,7 +2,7 @@ import { jsonRequest, request } from './client';
 import { appConfig } from '../lib/config';
 import { ApiRequestError } from '../lib/errors';
 import type { PageResult } from '../types/api';
-import type { Document, DocumentSection } from '../types/domain';
+import type { Document, DocumentOutline, DocumentSection, DocumentSectionPage } from '../types/domain';
 
 export interface DocumentQuery {
   title?: string;
@@ -69,16 +69,43 @@ interface BackendDocument extends Omit<Document, 'sections'> {
   sections?: BackendDocumentSection[];
 }
 
+/** 后端以 `text` 返回正文，前端统一归一化为 `content`。 */
+function normalizeSection({ text, ...section }: BackendDocumentSection): DocumentSection {
+  return { ...section, content: text };
+}
+
 function normalizeDocument(document: BackendDocument): Document {
   return {
     ...document,
-    sections: document.sections?.map(({ text, ...section }) => ({ ...section, content: text })),
+    sections: document.sections?.map(normalizeSection),
   };
 }
 
 export async function getDocument(id: string): Promise<Document> {
   const document = await request<BackendDocument>(`/documents/${id}`);
   return normalizeDocument(document);
+}
+
+/** 正文分页入参：`cursor` 为上一页最后一块的 order，省略表示从首块开始。 */
+export interface DocumentSectionPageParam {
+  cursor?: number;
+  limit?: number;
+}
+
+export const getDocumentOutline = (id: string) =>
+  request<DocumentOutline>(`/documents/${id}/outline`);
+
+export async function getDocumentSections(
+  id: string,
+  param: DocumentSectionPageParam = {},
+): Promise<DocumentSectionPage> {
+  const query = queryString(param);
+  const page = await request<{
+    items: BackendDocumentSection[];
+    nextCursor: number | null;
+    total: number;
+  }>(`/documents/${id}/sections${query ? `?${query}` : ''}`);
+  return { ...page, items: page.items.map(normalizeSection) };
 }
 export const getDocumentStatus = (id: string) =>
   request<DocumentProcessingStatus>(`/documents/${id}/status`);
