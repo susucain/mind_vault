@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowUp, ChevronLeft, ChevronRight, FileText, List } from 'lucide-react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import type { Components } from 'streamdown';
@@ -109,7 +109,7 @@ const PREVIEW_MARKDOWN_COMPONENTS: Components = {
   h4: 'h6',
 };
 
-function SectionBody({ content }: { content?: string }) {
+const SectionBody = memo(function SectionBody({ content }: { content?: string }) {
   const paragraphs = useMemo(() => splitParagraphs(content ?? ''), [content]);
   if (!paragraphs.length) {
     return <p className="preview-paragraph">此章节暂无可预览文本。</p>;
@@ -130,7 +130,35 @@ function SectionBody({ content }: { content?: string }) {
       )}
     </>
   );
-}
+});
+
+/**
+ * 章节渲染以 memo 为边界：滚动时高频变化的是进度/当前章节等父级状态，
+ * 章节内容本身不变，跳过重渲染可避免长文档每次滚动都重跑 Markdown 解析。
+ */
+const PreviewSection = memo(function PreviewSection({
+  index,
+  isTarget,
+  section,
+}: {
+  index: number;
+  isTarget: boolean;
+  section: DocumentSection;
+}) {
+  return (
+    <section
+      data-target={isTarget ? 'true' : undefined}
+      id={sectionDomId(section.order ?? index)}
+      tabIndex={isTarget ? -1 : undefined}
+    >
+      {section.heading ? (
+        <div className="preview-section-heading"><FileText size={17} /><h2>{section.heading}</h2></div>
+      ) : null}
+      <DocumentLocatorView locator={section.locator} />
+      <SectionBody content={section.content} />
+    </section>
+  );
+});
 
 export function DocumentPreviewPage() {
   const { documentId } = useParams();
@@ -244,6 +272,13 @@ export function DocumentPreviewPage() {
   const { activeOrder, selectOrder } = useActiveSection(loadedOrderList);
   const { preferences, update: updatePreferences } = useReadingPreferences();
   const [outlineOpen, setOutlineOpen] = useState(false);
+  /** 「目录」入口在工具条内，无法作为 Drawer 的 Trigger 渲染（Radix 关闭时只会尝试聚焦 Trigger），
+   *  故关闭后在下一帧手动把焦点还给入口按钮；桌面端按钮隐藏，focus() 为空操作。 */
+  const outlineButtonRef = useRef<HTMLButtonElement | null>(null);
+  const handleOutlineOpenChange = useCallback((open: boolean) => {
+    setOutlineOpen(open);
+    if (!open) requestAnimationFrame(() => outlineButtonRef.current?.focus());
+  }, []);
 
   const activeIndex = useMemo(() => {
     if (activeOrder === undefined) return 0;
@@ -258,7 +293,7 @@ export function DocumentPreviewPage() {
   /** 目录跳转：已渲染的平滑滚过去，未渲染的重建分页（复用深链机制）。 */
   const goToSection = useCallback((order: number) => {
     selectOrder(order);
-    setOutlineOpen(false);
+    handleOutlineOpenChange(false);
     if (loadedOrders.has(order)) {
       document.getElementById(sectionDomId(order))?.scrollIntoView({
         behavior: prefersReducedMotion() ? 'auto' : 'smooth',
@@ -268,7 +303,7 @@ export function DocumentPreviewPage() {
     }
     setJumpOrder(order);
     pinTopRef.current = false;
-  }, [loadedOrders, selectOrder]);
+  }, [handleOutlineOpenChange, loadedOrders, selectOrder]);
 
   // 阅读进度：整页滚动比例（短文档无滚动时视为已读完）
   const [progress, setProgress] = useState(0);
@@ -321,8 +356,11 @@ export function DocumentPreviewPage() {
       </header>
       <div className="preview-toolbar">
         <button
+          aria-expanded={outlineOpen}
+          aria-haspopup="dialog"
           className="preview-toolbar__option preview-toolbar__outline"
           onClick={() => setOutlineOpen(true)}
+          ref={outlineButtonRef}
           type="button"
         >
           <List aria-hidden="true" size={14} />目录
@@ -388,16 +426,12 @@ export function DocumentPreviewPage() {
         <article className="preview-content" style={readingStyle(preferences)}>
           <div className="preview-sentinel" ref={topSentinelRef} aria-hidden="true" />
           {sections.length ? sections.map((section, index) => (
-            <section
-              data-target={focusDomId && section.order === focusOrder ? 'true' : undefined}
-              id={sectionDomId(section.order ?? index)}
+            <PreviewSection
+              index={index}
+              isTarget={Boolean(focusDomId && section.order === focusOrder)}
               key={section.order ?? index}
-              tabIndex={focusDomId && section.order === focusOrder ? -1 : undefined}
-            >
-              {section.heading ? <div className="preview-section-heading"><FileText size={17} /><h2>{section.heading}</h2></div> : null}
-              <DocumentLocatorView locator={section.locator} />
-              <SectionBody content={section.content} />
-            </section>
+              section={section}
+            />
           )) : <p className="widget-empty">暂无可预览文本。</p>}
           {isFetchingNextPage ? <div aria-label="正在加载后续内容" className="preview-skeleton"><span /><span /><span /></div> : null}
           {sectionsQuery.isError && sections.length ? (
@@ -408,7 +442,7 @@ export function DocumentPreviewPage() {
             : sections.length ? <p className="preview-end">已到底部</p> : null}
         </article>
       </div>
-      <Drawer onOpenChange={setOutlineOpen} open={outlineOpen} side="bottom" title="章节目录">
+      <Drawer onOpenChange={handleOutlineOpenChange} open={outlineOpen} side="bottom" title="章节目录">
         <DocumentOutlineNav activeOrder={activeOrder} onSelect={goToSection} sections={outlineSections} />
       </Drawer>
     </section>

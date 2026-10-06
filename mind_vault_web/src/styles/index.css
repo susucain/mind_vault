@@ -668,7 +668,9 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .preview-content > section[data-target="true"] { outline: 2px solid var(--mv-blue); outline-offset: 10px; background: #f7faff; }
 .preview-section-heading { display: flex; align-items: center; gap: 8px; }
 /* 目录跳转用 scrollIntoView(block:'start')，留出粘性工具条的高度 */
-.preview-content > section { scroll-margin-top: 64px; }
+/* content-visibility：视口外章节跳过布局与绘制，长文档滚动不再为全量节点付出成本；
+   contain-intrinsic-size 的 auto 会记住上次渲染高度，不支持该特性的浏览器自动降级为普通渲染。 */
+.preview-content > section { scroll-margin-top: 64px; content-visibility: auto; contain-intrinsic-size: auto 480px; }
 /* 阅读栏宽：正文内容居中并限制行长，宽屏下不再横向拉满（移动端在下方解除上限） */
 .preview-content > section,
 .preview-content > .widget-empty,
@@ -1055,8 +1057,18 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 }
 @media (min-width: 1200px) {
   .page-container { padding: 28px 36px 56px; }
+  /* 宽屏：目录加宽到 240px，正文仍在 72ch 内居中，右侧自然留白 */
+  .preview-layout { grid-template-columns: 240px minmax(0, 1fr); }
 }
 @media (max-width: 979px) { .page-container { padding-inline: 22px; } }
+/* 平板与窄屏：目录收进抽屉，正文单栏铺满（避免 210px 目录把 768–979px 的正文压到 434px） */
+@media (max-width: 1023px) {
+  .preview-layout { grid-template-columns: minmax(0, 1fr); }
+  .preview-outline { display: none; }
+  .preview-toolbar__outline { display: inline-flex; }
+  /* 触控目标放大到 ≥44px（方案 4.5） */
+  .preview-toolbar__option { min-height: 44px; padding-inline: 12px; }
+}
 @media (max-width: 767px) {
   .app-frame { display: block; padding-bottom: 68px; }
   .app-header { height: 50px; padding-inline: 16px; }
@@ -1096,11 +1108,22 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
   .dataset-grid, .mock-list { grid-template-columns: minmax(0, 1fr); }
   .metadata-panel dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .preview-outline { display: none; }
-  /* 移动端：目录改为抽屉入口，工具条承载「目录 / 字号 / 行距 / 章节」 */
-  .preview-toolbar { top: 0; padding: 8px 16px; background: var(--mv-surface); }
+  /* 移动端：目录改为抽屉入口，工具条承载「目录 / 字号 / 行距 / 章节」。
+     单行横向滚动替代换行，避免 11 个控件堆成 129px 高的吸附条（触控目标保持 ≥44px）。 */
+  .preview-toolbar {
+    top: 0;
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 6px max(16px, env(safe-area-inset-right)) 6px max(16px, env(safe-area-inset-left));
+    background: var(--mv-surface);
+    scrollbar-width: none;
+  }
+  .preview-toolbar::-webkit-scrollbar { display: none; }
   .preview-toolbar__outline { display: inline-flex; }
-  .preview-toolbar__option { min-height: 32px; }
-  .preview-toolbar__progress { margin-left: auto; }
+  .preview-toolbar__label { display: none; }
+  .preview-toolbar__outline, .preview-toolbar__group, .preview-toolbar__chapter { flex: 0 0 auto; }
+  .preview-toolbar__progress { flex: 0 0 auto; margin-left: 0; }
   .preview-toolbar__chapter { margin-left: 0; }
   .document-preview { margin: -20px -16px -28px; min-height: calc(100vh - 118px); min-height: calc(100dvh - 118px); background: var(--mv-surface); }
   .app-frame--fullscreen { min-height: 100vh; min-height: 100dvh; padding-bottom: 0; background: var(--mv-surface); }

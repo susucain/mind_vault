@@ -52,7 +52,7 @@ export function DocumentOutlineNav({ activeOrder, onSelect, sections }: Document
           value={keyword}
         />
       </label>
-      <ul className="outline-nav__list">
+      <ul aria-label="章节目录" className="outline-nav__list">
         {items.map(({ index, order, section }) => {
           const isActive = order === activeOrder;
           return (
