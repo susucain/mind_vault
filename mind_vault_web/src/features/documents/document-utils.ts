@@ -1,6 +1,16 @@
-import type { Document, DocumentStatus } from '../../types/domain';
+import type { Document, DocumentLocator, DocumentStatus } from '../../types/domain';
 import { Archive, CircleCheck, CircleX, Clock3, LoaderCircle, TriangleAlert, Upload } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+
+/** 文档预览深链：把定位信息编码为查询参数，供结果卡片与图谱证据跳转共用。 */
+export function documentPreviewPath(documentId: string, locator: DocumentLocator): string {
+  const params = new URLSearchParams();
+  Object.entries(locator).forEach(([key, value]) => {
+    if (value !== undefined) params.set(key, String(value));
+  });
+  const query = params.toString();
+  return `/app/library/documents/${documentId}/preview${query ? `?${query}` : ''}`;
+}
 
 export const P0_EXTENSIONS = ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'txt', 'md', 'csv', 'json'] as const;
 

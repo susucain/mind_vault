@@ -3,13 +3,15 @@ import { DocumentCatalogService } from './document-catalog.service';
 describe('DocumentCatalogService', () => {
   it('filters documents by owner and dataset association', async () => {
     const queryBuilder = {
-      innerJoin: jest.fn().mockReturnThis(),
+      leftJoin: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
       skip: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
-      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      getRawAndEntities: jest.fn().mockResolvedValue({ entities: [], raw: [] }),
+      getCount: jest.fn().mockResolvedValue(0),
     };
     const documents = {
       createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
@@ -26,7 +28,7 @@ describe('DocumentCatalogService', () => {
       pageSize: 20,
     });
 
-    expect(queryBuilder.innerJoin).toHaveBeenCalledWith(
+    expect(queryBuilder.leftJoin).toHaveBeenCalledWith(
       'kh_dataset_document',
       'datasetDocument',
       'datasetDocument.document_id = doc.id AND datasetDocument.owner_id = :ownerId',
@@ -69,15 +71,18 @@ describe('DocumentCatalogService', () => {
 
   it('includes the latest ingestion status for each listed document', async () => {
     const queryBuilder = {
+      leftJoin: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
       skip: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
-      getManyAndCount: jest.fn().mockResolvedValue([
-        [{ id: 'doc_1', title: '资料' }],
-        1,
-      ]),
+      getRawAndEntities: jest.fn().mockResolvedValue({
+        raw: [{ doc_id: 'doc_1', datasetId: null, datasetName: null }],
+        entities: [{ id: 'doc_1', title: '资料' }],
+      }),
+      getCount: jest.fn().mockResolvedValue(1),
     };
     const documents = {
       createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),

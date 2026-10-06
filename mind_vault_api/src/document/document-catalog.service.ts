@@ -27,15 +27,24 @@ export class DocumentCatalogService {
   async findAll(ownerId: string, query: QueryDocumentDto) {
     const qb = this.documents
       .createQueryBuilder('doc')
-      .where('doc.owner_id = :ownerId', { ownerId })
-      .andWhere('doc.deleted = false');
-    if (query.datasetId) {
-      qb.innerJoin(
+      .leftJoin(
         'kh_dataset_document',
         'datasetDocument',
         'datasetDocument.document_id = doc.id AND datasetDocument.owner_id = :ownerId',
         { ownerId },
-      ).andWhere('datasetDocument.dataset_id = :datasetId', {
+      )
+      .leftJoin(
+        'kh_dataset',
+        'dataset',
+        'dataset.id = datasetDocument.dataset_id AND dataset.owner_id = :ownerId',
+        { ownerId },
+      )
+      .addSelect('datasetDocument.dataset_id', 'datasetId')
+      .addSelect('dataset.name', 'datasetName')
+      .where('doc.owner_id = :ownerId', { ownerId })
+      .andWhere('doc.deleted = false');
+    if (query.datasetId) {
+      qb.andWhere('datasetDocument.dataset_id = :datasetId', {
         datasetId: query.datasetId,
       });
     }
@@ -45,7 +54,19 @@ export class DocumentCatalogService {
     qb.orderBy('doc.created_at', 'DESC')
       .skip(((query.page ?? 1) - 1) * (query.pageSize ?? 20))
       .take(query.pageSize ?? 20);
-    const [items, total] = await qb.getManyAndCount();
+    const { entities, raw: raws } = await qb.getRawAndEntities();
+    const total = await qb.getCount();
+    const datasetMap = new Map<string, { datasetId: string; datasetName: string }>();
+    for (const raw of raws) {
+      const docId = String(raw.doc_id);
+      if (raw.datasetId && !datasetMap.has(docId)) {
+        datasetMap.set(docId, { datasetId: String(raw.datasetId), datasetName: raw.datasetName ?? '' });
+      }
+    }
+    const items = entities.map((entity) => {
+      const datasetInfo = datasetMap.get(entity.id);
+      return datasetInfo ? { ...entity, ...datasetInfo } : entity;
+    });
     const jobs = items.length
       ? await this.jobs.find({
           where: {

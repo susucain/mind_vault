@@ -1,72 +1,111 @@
-import { useMemo, useState } from 'react';
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Archive, CheckSquare, Filter, Grid2X2, List, MoreHorizontal, Search, Upload } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { FolderPlus, Grid2X2, List, Plus, Search, Upload, FolderOpen, Inbox } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { archiveDocument } from '../../api/documents';
-import { Button, Drawer, EmptyState, Input, LoadingState, StatusBadge, Tooltip } from '../../components/ui';
-import { LibraryNav } from '../../features/library/LibraryNav';
+import { createDataset } from '../../api/datasets';
+import { Button, Dialog, EmptyState, Input, LoadingState, Tooltip } from '../../components/ui';
 import { useDatasets, useDocuments } from '../../features/documents/queries';
-import { documentStatus, documentStatusLabel, documentTone, fileType, formatDate, formatFileSize } from '../../features/documents/document-utils';
+import { documentStatus, fileType, formatDate, formatFileSize } from '../../features/documents/document-utils';
+import { DocumentStatusIndicator } from '../../features/documents/DocumentStatusIndicator';
 import { UploadPanel } from '../../features/documents/UploadPanel';
-import { appConfig } from '../../lib/config';
+import { DatasetDialog } from '../../features/datasets/DatasetDialog';
+import { useUploadStore, type QueuedUpload } from '../../stores/upload.store';
+import type { DatasetFormValue } from '../../features/datasets/dataset-schema';
 import type { Document } from '../../types/domain';
 
 type ViewMode = 'table' | 'list';
-type SortMode = 'newest' | 'oldest' | 'name';
 
-function Filters({
-  dataset,
+function DatasetSidebar({
+  activeId,
   datasets,
-  onDataset,
-  onStatus,
-  onType,
-  showMockFilters,
-  status,
-  type,
+  onSelect,
+  onCreate,
 }: {
-  dataset: string;
+  activeId: string;
   datasets: Array<{ id: string; name: string }>;
-  onDataset: (value: string) => void;
-  onStatus: (value: string) => void;
-  onType: (value: string) => void;
-  showMockFilters: boolean;
-  status: string;
-  type: string;
+  onSelect: (id: string) => void;
+  onCreate: () => void;
 }) {
   return (
-    <div className="library-filters">
-      {showMockFilters ? <><label>文件状态<select aria-label="文件状态" onChange={(event) => onStatus(event.target.value)} value={status}>
-        <option value="">全部</option><option value="ready">可问答</option><option value="processing">处理中</option>
-        <option value="failed">失败</option><option value="archived">已归档</option>
-      </select></label>
-      <label>文件类型<select aria-label="文件类型" onChange={(event) => onType(event.target.value)} value={type}>
-        <option value="">全部</option>{['pdf', 'docx', 'pptx', 'xlsx', 'md', 'txt', 'csv', 'json'].map((item) => <option key={item}>{item}</option>)}
-      </select></label></> : null}
-      <label>资料集<select aria-label="资料集" onChange={(event) => onDataset(event.target.value)} value={dataset}>
-        <option value="">全部</option>{datasets.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-      </select></label>
-    </div>
+    <aside className="dataset-sidebar">
+      <div className="dataset-sidebar__header">
+        <span>资料集</span>
+        <button aria-label="新建资料集" className="icon-button" onClick={onCreate} type="button">
+          <Plus size={16} />
+        </button>
+      </div>
+      <div className="dataset-sidebar__list">
+        <button
+          className={`dataset-item ${activeId === '' ? 'dataset-item--active' : ''}`}
+          onClick={() => onSelect('')}
+          type="button"
+        >
+          <FolderOpen size={16} />
+          <span>全部文件</span>
+        </button>
+        {datasets.map((dataset) => (
+          <button
+            className={`dataset-item ${activeId === dataset.id ? 'dataset-item--active' : ''}`}
+            key={dataset.id}
+            onClick={() => onSelect(dataset.id)}
+            type="button"
+          >
+            <FolderOpen size={16} />
+            <span className="dataset-item__name">{dataset.name}</span>
+          </button>
+        ))}
+      </div>
+    </aside>
   );
 }
 
-function DocumentRows({ documents, selectable, selected, toggle, view }: {
-  documents: Document[];
-  selectable: boolean;
-  selected: Set<string>;
-  toggle: (id: string) => void;
-  view: ViewMode;
-}) {
+function queuedUploadToDocument(item: QueuedUpload, datasetName?: string): Document {
+  const extension = item.file.name.split('.').pop()?.toLowerCase() || 'file';
+  return {
+    id: `local:${item.localId}`,
+    title: item.file.name,
+    status: item.status === 'queued' || item.status === 'cancelled' ? 'pending' : item.status,
+    sourceFileName: item.file.name,
+    sourceFileSize: String(item.file.size),
+    sourceFileExtension: extension,
+    datasetId: item.datasetId,
+    datasetName,
+  };
+}
+
+function DocumentRows({ documents, view }: { documents: Document[]; view: ViewMode }) {
   return (
     <div className={`document-results document-results--${view}`}>
-      <div className="document-table-head" aria-hidden="true"><span /><span>文件</span><span>状态</span><span>大小</span><span>更新时间</span></div>
+      <div className="document-table-head" aria-hidden="true">
+        <span />
+        <span>文件</span>
+        <span>资料集</span>
+        <span>状态</span>
+        <span>大小</span>
+        <span>更新时间</span>
+      </div>
       {documents.map((document) => (
         <article className="document-row" key={document.id}>
-          {selectable ? <input aria-label={`选择 ${document.title}`} checked={selected.has(document.id)} onChange={() => toggle(document.id)} type="checkbox" /> : <span />}
+          <span />
           <div className="document-name">
             <span className="file-extension">{fileType(document)}</span>
-            <div><Link to={`/app/library/documents/${document.id}`}>{document.title}</Link><span>{document.sourceFileName || '已索引文档'}</span></div>
+            <div>
+              {document.id.startsWith('local:') ? (
+                <strong>{document.title}</strong>
+              ) : (
+                <Link to={`/app/library/documents/${document.id}`}>{document.title}</Link>
+              )}
+              <span>{document.sourceFileName || '已索引文档'}</span>
+            </div>
           </div>
-          <StatusBadge tone={documentTone(document)}>{documentStatusLabel(document)}</StatusBadge>
+          <span className="document-dataset">
+            {document.datasetName ? (
+              <span className="dataset-tag">{document.datasetName}</span>
+            ) : (
+              <span className="dataset-tag dataset-tag--muted">未归类</span>
+            )}
+          </span>
+          <DocumentStatusIndicator status={documentStatus(document)} />
           <span>{formatFileSize(document.sourceFileSize)}</span>
           <time>{formatDate(document.updatedAt || document.createdAt)}</time>
         </article>
@@ -76,125 +115,167 @@ function DocumentRows({ documents, selectable, selected, toggle, view }: {
 }
 
 export function LibraryPage() {
-  const mockMode = appConfig.enableMockApi;
   const [params] = useSearchParams();
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
-  const [type, setType] = useState('');
-  const [dataset, setDataset] = useState('');
-  const [sort, setSort] = useState<SortMode>('newest');
+  const [datasetId, setDatasetId] = useState('');
   const [view, setView] = useState<ViewMode>('table');
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(params.get('upload') === '1');
-  const [selected, setSelected] = useState(new Set<string>());
-  const [hidden, setHidden] = useState(new Set<string>());
   const [page, setPage] = useState(1);
-  const [archiving, setArchiving] = useState(false);
+  const [datasetDialogOpen, setDatasetDialogOpen] = useState(false);
+  const uploadItems = useUploadStore((state) => state.items);
+  const queryClient = useQueryClient();
+  const readyUploadIds = useRef(new Set<string>());
   const pageSize = 10;
+
   const documents = useDocuments({
-    title: mockMode ? undefined : search.trim() || undefined,
-    datasetId: dataset || undefined,
-    page: mockMode ? 1 : page,
-    pageSize: mockMode ? 100 : pageSize,
+    title: search.trim() || undefined,
+    datasetId: datasetId || undefined,
+    page,
+    pageSize,
   });
   const datasets = useDatasets();
+  useEffect(() => {
+    for (const item of uploadItems) {
+      if (item.status === 'ready' && !readyUploadIds.current.has(item.localId)) {
+        readyUploadIds.current.add(item.localId);
+        void queryClient.invalidateQueries({ queryKey: ['documents'] });
+        void queryClient.invalidateQueries({ queryKey: ['overview'] });
+      }
+    }
+  }, [queryClient, uploadItems]);
+  const createDatasetMutation = useMutation({
+    mutationFn: (value: DatasetFormValue) => createDataset(value),
+    onSuccess: () => {
+      void datasets.refetch();
+      setDatasetDialogOpen(false);
+    },
+  });
 
   const filtered = useMemo(() => {
-    const result = (documents.data?.items ?? []).filter((document) => !hidden.has(document.id)
-      && (!mockMode || (
-        document.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
-        && (!status || documentStatus(document) === status)
-        && (!type || fileType(document) === type)
-      )));
-    if (!mockMode) return result;
-    return result.sort((a, b) => {
-      if (sort === 'name') return a.title.localeCompare(b.title, 'zh-CN');
-      const difference = new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime();
-      return sort === 'oldest' ? difference : -difference;
-    });
-  }, [documents.data?.items, hidden, mockMode, search, sort, status, type]);
-
-  function toggle(id: string) {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
-
-  const filterProps = {
-    dataset,
-    datasets: datasets.data?.items ?? [],
-    onDataset: setDataset,
-    onStatus: setStatus,
-    onType: setType,
-    showMockFilters: mockMode,
-    status,
-    type,
-  };
+    const serverDocuments = documents.data?.items ?? [];
+    const serverIds = new Set(serverDocuments.map((document) => document.id));
+    const localDocuments = uploadItems
+      .filter((item) => !item.documentId || !serverIds.has(item.documentId))
+      .filter((item) => !datasetId || item.datasetId === datasetId)
+      .filter((item) => !search.trim() || item.file.name.toLowerCase().includes(search.trim().toLowerCase()))
+      .map((item) => queuedUploadToDocument(
+        item,
+        datasets.data?.items?.find((dataset) => dataset.id === item.datasetId)?.name,
+      ));
+    return [...localDocuments, ...serverDocuments];
+  }, [datasetId, datasets.data?.items, documents.data?.items, search, uploadItems]);
   const totalPages = Math.max(1, Math.ceil((documents.data?.total ?? 0) / pageSize));
-
-  async function archiveSelected() {
-    const selectedDocuments = filtered.filter((document) => selected.has(document.id));
-    setArchiving(true);
-    try {
-      await Promise.all(selectedDocuments.map((document) => archiveDocument(document.id, document)));
-      setHidden((current) => new Set([...current, ...selectedDocuments.map((document) => document.id)]));
-      setSelected(new Set());
-    } finally {
-      setArchiving(false);
-    }
-  }
+  const hasDatasets = (datasets.data?.items?.length ?? 0) > 0;
+  const hasDocuments = filtered.length > 0;
+  const isEmpty = !documents.isPending && !hasDocuments;
+  const activeDatasetName = datasetId
+    ? datasets.data?.items?.find((d) => d.id === datasetId)?.name ?? '资料集'
+    : '全部文件';
 
   return (
-    <section className="library-page page-section">
-      <header className="page-heading">
-        <div><p className="eyebrow">知识库</p><h1>全部文件</h1></div>
-        <Button onClick={() => setUploadOpen((value) => !value)}><Upload size={17} />上传</Button>
-      </header>
-      <LibraryNav />
-      {uploadOpen ? <UploadPanel datasets={datasets.data?.items ?? []} /> : null}
-      <div className="library-toolbar">
-        <div className="library-search"><Search aria-hidden="true" size={17} /><Input aria-label="搜索文件" onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="搜索文件" role="searchbox" value={search} /></div>
-        <div className="desktop-filters"><Filters {...filterProps} /></div>
-        <Button className="mobile-filter-button" onClick={() => setFiltersOpen(true)} variant="secondary"><Filter size={16} />筛选</Button>
-        {mockMode ? <label className="sort-control">排序<select aria-label="文件排序" onChange={(event) => setSort(event.target.value as SortMode)} value={sort}>
-          <option value="newest">最近更新</option><option value="oldest">最早创建</option><option value="name">名称</option>
-        </select></label> : <span className="sort-label">最近添加</span>}
-        <div aria-label="视图方式" className="segmented-control">
-          <Tooltip content="表格视图"><button aria-label="表格视图" aria-pressed={view === 'table'} onClick={() => setView('table')} type="button"><List size={17} /></button></Tooltip>
-          <Tooltip content="列表视图"><button aria-label="列表视图" aria-pressed={view === 'list'} onClick={() => setView('list')} type="button"><Grid2X2 size={17} /></button></Tooltip>
+    <section className="library-page library-page--split">
+      <DatasetSidebar
+        activeId={datasetId}
+        datasets={datasets.data?.items ?? []}
+        onCreate={() => setDatasetDialogOpen(true)}
+        onSelect={(id) => { setDatasetId(id); setPage(1); }}
+      />
+
+      <div className="library-main">
+        <header className="page-heading">
+          <div>
+            <p className="eyebrow">知识库</p>
+            <h1>{activeDatasetName}</h1>
+          </div>
+          <Button onClick={() => setUploadOpen(true)}>
+            <Upload size={17} />上传
+          </Button>
+        </header>
+
+        <div className="library-toolbar">
+          <div className="library-search">
+            <Search aria-hidden="true" size={17} />
+            <Input
+              aria-label="搜索文件"
+              onChange={(event) => { setSearch(event.target.value); setPage(1); }}
+              placeholder="搜索文件"
+              role="searchbox"
+              value={search}
+            />
+          </div>
+          <span className="sort-label">最近添加</span>
+          <div aria-label="视图方式" className="segmented-control">
+            <Tooltip content="表格视图">
+              <button aria-label="表格视图" aria-pressed={view === 'table'} onClick={() => setView('table')} type="button">
+                <List size={17} />
+              </button>
+            </Tooltip>
+            <Tooltip content="列表视图">
+              <button aria-label="列表视图" aria-pressed={view === 'list'} onClick={() => setView('list')} type="button">
+                <Grid2X2 size={17} />
+              </button>
+            </Tooltip>
+          </div>
         </div>
+
+        {documents.isPending ? (
+          <LoadingState label="加载文件" />
+        ) : documents.isError ? (
+          <section className="state-panel state-panel--error" role="alert">
+            <h2>文件加载失败</h2>
+            <p>无法连接资料服务。</p>
+            <Button onClick={() => void documents.refetch()} variant="secondary">重试</Button>
+          </section>
+        ) : hasDocuments ? (
+          <DocumentRows documents={filtered} view={view} />
+        ) : isEmpty && !hasDatasets ? (
+          <div className="onboarding-card">
+            <div className="onboarding-card__icon"><Inbox size={28} /></div>
+            <h2>欢迎来到知识库</h2>
+            <p>文件是挂载在「资料集」下的。先创建一个资料集，再上传你的第一份资料吧。</p>
+            <div className="onboarding-card__actions">
+              <Button onClick={() => setDatasetDialogOpen(true)}>
+                <FolderPlus size={17} />创建资料集
+              </Button>
+            </div>
+          </div>
+        ) : isEmpty ? (
+          <EmptyState
+            description={search || datasetId ? '调整搜索或筛选条件后重试。' : '这个资料集还没有文件，点击右上角上传按钮开始添加。'}
+            title={search || datasetId ? '没有匹配的文件' : '还没有文件'}
+          />
+        ) : null}
+
+        {documents.data && documents.data.total > pageSize ? (
+          <nav aria-label="文件分页" className="pagination">
+            <Button disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} variant="secondary">上一页</Button>
+            <span>第 {page} / {totalPages} 页</span>
+            <Button disabled={page >= totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))} variant="secondary">下一页</Button>
+          </nav>
+        ) : null}
       </div>
-      <Drawer onOpenChange={setFiltersOpen} open={filtersOpen} side="bottom" title="筛选文件"><Filters {...filterProps} /></Drawer>
 
-      {mockMode && selected.size ? (
-        <div className="batch-bar">
-          <CheckSquare size={17} /><span>已选择 {selected.size} 项</span>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild><Button disabled={archiving} variant="secondary">批量操作<MoreHorizontal size={16} /></Button></DropdownMenu.Trigger>
-            <DropdownMenu.Portal><DropdownMenu.Content className="dropdown-content" sideOffset={5}>
-              <DropdownMenu.Item className="dropdown-item" onSelect={() => void archiveSelected()}><Archive size={15} />归档</DropdownMenu.Item>
-            </DropdownMenu.Content></DropdownMenu.Portal>
-          </DropdownMenu.Root>
+      <Dialog className="upload-dialog" onOpenChange={setUploadOpen} open={uploadOpen} title="上传文件">
+        <div className="upload-dialog__body">
+          <UploadPanel
+            datasets={datasets.data?.items ?? []}
+            onCreateDataset={() => setDatasetDialogOpen(true)}
+            onEnqueued={() => {
+              setUploadOpen(false);
+              setDatasetId('');
+              setSearch('');
+              setPage(1);
+            }}
+          />
+          <p className="upload-dialog__hint">上传后窗口会自动关闭，文件处理状态将在「全部文件」表格中更新。</p>
         </div>
-      ) : null}
+      </Dialog>
 
-      {documents.isPending ? <LoadingState label="加载文件" /> : documents.isError ? (
-        <section className="state-panel state-panel--error" role="alert"><h2>文件加载失败</h2><p>无法连接资料服务。</p><Button onClick={() => void documents.refetch()} variant="secondary">重试</Button></section>
-      ) : filtered.length ? <DocumentRows documents={filtered} selectable={mockMode} selected={selected} toggle={toggle} view={view} /> : (
-        <EmptyState
-          description={search || status || type || dataset ? '调整搜索或筛选条件后重试。' : '上传资料后，可以在这里检索、整理和进入原文。'}
-          title={search || status || type || dataset ? '没有匹配的文件' : '还没有文件'}
-        />
-      )}
-      {!mockMode && documents.data && documents.data.total > pageSize ? (
-        <nav aria-label="文件分页" className="pagination">
-          <Button disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} variant="secondary">上一页</Button>
-          <span>第 {page} / {totalPages} 页</span>
-          <Button disabled={page >= totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))} variant="secondary">下一页</Button>
-        </nav>
-      ) : null}
+      <DatasetDialog
+        onOpenChange={setDatasetDialogOpen}
+        onSubmit={async (value) => { await createDatasetMutation.mutateAsync(value); }}
+        open={datasetDialogOpen}
+      />
     </section>
   );
 }
