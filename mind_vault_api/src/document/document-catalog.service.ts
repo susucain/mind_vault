@@ -13,9 +13,24 @@ import {
 } from './schemas/document-content.schema';
 import { DocumentGraphTaskService } from './graph/document-graph-task.service';
 import { DocumentLocator, ParsedSection } from './parser/parsed-document';
+import { RustfsService } from '../storage/rustfs.service';
 
 /** 单个正文块的目标字符上限，超过的章节会按段落边界切分为多块 */
 const SECTION_CHAR_BUDGET = 2000;
+
+/**
+ * 只读资产白名单：仅允许正文中引用的对象前缀。
+ * 资产 key 由解析阶段写入正文（如 `pdf-images/…`），不接受任意对象读取。
+ */
+const ASSET_KEY_PREFIXES = ['pdf-images/'];
+
+const ASSET_CONTENT_TYPES: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+};
 
 @Injectable()
 export class DocumentCatalogService {
@@ -27,6 +42,7 @@ export class DocumentCatalogService {
     @InjectRepository(DocumentIngestionJobEntity)
     private readonly jobs: Repository<DocumentIngestionJobEntity>,
     private readonly graphTasks?: DocumentGraphTaskService,
+    private readonly storage?: RustfsService,
   ) {}
 
   async findAll(ownerId: string, query: QueryDocumentDto) {
@@ -174,6 +190,21 @@ export class DocumentCatalogService {
     return { items, nextCursor, total: blocks.length };
   }
 
+  /** 读取正文引用的只读资产（如 PDF 抽出的插图），key 即正文 `![](...)` 中的路径。 */
+  async readAsset(key: string) {
+    const normalized = key?.replace(/^\/+/, '') ?? '';
+    if (!isAllowedAssetKey(normalized) || !this.storage?.isEnabled()) {
+      throw new NotFoundException(`Asset ${key} not found`);
+    }
+    let body: Buffer;
+    try {
+      body = await this.storage.downloadBytes(normalized);
+    } catch {
+      throw new NotFoundException(`Asset ${key} not found`);
+    }
+    return { body, contentType: assetContentType(normalized) };
+  }
+
   private async loadDocument(ownerId: string, id: string) {
     const document = await this.documents.findOne({
       where: { id, ownerId, deleted: false },
@@ -208,6 +239,19 @@ export class DocumentCatalogService {
     ]);
     return { total, available, processing };
   }
+}
+
+/** 仅放行白名单前缀，并挡住路径穿越与绝对路径。 */
+function isAllowedAssetKey(key: string): boolean {
+  if (!key || key.includes('..') || key.includes('\\') || key.includes('//')) {
+    return false;
+  }
+  return ASSET_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
+function assetContentType(key: string): string {
+  const ext = key.slice(key.lastIndexOf('.') + 1).toLowerCase();
+  return ASSET_CONTENT_TYPES[ext] ?? 'application/octet-stream';
 }
 
 function progressOf(job: DocumentIngestionJobEntity) {

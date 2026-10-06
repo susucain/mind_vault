@@ -288,4 +288,86 @@ describe('DocumentCatalogService', () => {
       service.findSections('user_2', 'doc_1', {}),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('serves an allowlisted asset key with the inferred content type', async () => {
+    const storage = {
+      isEnabled: jest.fn().mockReturnValue(true),
+      downloadBytes: jest.fn().mockResolvedValue(Buffer.from('png-bytes')),
+    };
+    const service = new DocumentCatalogService(
+      {} as never,
+      {} as never,
+      {} as never,
+      undefined,
+      storage as never,
+    );
+
+    const asset = await service.readAsset(
+      'pdf-images/1790182552129-pdf_img_p1_0.png',
+    );
+
+    expect(storage.downloadBytes).toHaveBeenCalledWith(
+      'pdf-images/1790182552129-pdf_img_p1_0.png',
+    );
+    expect(asset.contentType).toBe('image/png');
+    expect(asset.body.toString()).toBe('png-bytes');
+  });
+
+  it('rejects asset keys outside the allowlist or containing traversal', async () => {
+    const storage = {
+      isEnabled: jest.fn().mockReturnValue(true),
+      downloadBytes: jest.fn(),
+    };
+    const service = new DocumentCatalogService(
+      {} as never,
+      {} as never,
+      {} as never,
+      undefined,
+      storage as never,
+    );
+
+    await expect(
+      service.readAsset('documents/secret.pdf'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      service.readAsset('pdf-images/../secret.png'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(storage.downloadBytes).not.toHaveBeenCalled();
+  });
+
+  it('rejects assets when object storage is unavailable', async () => {
+    const storage = {
+      isEnabled: jest.fn().mockReturnValue(false),
+      downloadBytes: jest.fn(),
+    };
+    const service = new DocumentCatalogService(
+      {} as never,
+      {} as never,
+      {} as never,
+      undefined,
+      storage as never,
+    );
+
+    await expect(service.readAsset('pdf-images/a.png')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('maps a missing storage object to not found', async () => {
+    const storage = {
+      isEnabled: jest.fn().mockReturnValue(true),
+      downloadBytes: jest.fn().mockRejectedValue(new Error('NoSuchKey')),
+    };
+    const service = new DocumentCatalogService(
+      {} as never,
+      {} as never,
+      {} as never,
+      undefined,
+      storage as never,
+    );
+
+    await expect(
+      service.readAsset('pdf-images/missing.png'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
 });

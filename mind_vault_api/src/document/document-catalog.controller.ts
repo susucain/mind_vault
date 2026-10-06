@@ -1,4 +1,12 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Header,
+  Param,
+  Query,
+  StreamableFile,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { QueryDocumentDto } from './dto/query-document.dto';
@@ -38,6 +46,14 @@ export class DocumentCatalogController {
     @Query() query: QueryDocumentSectionsDto,
   ) {
     return this.service.findSections(user.id, id, query);
+  }
+
+  /** 正文引用的只读资产（PDF 插图等）：key 为正文 `![](...)` 中的路径。 */
+  @Get('assets')
+  @Header('Cache-Control', 'private, max-age=86400')
+  async asset(@Query('key') key: string) {
+    const { body, contentType } = await this.service.readAsset(key);
+    return new StreamableFile(body, { type: contentType });
   }
 
   @Get(':id')
