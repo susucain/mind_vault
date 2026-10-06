@@ -28,9 +28,14 @@ import { ModelModule } from './model/model.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { MemoryModule } from './memory/memory.module';
 import { UserMemoryEntity } from './memory/entities/user-memory.entity';
+import { UserEntity } from './auth/entities/user.entity';
+import { SearchHistoryModule } from './search-history/search-history.module';
+import { SearchHistoryEntity } from './search-history/entities/search-history.entity';
 import { AddReviewWorkspaceSchema1790380800000 } from './migrations/1790380800000-add-review-workspace-schema';
 import { AddInterviewTopicIntensity1790467200000 } from './migrations/1790467200000-add-interview-topic-intensity';
 import { RenameBehavioralTopicToJobFit1790553600000 } from './migrations/1790553600000-rename-behavioral-topic-to-job-fit';
+import { AddUserAccount1790812800000 } from './migrations/1790812800000-add-user-account';
+import { AddSearchHistory1790899200000 } from './migrations/1790899200000-add-search-history';
 
 const standalone = buildConfiguration(process.env).runtime.standalone;
 
@@ -46,6 +51,7 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
           ChatModule,
           InterviewModule,
           MemoryModule,
+          SearchHistoryModule,
         ]),
     AuthModule,
     HealthModule,
@@ -78,12 +84,16 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
                 ReviewItemEntity,
                 ReviewAttemptEntity,
                 UserMemoryEntity,
+                UserEntity,
+                SearchHistoryEntity,
               ],
               synchronize: false,
               migrations: [
                 AddReviewWorkspaceSchema1790380800000,
                 AddInterviewTopicIntensity1790467200000,
                 RenameBehavioralTopicToJobFit1790553600000,
+                AddUserAccount1790812800000,
+                AddSearchHistory1790899200000,
               ],
               migrationsRun: true,
             }),
