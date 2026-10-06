@@ -47,7 +47,8 @@ function buildService(input: {
       },
     ),
     create: jest.fn((entity) => entity),
-    save: jest.fn(async (entity) => entity),
+    // 返回浅拷贝：真实仓储不会把同一对象引用回写，测试里也才能看到每个阶段的状态快照
+    save: jest.fn(async (entity) => ({ ...entity })),
   };
   const conversations = {
     findOne: jest.fn().mockResolvedValue(conversation),
@@ -61,7 +62,6 @@ function buildService(input: {
       answer: '答案',
       usedTools: ['vector'],
       thinking: false,
-      confidence: 0.9,
       citedChunkIds: [],
       hits: [],
       answerMode: 'rag',
@@ -120,7 +120,7 @@ describe('ChatService', () => {
         history: turnsOf(all.slice(-8)),
       },
       // sessionId 只用于把 trace 归到同一条会话下，不进模型输入
-      { sessionId: 'conversation_1' },
+      expect.objectContaining({ sessionId: 'conversation_1' }),
     );
   });
 
@@ -140,7 +140,7 @@ describe('ChatService', () => {
     );
     expect(agent.invoke).toHaveBeenCalledWith(
       expect.objectContaining({ summary: '新摘要' }),
-      { sessionId: 'conversation_1' },
+      expect.objectContaining({ sessionId: 'conversation_1' }),
     );
     // 长期记忆抽取挂在压缩之后，输入正是刚被压缩的这批轮次
     expect(memories.extractFromTurns).toHaveBeenCalledWith({
@@ -164,7 +164,7 @@ describe('ChatService', () => {
     expect(memories.extractFromTurns).not.toHaveBeenCalled();
     expect(agent.invoke).toHaveBeenCalledWith(
       expect.objectContaining({ summary: '旧摘要' }),
-      { sessionId: 'conversation_1' },
+      expect.objectContaining({ sessionId: 'conversation_1' }),
     );
   });
 
@@ -237,6 +237,50 @@ describe('ChatService', () => {
     );
   });
 
+  it('streams deltas through onToken and finalizes the same assistant row', async () => {
+    const { service, messages, agent } = buildService({ messageCount: 0 });
+    agent.invoke.mockImplementation(
+      (_input: unknown, options: { onToken?: (delta: string) => void }) => {
+        options.onToken?.('第一段');
+        options.onToken?.('第二段');
+        return Promise.resolve({
+          answer: '第一段第二段',
+          usedTools: ['vector'],
+          thinking: false,
+          citedChunkIds: [],
+          hits: [],
+          answerMode: 'rag',
+        });
+      },
+    );
+    const tokens: string[] = [];
+    const started: string[] = [];
+
+    const result = await service.ask('user_1', 'conversation_1', '问题', {
+      onToken: (delta) => tokens.push(delta),
+      onMessageStart: (message) => started.push(message.id),
+    });
+
+    expect(tokens.join('')).toBe('第一段第二段');
+    expect(started).toHaveLength(1);
+    // 同一行先落 STREAMING 再更新为 COMPLETED，不新建第二条助手消息
+    const assistantSaves = (
+      messages.save.mock.calls as Array<
+        [FakeMessage & { status: string; usedTools: string[] }]
+      >
+    )
+      .map(([entity]) => entity)
+      .filter((entity) => entity.role === 'assistant');
+    expect(assistantSaves).toHaveLength(2);
+    expect(assistantSaves[0].status).toBe('STREAMING');
+    expect(assistantSaves[1]).toMatchObject({
+      status: 'COMPLETED',
+      content: '第一段第二段',
+      usedTools: ['vector'],
+    });
+    expect(result.message.id).toBe(started[0]);
+  });
+
   it('names a default conversation from its first question', async () => {
     const { service, conversation, conversations } = buildService({
       messageCount: 0,
@@ -288,7 +332,7 @@ describe('ChatService', () => {
 
     expect(agent.invoke).toHaveBeenCalledWith(
       expect.objectContaining({ datasetIds: ['dataset_1'] }),
-      { sessionId: 'conversation_1' },
+      expect.objectContaining({ sessionId: 'conversation_1' }),
     );
   });
 
@@ -301,12 +345,16 @@ describe('ChatService', () => {
     ).rejects.toThrow('资料集不存在或无权访问');
   });
 
-  it('rejects an empty or oversized dataset scope', async () => {
-    const { service } = buildService({ messageCount: 0 });
+  it('treats an empty dataset scope as all datasets and rejects an oversized one', async () => {
+    const { service, conversation, conversations } = buildService({
+      messageCount: 0,
+      datasetIds: ['dataset_1'],
+    });
 
-    await expect(
-      service.updateDatasetScope('user_1', 'conversation_1', []),
-    ).rejects.toThrow('资料集范围不能为空');
+    await service.updateDatasetScope('user_1', 'conversation_1', []);
+
+    expect(conversation.datasetIds).toEqual([]);
+    expect(conversations.save).toHaveBeenCalledWith(conversation);
     await expect(
       service.updateDatasetScope(
         'user_1',

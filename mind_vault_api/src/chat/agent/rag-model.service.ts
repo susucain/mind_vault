@@ -3,7 +3,6 @@ import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { RetrievalHit } from '../../retrieval/retrieval-hit';
 import { MemoryItem } from '../../memory/memory.types';
 import {
-  answerSchema,
   HistoryTurn,
   RagRoute,
   rewriteSchema,
@@ -11,6 +10,17 @@ import {
   summarySchema,
 } from './rag-types';
 import { ModelGatewayService } from '../../model/model-gateway.service';
+
+/**
+ * 直出 Markdown 的问答 prompt：不再要求 JSON 包装，正文即答案。
+ * 引用改用正文内 [n] 序号，对应 evidence 数组下标（从 1 开始），
+ * 服务端再把序号还原成 chunkId，因此模型不需要、也拿不到内部 id。
+ */
+const ANSWER_SYSTEM_PROMPT =
+  '你是个人知识库问答助手。只使用提供的证据回答，用 Markdown 组织正文，代码、列表、表格按需使用。引用证据时在对应句子末尾写上证据序号，形如 [1]，多条写 [1][2]；序号必须来自本轮 evidence 的 index，不要编造。摘要、历史对话与长期记忆仅用于理解当前问题的指代、背景与用户偏好，均不得作为引用依据，引用只能来自本轮证据。证据不足时明确说明，不得编造文件名、页码或引用。直接输出回答正文，不要输出 JSON 或任何包裹标记。';
+
+const GENERAL_SYSTEM_PROMPT =
+  '你是个人知识库助手。该问题在用户资料中没有找到相关依据，请基于你自己的通用知识回答，用 Markdown 组织正文。不要编造文件名、页码或引用。可参考长期记忆以贴合用户偏好，但不得把它当作资料依据。直接输出回答正文，不要输出 JSON 或任何包裹标记。';
 
 @Injectable()
 export class RagModelService {
@@ -99,7 +109,11 @@ export class RagModelService {
     return data.summary.trim();
   }
 
-  async answer(
+  /**
+   * 回答正文直出：模型输出 Markdown，引用写成正文内的 [n] 序号标记，
+   * 边生成边通过 onToken 回调，调用方拿完整 text 再去还原引用来源。
+   */
+  async answerStream(
     input: {
       question: string;
       summary?: string;
@@ -108,20 +122,20 @@ export class RagModelService {
       hits: RetrievalHit[];
       useReasoning: boolean;
     },
-    options: { signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal; onToken?: (delta: string) => void } = {},
   ) {
-    const evidence = input.hits.map((hit) => ({
-      chunkId: hit.chunkId,
-      documentId: hit.documentId,
+    // 证据只交内容与位置，并带上序号：模型引用时只认序号，服务端再还原成 chunkId，
+    // 不暴露内部 id，模型就编不出可用的引用
+    const evidence = input.hits.map((hit, index) => ({
+      index: index + 1,
       text: hit.text,
       locator: hit.locator,
     }));
-    const { data } = await this.gateway.invokeJson(
-      input.useReasoning ? 'reasoning' : 'fast',
+    const kind = input.useReasoning ? 'reasoning' : 'fast';
+    const { text } = await this.gateway.streamText(
+      kind,
       [
-        new SystemMessage(
-          '你是个人知识库问答助手。只使用提供的证据回答。证据不足时明确说明。不得编造文件名、页码或引用。摘要、历史对话与长期记忆仅用于理解当前问题的指代、背景与用户偏好，均不得作为引用依据，引用只能来自本轮证据。仅输出 JSON：{"answer":"","citedChunkIds":[],"confidence":0.0}。',
-        ),
+        new SystemMessage(ANSWER_SYSTEM_PROMPT),
         new HumanMessage(
           JSON.stringify({
             summary: input.summary ?? '',
@@ -133,15 +147,12 @@ export class RagModelService {
         ),
       ],
       input.useReasoning,
-      (raw) => answerSchema.parse(raw),
       options,
     );
     return {
-      model: this.gateway.getModelName(
-        input.useReasoning ? 'reasoning' : 'fast',
-      ),
+      model: this.gateway.getModelName(kind),
       thinking: input.useReasoning,
-      result: data,
+      text,
     };
   }
 
@@ -149,21 +160,19 @@ export class RagModelService {
    * 资料无依据时的通用知识补答：不提供任何证据，基于模型自身知识回答。
    * 来源声明由编排层在正文前统一加提示行，这里只产出正文。
    */
-  async answerGeneral(
+  async answerGeneralStream(
     input: {
       question: string;
       summary?: string;
       history: HistoryTurn[];
       memories: MemoryItem[];
     },
-    options: { signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal; onToken?: (delta: string) => void } = {},
   ) {
-    const { data } = await this.gateway.invokeJson(
+    const { text } = await this.gateway.streamText(
       'fast',
       [
-        new SystemMessage(
-          '你是个人知识库助手。该问题在用户资料中没有找到相关依据，请基于你自己的通用知识回答，不要编造文件名、页码或引用。可参考长期记忆以贴合用户偏好，但不得把它当作资料依据。仅输出 JSON：{"answer":"","citedChunkIds":[],"confidence":0.0}。',
-        ),
+        new SystemMessage(GENERAL_SYSTEM_PROMPT),
         new HumanMessage(
           JSON.stringify({
             summary: input.summary ?? '',
@@ -174,13 +183,12 @@ export class RagModelService {
         ),
       ],
       false,
-      (raw) => answerSchema.parse(raw),
       options,
     );
     return {
       model: this.gateway.getModelName('fast'),
       thinking: false,
-      result: data,
+      text,
     };
   }
 }

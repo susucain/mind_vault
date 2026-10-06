@@ -62,14 +62,7 @@ export interface RagState {
   usedTools: string[];
   answer?: string;
   citedChunkIds: string[];
-  confidence: number;
   model?: string;
   thinking: boolean;
   answerMode: AnswerMode;
 }
-
-export const answerSchema = z.object({
-  answer: z.string().min(1),
-  citedChunkIds: z.array(z.string()).max(8),
-  confidence: z.number().min(0).max(1),
-});

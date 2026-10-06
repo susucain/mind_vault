@@ -9,7 +9,8 @@ import { ChatPage } from './ChatPage';
 const sseMock = vi.hoisted(() => ({ start: vi.fn(), abort: vi.fn() }));
 
 vi.mock('../../api/conversations', () => ({
-  listConversations: vi.fn().mockResolvedValue([]),
+  listConversations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20, hasNext: false }),
+  getConversation: vi.fn(),
   listMessages: vi.fn().mockResolvedValue([]),
   createConversation: vi.fn(),
   updateConversation: vi.fn(),
@@ -33,11 +34,12 @@ describe('ChatPage', () => {
     expect(screen.getByRole('button', { name: '发送问题' })).toBeDisabled();
   });
 
-  it('exposes mobile drawer controls without rendering desktop sidebars as the only navigation', async () => {
+  it('exposes new-conversation, scope picker and history entry points', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><MemoryRouter><ChatPage isNew /></MemoryRouter></QueryClientProvider>);
     expect(await screen.findByRole('button', { name: '打开会话历史' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^引用\s*$/ })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '开启新对话' }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: '资料集范围：全部资料集' })).toBeInTheDocument();
   });
 
   it('shows a retryable error when creating a conversation fails', async () => {

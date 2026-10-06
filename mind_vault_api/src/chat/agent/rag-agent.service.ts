@@ -2,14 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { RetrievalService } from '../../retrieval/retrieval.service';
 import { RetrievalHit } from '../../retrieval/retrieval-hit';
 import { MemoryService } from '../../memory/memory.service';
-import { MemoryItem } from '../../memory/memory.types';
 import { LangfuseService } from '../../observability/langfuse.service';
 import { RagModelService } from './rag-model.service';
 import {
   AnswerMode,
   HistoryTurn,
   historyWindow,
-  RagRoute,
   RagState,
 } from './rag-types';
 
@@ -38,6 +36,7 @@ export class RagAgentService {
     options: {
       signal?: AbortSignal;
       emitStage?: (stage: RagStage) => void;
+      onToken?: (delta: string) => void;
       sessionId?: string;
     } = {},
   ): Promise<RagState> {
@@ -55,7 +54,6 @@ export class RagAgentService {
         },
         output: (state) => ({
           answerMode: state.answerMode,
-          confidence: state.confidence,
           citedChunkIds: state.citedChunkIds,
           usedTools: state.usedTools,
         }),
@@ -76,6 +74,7 @@ export class RagAgentService {
     options: {
       signal?: AbortSignal;
       emitStage?: (stage: RagStage) => void;
+      onToken?: (delta: string) => void;
     },
   ): Promise<RagState> {
     const runStage = async <T>(
@@ -101,7 +100,6 @@ export class RagAgentService {
       hasEvidence: false,
       usedTools: [],
       citedChunkIds: [],
-      confidence: 0,
       thinking: false,
       answerMode: 'rag',
     };
@@ -137,7 +135,12 @@ export class RagAgentService {
     }
     state = {
       ...state,
-      ...(await runStage('answer', () => this.answer(state, options.signal))),
+      ...(await runStage('answer', () =>
+        this.answer(state, {
+          signal: options.signal,
+          onToken: options.onToken,
+        }),
+      )),
     };
     // 各节点的 usedTools 是覆盖语义（gate / retrieve 会整体替换），遗漏的记忆标记在这里补上
     return state.memories.length > 0
@@ -285,75 +288,82 @@ export class RagAgentService {
     return { hits: hybrid.hits, usedTools: hybrid.usedTools };
   }
 
-  private async answer(state: RagState, signal?: AbortSignal) {
+  /**
+   * 回答：模型边生成边通过 onToken 把正文增量推给上层，本方法拿完整正文再做引用还原。
+   * 弱证据不再事后整段重试，而是在生成前就用可得信号（命中条数）决定是否上推理模型，
+   * 把最坏两次模型调用压到一次。
+   */
+  private async answer(
+    state: RagState,
+    options: {
+      signal?: AbortSignal;
+      onToken?: (delta: string) => void;
+    } = {},
+  ) {
+    const { signal, onToken } = options;
     if (state.hits.length === 0) {
       // 资料无依据：先明确告知，再用模型通用知识补答，省去用户手动切模式
-      const input = {
-        question: state.question,
-        summary: state.summary,
-        history: state.history,
-        memories: state.memories,
-      };
-      const fallback = signal
-        ? await this.models.answerGeneral(input, { signal })
-        : await this.models.answerGeneral(input);
+      const notice =
+        '未在资料中找到与问题相关的内容，以下为基于模型通用知识的回答：\n\n';
+      onToken?.(notice);
+      const fallback = await this.models.answerGeneralStream(
+        {
+          question: state.question,
+          summary: state.summary,
+          history: state.history,
+          memories: state.memories,
+        },
+        { signal, onToken },
+      );
       return {
-        answer: `未在资料中找到与问题相关的内容，以下为基于模型通用知识的回答：\n\n${fallback.result.answer}`,
+        answer: notice + fallback.text,
         // 通用知识没有资料依据，不产出任何引用
         citedChunkIds: [],
-        confidence: fallback.result.confidence,
         model: fallback.model,
         thinking: fallback.thinking,
         answerMode: 'general' as AnswerMode,
       };
     }
     const useReasoning =
+      state.hits.length < 3 ||
       state.route?.complexity === 'high' ||
       state.route?.intent === 'compare' ||
       state.route?.intent === 'graph';
-    const input = {
-      question: state.question,
-      summary: state.summary,
-      history: state.history,
-      memories: state.memories,
-      hits: state.hits,
-      useReasoning,
-    };
-    let response = signal
-      ? await this.models.answer(input, { signal })
-      : await this.models.answer(input);
-    const hitIds = new Set(state.hits.map((hit) => hit.chunkId));
-    let citedChunkIds = response.result.citedChunkIds.filter((id) =>
-      hitIds.has(id),
-    );
-    if (
-      !useReasoning &&
-      (response.result.confidence < 0.45 || citedChunkIds.length === 0)
-    ) {
-      const retryInput = {
+    const response = await this.models.answerStream(
+      {
         question: state.question,
         summary: state.summary,
         history: state.history,
         memories: state.memories,
         hits: state.hits,
-        useReasoning: true,
-      };
-      response = signal
-        ? await this.models.answer(retryInput, { signal })
-        : await this.models.answer(retryInput);
-      citedChunkIds = response.result.citedChunkIds.filter((id) =>
-        hitIds.has(id),
-      );
-    }
+        useReasoning,
+      },
+      { signal, onToken },
+    );
     return {
-      answer: response.result.answer,
-      citedChunkIds,
-      confidence: response.result.confidence,
+      answer: response.text,
+      citedChunkIds: extractCitedChunkIds(response.text, state.hits),
       model: response.model,
       thinking: response.thinking,
       answerMode: 'rag' as AnswerMode,
     };
   }
+}
+
+/**
+ * 把正文里的 [n] 序号还原成 chunkId：n 对应证据列表下标（从 1 开始），
+ * 越界或重复的序号直接丢弃，因此模型编不出可用引用。
+ */
+function extractCitedChunkIds(text: string, hits: RetrievalHit[]): string[] {
+  const cited: string[] = [];
+  const seen = new Set<string>();
+  for (const match of text.matchAll(/\[(\d+)\]/g)) {
+    const hit = hits[Number(match[1]) - 1];
+    if (!hit || seen.has(hit.chunkId)) continue;
+    seen.add(hit.chunkId);
+    cited.push(hit.chunkId);
+  }
+  return cited;
 }
 
 function throwIfAborted(signal?: AbortSignal) {

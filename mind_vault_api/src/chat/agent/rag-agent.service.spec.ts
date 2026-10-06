@@ -1,4 +1,5 @@
 import { RagAgentService } from './rag-agent.service';
+import { RetrievalHit } from '../../retrieval/retrieval-hit';
 
 /** Langfuse 未启用时的形态：直接执行，不做任何包装 */
 const tracingOff = {
@@ -17,6 +18,19 @@ function buildAgent(models: unknown, retrieval: unknown, memories?: unknown) {
   );
 }
 
+function hit(chunkId: string, text = '证据'): RetrievalHit {
+  return {
+    chunkId,
+    documentId: `doc_${chunkId}`,
+    text,
+    parentContext: text,
+    locator: {},
+    titlePath: [],
+    score: 0.9,
+    sources: ['vector'],
+  };
+}
+
 describe('RagAgentService', () => {
   it('emits stages as each RAG node actually starts', async () => {
     const models = {
@@ -25,23 +39,11 @@ describe('RagAgentService', () => {
         complexity: 'low',
         entityNames: [],
       }),
-      answer: jest.fn().mockResolvedValue({
+      answerStream: jest.fn(),
+      answerGeneralStream: jest.fn().mockResolvedValue({
         model: 'fast-model',
         thinking: false,
-        result: {
-          answer: '回答',
-          citedChunkIds: [],
-          confidence: 0.9,
-        },
-      }),
-      answerGeneral: jest.fn().mockResolvedValue({
-        model: 'fast-model',
-        thinking: false,
-        result: {
-          answer: '回答',
-          citedChunkIds: [],
-          confidence: 0.9,
-        },
+        text: '回答',
       }),
     };
     const retrieval = {
@@ -62,51 +64,28 @@ describe('RagAgentService', () => {
     expect(stages).toEqual(['recall', 'classify', 'gate', 'answer']);
   });
 
-  it('routes a lookup question to keyword retrieval and removes unsupported citations', async () => {
+  it('routes a lookup question to keyword retrieval and keeps only in-range citations', async () => {
     const models = {
       route: jest.fn().mockResolvedValue({
         intent: 'lookup',
         complexity: 'low',
         entityNames: [],
       }),
-      answer: jest.fn().mockResolvedValue({
+      answerStream: jest.fn().mockResolvedValue({
         model: 'qwen3.8-flash',
         thinking: false,
-        result: {
-          answer: 'Kafka 用于削峰。',
-          citedChunkIds: ['chunk_1', 'invented_chunk'],
-          confidence: 0.9,
-        },
+        // [2] 越界（只有一条证据），必须被丢弃
+        text: 'Kafka 用于削峰。[1][2]',
       }),
     };
     const retrieval = {
       assessEvidence: jest.fn().mockResolvedValue({
-        hits: [
-          {
-            chunkId: 'chunk_1',
-            documentId: 'doc_1',
-            text: 'Kafka 用于削峰。',
-            parentContext: 'Kafka 用于削峰。',
-            locator: { page: 1 },
-            titlePath: [],
-            score: 0.9,
-            sources: ['vector'],
-          },
-        ],
+        hits: [hit('chunk_1', 'Kafka 用于削峰。')],
         hasEvidence: true,
       }),
-      keyword: jest.fn().mockResolvedValue([
-        {
-          chunkId: 'chunk_1',
-          documentId: 'doc_1',
-          text: 'Kafka 用于削峰。',
-          parentContext: 'Kafka 用于削峰。',
-          locator: { page: 1 },
-          titlePath: [],
-          score: 1,
-          sources: ['keyword'],
-        },
-      ]),
+      keyword: jest
+        .fn()
+        .mockResolvedValue([hit('chunk_1', 'Kafka 用于削峰。')]),
       hybrid: jest.fn(),
     };
     const agent = buildAgent(models, retrieval);
@@ -120,47 +99,62 @@ describe('RagAgentService', () => {
     expect(retrieval.keyword).toHaveBeenCalled();
     expect(result.usedTools).toEqual(['keyword']);
     expect(result.citedChunkIds).toEqual(['chunk_1']);
-    expect(result.thinking).toBe(false);
   });
 
-  it('upgrades a low-confidence response to the reasoning model', async () => {
+  it('pre-decides the reasoning model when evidence is sparse', async () => {
     const models = {
       route: jest.fn().mockResolvedValue({
         intent: 'semantic',
         complexity: 'medium',
         entityNames: [],
       }),
-      answer: jest
+      answerStream: jest.fn().mockResolvedValue({
+        model: 'reasoning-model',
+        thinking: true,
+        text: '证据化回答[1]',
+      }),
+    };
+    const retrieval = {
+      assessEvidence: jest
         .fn()
-        .mockResolvedValueOnce({
-          model: 'qwen3.8-flash',
-          thinking: false,
-          result: { answer: '不确定', citedChunkIds: [], confidence: 0.2 },
-        })
-        .mockResolvedValueOnce({
-          model: 'deepseek-v4-flash-0731',
-          thinking: true,
-          result: {
-            answer: '证据化回答',
-            citedChunkIds: ['chunk_1'],
-            confidence: 0.8,
-          },
-        }),
+        .mockResolvedValue({ hits: [hit('chunk_1')], hasEvidence: true }),
+      keyword: jest.fn(),
+      hybrid: jest.fn(),
+    };
+    const agent = buildAgent(models, retrieval);
+
+    const result = await agent.invoke({
+      ownerId: 'user_1',
+      question: '语义问题',
+      datasetIds: [],
+    });
+
+    // 命中条数不足时生成前就升级，不再等生成完再整段重试
+    expect(models.answerStream).toHaveBeenCalledWith(
+      expect.objectContaining({ useReasoning: true }),
+      expect.any(Object),
+    );
+    expect(models.answerStream).toHaveBeenCalledTimes(1);
+    expect(result.model).toBe('reasoning-model');
+    expect(result.citedChunkIds).toEqual(['chunk_1']);
+  });
+
+  it('keeps the fast model when evidence is plentiful', async () => {
+    const models = {
+      route: jest.fn().mockResolvedValue({
+        intent: 'semantic',
+        complexity: 'low',
+        entityNames: [],
+      }),
+      answerStream: jest.fn().mockResolvedValue({
+        model: 'fast-model',
+        thinking: false,
+        text: '基于多份证据的回答[1][2][3]',
+      }),
     };
     const retrieval = {
       assessEvidence: jest.fn().mockResolvedValue({
-        hits: [
-          {
-            chunkId: 'chunk_1',
-            documentId: 'doc_1',
-            text: '证据',
-            parentContext: '证据',
-            locator: {},
-            titlePath: [],
-            score: 0.9,
-            sources: ['vector'],
-          },
-        ],
+        hits: [hit('chunk_1'), hit('chunk_2'), hit('chunk_3')],
         hasEvidence: true,
       }),
       keyword: jest.fn(),
@@ -174,9 +168,11 @@ describe('RagAgentService', () => {
       datasetIds: [],
     });
 
-    expect(models.answer).toHaveBeenCalledTimes(2);
-    expect(result.model).toBe('deepseek-v4-flash-0731');
-    expect(result.citedChunkIds).toEqual(['chunk_1']);
+    expect(models.answerStream).toHaveBeenCalledWith(
+      expect.objectContaining({ useReasoning: false }),
+      expect.any(Object),
+    );
+    expect(result.citedChunkIds).toEqual(['chunk_1', 'chunk_2', 'chunk_3']);
   });
 
   it('falls back to a general-knowledge answer without retrieval when gating fails', async () => {
@@ -186,31 +182,16 @@ describe('RagAgentService', () => {
         complexity: 'low',
         entityNames: [],
       }),
-      answer: jest.fn(),
-      answerGeneral: jest.fn().mockResolvedValue({
+      answerStream: jest.fn(),
+      answerGeneralStream: jest.fn().mockResolvedValue({
         model: 'qwen3.8-flash',
         thinking: false,
-        result: {
-          answer: '1 + 1 = 2。',
-          citedChunkIds: [],
-          confidence: 0.8,
-        },
+        text: '1 + 1 = 2。',
       }),
     };
     const retrieval = {
       assessEvidence: jest.fn().mockResolvedValue({
-        hits: [
-          {
-            chunkId: 'chunk_junk',
-            documentId: 'doc_1',
-            text: '无关内容',
-            parentContext: '无关内容',
-            locator: {},
-            titlePath: [],
-            score: 0.62,
-            sources: ['vector'],
-          },
-        ],
+        hits: [hit('chunk_junk', '无关内容')],
         hasEvidence: false,
       }),
       keyword: jest.fn(),
@@ -228,14 +209,59 @@ describe('RagAgentService', () => {
     expect(result.citedChunkIds).toEqual([]);
     expect(result.answer).toContain('未在资料中找到与问题相关的内容');
     expect(result.answer).toContain('1 + 1 = 2。');
-    expect(models.answerGeneral).toHaveBeenCalledWith({
-      question: '1+1 等于几',
-      history: [],
-      memories: [],
-    });
-    expect(models.answer).not.toHaveBeenCalled();
+    expect(models.answerGeneralStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        question: '1+1 等于几',
+        history: [],
+        memories: [],
+      }),
+      expect.any(Object),
+    );
+    expect(models.answerStream).not.toHaveBeenCalled();
     expect(retrieval.keyword).not.toHaveBeenCalled();
     expect(retrieval.hybrid).not.toHaveBeenCalled();
+  });
+
+  it('streams the no-evidence notice before the general answer', async () => {
+    const models = {
+      route: jest.fn().mockResolvedValue({
+        intent: 'lookup',
+        complexity: 'low',
+        entityNames: [],
+      }),
+      answerStream: jest.fn(),
+      answerGeneralStream: jest
+        .fn()
+        .mockImplementation(
+          (_input: unknown, options: { onToken?: (delta: string) => void }) => {
+            options?.onToken?.('1 + 1 = 2。');
+            return Promise.resolve({
+              model: 'qwen3.8-flash',
+              thinking: false,
+              text: '1 + 1 = 2。',
+            });
+          },
+        ),
+    };
+    const retrieval = {
+      assessEvidence: jest.fn().mockResolvedValue({
+        hits: [],
+        hasEvidence: false,
+      }),
+      keyword: jest.fn(),
+      hybrid: jest.fn(),
+    };
+    const agent = buildAgent(models, retrieval);
+    const tokens: string[] = [];
+
+    await agent.invoke(
+      { ownerId: 'user_1', question: '1+1 等于几', datasetIds: [] },
+      { onToken: (delta) => tokens.push(delta) },
+    );
+
+    // 先推提示行，再推模型正文，拼接结果与落库正文一致
+    expect(tokens.join('')).toContain('未在资料中找到与问题相关的内容');
+    expect(tokens.join('')).toContain('1 + 1 = 2。');
   });
 
   it('rewrites a follow-up with history before routing and retrieval', async () => {
@@ -244,16 +270,6 @@ describe('RagAgentService', () => {
       { role: 'assistant' as const, content: 'Kafka 用于削峰填谷。' },
     ];
     const summary = '早前结论：Kafka 用于削峰填谷。';
-    const hit = {
-      chunkId: 'chunk_1',
-      documentId: 'doc_1',
-      text: 'Kafka 的缺点是运维成本高。',
-      parentContext: 'Kafka 的缺点是运维成本高。',
-      locator: { page: 2 },
-      titlePath: [],
-      score: 0.91,
-      sources: ['vector'],
-    };
     const models = {
       route: jest.fn().mockResolvedValue({
         intent: 'semantic',
@@ -261,20 +277,17 @@ describe('RagAgentService', () => {
         entityNames: [],
       }),
       rewriteQuery: jest.fn().mockResolvedValue('Kafka 有哪些缺点？'),
-      answer: jest.fn().mockResolvedValue({
+      answerStream: jest.fn().mockResolvedValue({
         model: 'qwen3.8-flash',
         thinking: false,
-        result: {
-          answer: '运维成本高。',
-          citedChunkIds: ['chunk_1'],
-          confidence: 0.9,
-        },
+        text: '运维成本高。[1]',
       }),
     };
     const retrieval = {
-      assessEvidence: jest
-        .fn()
-        .mockResolvedValue({ hits: [hit], hasEvidence: true }),
+      assessEvidence: jest.fn().mockResolvedValue({
+        hits: [hit('chunk_1', 'Kafka 的缺点是运维成本高。')],
+        hasEvidence: true,
+      }),
       keyword: jest.fn(),
       hybrid: jest.fn(),
     };
@@ -297,12 +310,13 @@ describe('RagAgentService', () => {
     expect(retrieval.assessEvidence).toHaveBeenCalledWith(
       expect.objectContaining({ query: 'Kafka 有哪些缺点？' }),
     );
-    expect(models.answer).toHaveBeenCalledWith(
+    expect(models.answerStream).toHaveBeenCalledWith(
       expect.objectContaining({
         question: 'Kafka 有哪些缺点？',
         summary,
         history,
       }),
+      expect.any(Object),
     );
     expect(result.citedChunkIds).toEqual(['chunk_1']);
   });
@@ -312,16 +326,6 @@ describe('RagAgentService', () => {
       role: 'user' as const,
       content: `第${index}条`.padEnd(800, '补'),
     }));
-    const hit = {
-      chunkId: 'chunk_1',
-      documentId: 'doc_1',
-      text: '证据',
-      parentContext: '证据',
-      locator: {},
-      titlePath: [],
-      score: 0.9,
-      sources: ['vector'],
-    };
     const captured: { history: { content: string }[] }[] = [];
     const models = {
       route: jest.fn().mockResolvedValue({
@@ -333,17 +337,17 @@ describe('RagAgentService', () => {
         captured.push(input);
         return Promise.resolve('改写后的问题');
       }),
-      answer: jest.fn().mockResolvedValue({
+      answerStream: jest.fn().mockResolvedValue({
         model: 'qwen3.8-flash',
         thinking: false,
-        result: { answer: '答案', citedChunkIds: [], confidence: 0.9 },
+        text: '答案',
       }),
     };
     const retrieval = {
       assessEvidence: jest
         .fn()
-        .mockResolvedValue({ hits: [hit], hasEvidence: true }),
-      keyword: jest.fn().mockResolvedValue([hit]),
+        .mockResolvedValue({ hits: [hit('chunk_1')], hasEvidence: true }),
+      keyword: jest.fn().mockResolvedValue([hit('chunk_1')]),
       hybrid: jest.fn(),
     };
     const agent = buildAgent(models, retrieval);
@@ -373,11 +377,11 @@ describe('RagAgentService', () => {
         entityNames: [],
       }),
       rewriteQuery: jest.fn(),
-      answer: jest.fn(),
-      answerGeneral: jest.fn().mockResolvedValue({
+      answerStream: jest.fn(),
+      answerGeneralStream: jest.fn().mockResolvedValue({
         model: 'qwen3.8-flash',
         thinking: false,
-        result: { answer: '通用答案', citedChunkIds: [], confidence: 0.5 },
+        text: '通用答案',
       }),
     };
     const retrieval = {
@@ -408,31 +412,15 @@ describe('RagAgentService', () => {
         complexity: 'low',
         entityNames: [],
       }),
-      answer: jest.fn().mockResolvedValue({
+      answerStream: jest.fn().mockResolvedValue({
         model: 'qwen3.8-flash',
         thinking: false,
-        result: {
-          answer: '运维成本高。',
-          // 模型把记忆 id 混进引用，编排层必须过滤掉
-          citedChunkIds: ['chunk_1', 'memory_1'],
-          confidence: 0.9,
-        },
+        text: '运维成本高。[1]',
       }),
     };
     const retrieval = {
       assessEvidence: jest.fn().mockResolvedValue({
-        hits: [
-          {
-            chunkId: 'chunk_1',
-            documentId: 'doc_1',
-            text: 'Kafka 的缺点是运维成本高。',
-            parentContext: 'Kafka 的缺点是运维成本高。',
-            locator: { page: 2 },
-            titlePath: [],
-            score: 0.91,
-            sources: ['vector'],
-          },
-        ],
+        hits: [hit('chunk_1', 'Kafka 的缺点是运维成本高。')],
         hasEvidence: true,
       }),
       keyword: jest.fn(),
@@ -460,10 +448,12 @@ describe('RagAgentService', () => {
       'user_1',
       'Kafka 有什么缺点？',
     );
-    expect(models.answer).toHaveBeenCalledWith(
+    // 记忆作为背景注入，但正文只按证据序号引用，记忆 id 无法变成引用来源
+    expect(models.answerStream).toHaveBeenCalledWith(
       expect.objectContaining({
         memories: [expect.objectContaining({ id: 'memory_1' })],
       }),
+      expect.any(Object),
     );
     expect(result.citedChunkIds).toEqual(['chunk_1']);
     expect(result.usedTools).toContain('memory');
@@ -476,28 +466,16 @@ describe('RagAgentService', () => {
         complexity: 'low',
         entityNames: [],
       }),
-      answer: jest.fn().mockResolvedValue({
+      answerStream: jest.fn().mockResolvedValue({
         model: 'qwen3.8-flash',
         thinking: false,
-        result: { answer: '答案', citedChunkIds: ['chunk_1'], confidence: 0.9 },
+        text: '答案[1]',
       }),
     };
     const retrieval = {
-      assessEvidence: jest.fn().mockResolvedValue({
-        hits: [
-          {
-            chunkId: 'chunk_1',
-            documentId: 'doc_1',
-            text: '证据',
-            parentContext: '证据',
-            locator: {},
-            titlePath: [],
-            score: 0.9,
-            sources: ['vector'],
-          },
-        ],
-        hasEvidence: true,
-      }),
+      assessEvidence: jest
+        .fn()
+        .mockResolvedValue({ hits: [hit('chunk_1')], hasEvidence: true }),
       keyword: jest.fn(),
       hybrid: jest.fn(),
     };
@@ -514,9 +492,10 @@ describe('RagAgentService', () => {
       datasetIds: ['dataset_1'],
     });
 
-    expect(result.answer).toBe('答案');
-    expect(models.answer).toHaveBeenCalledWith(
+    expect(result.answer).toBe('答案[1]');
+    expect(models.answerStream).toHaveBeenCalledWith(
       expect.objectContaining({ memories: [] }),
+      expect.any(Object),
     );
     expect(result.usedTools).not.toContain('memory');
   });

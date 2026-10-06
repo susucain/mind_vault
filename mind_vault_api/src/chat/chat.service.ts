@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { nextSnowflakeId } from '../common/snowflake-id';
 import { MemoryService } from '../memory/memory.service';
 import type { ExplicitMemoryResult } from '../memory/memory.types';
@@ -41,17 +41,17 @@ export class ChatService {
   ) {
     const conversation = await this.findConversation(ownerId, conversationId);
     const uniqueIds = [...new Set(datasetIds)];
-    if (!uniqueIds.length) {
-      throw new BadRequestException('资料集范围不能为空');
-    }
     if (uniqueIds.length > 20) {
       throw new BadRequestException('资料集范围最多包含 20 个资料集');
     }
-    const datasets = await this.datasets.find({
-      where: uniqueIds.map((id) => ({ id, ownerId, deleted: false })),
-    });
-    if (datasets.length !== uniqueIds.length) {
-      throw new BadRequestException('资料集不存在或无权访问');
+    // 空数组表示「全部资料集」，检索层对空范围不做资料集过滤
+    if (uniqueIds.length) {
+      const datasets = await this.datasets.find({
+        where: uniqueIds.map((id) => ({ id, ownerId, deleted: false })),
+      });
+      if (datasets.length !== uniqueIds.length) {
+        throw new BadRequestException('资料集不存在或无权访问');
+      }
     }
     conversation.datasetIds = uniqueIds;
     return this.conversations.save(conversation);
@@ -67,13 +67,44 @@ export class ChatService {
     return this.conversations.save(conversation);
   }
 
-  async listConversations(ownerId: string) {
-    return {
-      items: await this.conversations.find({
-        where: { ownerId },
-        order: { updatedAt: 'DESC' },
-      }),
-    };
+  /**
+   * 会话列表：按最近更新倒序分页。
+   * 关键词同时匹配会话标题与消息正文——正文命中用 EXISTS 子查询判定，
+   * 会话只要有一条消息包含关键词即命中，避免 join 造成行膨胀影响分页总数。
+   */
+  async listConversations(
+    ownerId: string,
+    query: { q?: string; page?: number; pageSize?: number } = {},
+  ) {
+    const page = query.page && query.page > 0 ? query.page : 1;
+    const pageSize = query.pageSize && query.pageSize > 0 ? query.pageSize : 20;
+    const builder = this.conversations
+      .createQueryBuilder('conversation')
+      .where('conversation.ownerId = :ownerId', { ownerId });
+    const keyword = query.q?.trim();
+    if (keyword) {
+      const pattern = `%${keyword}%`;
+      builder.andWhere(
+        new Brackets((where) => {
+          where
+            .where('conversation.title ILIKE :pattern', { pattern })
+            .orWhere(
+              'EXISTS (SELECT 1 FROM kh_chat_message message WHERE message.conversation_id = conversation.id AND message.content ILIKE :pattern)',
+              { pattern },
+            );
+        }),
+      );
+    }
+    const [items, total] = await builder
+      .orderBy('conversation.updatedAt', 'DESC')
+      .skip((page - 1) * pageSize)
+      .take(pageSize)
+      .getManyAndCount();
+    return { items, total, page, pageSize, hasNext: page * pageSize < total };
+  }
+
+  async getConversation(ownerId: string, conversationId: string) {
+    return this.findConversation(ownerId, conversationId);
   }
 
   async listMessages(ownerId: string, conversationId: string) {
@@ -106,10 +137,15 @@ export class ChatService {
     options: {
       signal?: AbortSignal;
       emitStage?: (stage: string) => void;
+      onToken?: (delta: string) => void;
+      onMessageStart?: (message: ChatMessageEntity) => void;
     } = {},
   ) {
     const conversation = await this.findConversation(ownerId, conversationId);
     let userMessage: ChatMessageEntity | undefined;
+    let assistantMessage: ChatMessageEntity | undefined;
+    // 累积流式增量：客户端中途断开时用它把已生成正文落库，而不是丢成空串
+    let streamed = '';
     let result: RagState;
     let memoryAction: ExplicitMemoryResult | undefined;
     try {
@@ -133,6 +169,25 @@ export class ChatService {
       if (conversation.title === '资料问答') {
         conversation.title = question.trim().slice(0, 28) || '资料问答';
       }
+      // 先落一行 STREAMING 助手消息：拿到真实 messageId 立即告知客户端，同时保证
+      // 生成过程中断开也能保留已产出的正文
+      assistantMessage = await this.messages.save(
+        this.messages.create({
+          id: nextSnowflakeId(),
+          ownerId,
+          conversationId,
+          role: 'assistant',
+          content: '',
+          status: 'STREAMING',
+          usedTools: [],
+          thinking: false,
+        }),
+      );
+      options.onMessageStart?.(assistantMessage);
+      const onToken = (delta: string) => {
+        streamed += delta;
+        options.onToken?.(delta);
+      };
       memoryAction = await this.memories.handleExplicit({
         ownerId,
         conversationId,
@@ -150,6 +205,7 @@ export class ChatService {
           history,
           memoryAction,
         );
+        if (result.answer) onToken(result.answer);
       } else {
         const agentInput = {
           ownerId,
@@ -160,7 +216,9 @@ export class ChatService {
         };
         // sessionId 只用于把 trace 归到同一条会话下，不进模型输入
         result = await this.agent.invoke(agentInput, {
-          ...options,
+          signal: options.signal,
+          emitStage: options.emitStage,
+          onToken,
           sessionId: conversationId,
         });
       }
@@ -178,34 +236,38 @@ export class ChatService {
           }),
         );
       }
-      await this.messages.save(
-        this.messages.create({
-          id: nextSnowflakeId(),
-          ownerId,
-          conversationId,
-          role: 'assistant',
-          content: '',
-          status: options.signal?.aborted ? 'ABORTED' : 'FAILED',
-          usedTools: [],
-          thinking: false,
-        }),
-      );
+      if (assistantMessage) {
+        // 保留已经流出的正文，只把状态改成失败/中断
+        assistantMessage.content = streamed;
+        assistantMessage.status = options.signal?.aborted
+          ? 'ABORTED'
+          : 'FAILED';
+        await this.messages.save(assistantMessage);
+      } else {
+        await this.messages.save(
+          this.messages.create({
+            id: nextSnowflakeId(),
+            ownerId,
+            conversationId,
+            role: 'assistant',
+            content: streamed,
+            status: options.signal?.aborted ? 'ABORTED' : 'FAILED',
+            usedTools: [],
+            thinking: false,
+          }),
+        );
+      }
       await this.conversations.save(conversation);
       throw error;
     }
-    const assistantMessage = await this.messages.save(
-      this.messages.create({
-        id: nextSnowflakeId(),
-        ownerId,
-        conversationId,
-        role: 'assistant',
-        content: result.answer ?? '当前资料范围内没有足够证据回答这个问题。',
-        usedTools: result.usedTools,
-        model: result.model,
-        thinking: result.thinking,
-        confidence: result.confidence,
-      }),
-    );
+    // 成功：更新同一行，把答案与元信息补齐
+    assistantMessage.content =
+      result.answer ?? '当前资料范围内没有足够证据回答这个问题。';
+    assistantMessage.usedTools = result.usedTools;
+    assistantMessage.model = result.model;
+    assistantMessage.thinking = result.thinking;
+    assistantMessage.status = 'COMPLETED';
+    const message = await this.messages.save(assistantMessage);
     const hits = new Map(result.hits.map((hit) => [hit.chunkId, hit]));
     const citations: ChatCitationEntity[] = [];
     for (const [rank, chunkId] of result.citedChunkIds.entries()) {
@@ -214,7 +276,7 @@ export class ChatService {
       const citation = await this.citations.save(
         this.citations.create({
           id: nextSnowflakeId(),
-          messageId: assistantMessage.id,
+          messageId: message.id,
           ownerId,
           documentId: hit.documentId,
           chunkId: hit.chunkId,
@@ -228,7 +290,7 @@ export class ChatService {
     await this.conversations.save(conversation);
     return {
       userMessage,
-      message: assistantMessage,
+      message,
       citations,
       answerMode: result.answerMode,
       memoryAction,
@@ -362,7 +424,6 @@ function explicitMemoryState(
     usedTools: ['memory'],
     answer,
     citedChunkIds: [],
-    confidence: 1,
     thinking: false,
     answerMode: 'general',
   };

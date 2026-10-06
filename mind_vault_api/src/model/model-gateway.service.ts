@@ -15,10 +15,15 @@ export class ModelGatewayService {
     return this.config.getOrThrow<string>(`models.${kind}`);
   }
 
-  getChatModel(kind: 'fast' | 'reasoning', thinking: boolean) {
+  /**
+   * json 默认为 true：绝大多数调用走结构化输出。
+   * 流式回答需要模型直接吐 Markdown 正文，此时必须关掉 JSON 模式，
+   * 否则流出来的是 JSON 片段，无法当正文渲染。
+   */
+  getChatModel(kind: 'fast' | 'reasoning', thinking: boolean, json = true) {
     const model = this.getModelName(kind);
     const modelKwargs: Record<string, unknown> = {};
-    if (!model.startsWith('codex-')) {
+    if (json && !model.startsWith('codex-')) {
       modelKwargs.response_format = { type: 'json_object' };
     }
     if (thinking) {
@@ -53,7 +58,7 @@ export class ModelGatewayService {
         conversation,
         callbacks.length > 0 ? { ...options, callbacks } : options,
       );
-      const content = jsonText(response.content);
+      const content = textOf(response.content);
       try {
         return {
           data: parse(JSON.parse(content) as unknown),
@@ -75,6 +80,43 @@ export class ModelGatewayService {
     );
   }
 
+  /**
+   * 流式出口：模型每吐一段就回调一次，返回值仍是完整正文。
+   * 用于问答回答的边生成边下发——调用方既能立刻把增量推给前端，
+   * 又能拿到完整文本去做引用提取与落库。
+   */
+  async streamText(
+    kind: 'fast' | 'reasoning',
+    messages: BaseMessage[],
+    thinking: boolean,
+    options: {
+      signal?: AbortSignal;
+      onToken?: (delta: string) => void;
+    } = {},
+  ): Promise<{ text: string; usage: Record<string, unknown> }> {
+    const model = this.getChatModel(kind, thinking, false);
+    // 全项目唯一的模型出口：业务层只要开了 trace，这里的调用就会挂到那条 trace 下
+    const callbacks = this.langfuse.callbacks();
+    const stream = await model.stream(
+      messages,
+      callbacks.length > 0
+        ? { signal: options.signal, callbacks }
+        : { signal: options.signal },
+    );
+    let text = '';
+    let usage: Record<string, unknown> = {};
+    for await (const chunk of stream) {
+      if (chunk.usage_metadata) usage = chunk.usage_metadata;
+      // 推理模型的思考过程走 additional_kwargs.reasoning_content，不在 content 里，
+      // 这里只取正文，避免把思考内容混进回答
+      const delta = textOf(chunk.content);
+      if (!delta) continue;
+      text += delta;
+      options.onToken?.(delta);
+    }
+    return { text, usage };
+  }
+
   private baseUrl() {
     return (
       this.config.get<string>('LLM_BASE_URL') ??
@@ -89,11 +131,12 @@ export class ModelGatewayService {
   }
 }
 
-function jsonText(content: unknown): string {
+/** 把模型返回的 content 收敛成纯文本：字符串直接用，分块内容拼接 text，空分块返回空串 */
+function textOf(content: unknown): string {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
-    const text = content
-      .map((part) => {
+    return content
+      .map((part: unknown) => {
         if (
           typeof part === 'object' &&
           part !== null &&
@@ -105,7 +148,6 @@ function jsonText(content: unknown): string {
         return '';
       })
       .join('');
-    if (text) return text;
   }
   return JSON.stringify(content);
 }

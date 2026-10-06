@@ -32,20 +32,31 @@ describe('ChatController.stream', () => {
         return response;
       }),
     };
-    const chat = {
-      ask: jest.fn().mockResolvedValue({
+    // 真流式：后端在生成过程中回调，controller 必须即时转发
+    const answer = (
+      _userId: string,
+      _conversationId: string,
+      _question: string,
+      options: {
+        onMessageStart?: (message: { id: string }) => void;
+        onToken?: (text: string) => void;
+      },
+    ) => {
+      options.onMessageStart?.({ id: 'm1' });
+      options.onToken?.('# Answer');
+      return Promise.resolve({
         message: {
           id: 'm1',
           usedTools: ['vector'],
           model: 'fast-model',
           thinking: false,
           content: '# Answer',
-          confidence: 0.9,
         },
         answerMode: 'rag',
         citations: [],
-      }),
+      });
     };
+    const chat = { ask: jest.fn(answer) };
     const controller = new ChatController(chat as never);
 
     await controller.stream(

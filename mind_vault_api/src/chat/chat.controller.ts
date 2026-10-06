@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -14,6 +15,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
+import { QueryConversationDto } from './dto/query-conversation.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
 import { ChatService } from './chat.service';
 
@@ -31,8 +33,16 @@ export class ChatController {
   }
 
   @Get()
-  listConversations(@CurrentUser() user: { id: string }) {
-    return this.chat.listConversations(user.id);
+  listConversations(
+    @CurrentUser() user: { id: string },
+    @Query() query: QueryConversationDto,
+  ) {
+    return this.chat.listConversations(user.id, query);
+  }
+
+  @Get(':id')
+  getConversation(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.chat.getConversation(user.id, id);
   }
 
   @Patch(':id')
@@ -91,33 +101,25 @@ export class ChatController {
             writeEvent(response, 'stage', { stage });
           }
         },
+        // 助手消息一落库就把真实 id 下发，前端能从头就绑定同一条消息
+        onMessageStart: (message) => {
+          if (connected && !response.writableEnded) {
+            writeEvent(response, 'meta', { messageId: message.id });
+          }
+        },
+        // 模型每吐一段就转发一段，不再等全量生成再切片回放
+        onToken: (text) => {
+          if (connected && !response.writableEnded) {
+            writeEvent(response, 'token', { text });
+          }
+        },
       });
       if (!connected || response.writableEnded) return;
-      writeEvent(response, 'meta', {
-        messageId: result.message.id,
-        usedTools: result.message.usedTools,
-        model: result.message.model,
-        thinking: result.message.thinking,
-        // rag / general：general 为资料无依据时的自动补答（正文自带来源提示行）
-        answerMode: result.answerMode,
-        memoryAction: result.memoryAction
-          ? {
-              action: result.memoryAction.action,
-              content: result.memoryAction.content,
-            }
-          : undefined,
-      });
-      for (const text of splitText(result.message.content, 48)) {
-        if (!connected || response.writableEnded) return;
-        writeEvent(response, 'token', { text });
-      }
       for (const citation of result.citations) {
         if (!connected || response.writableEnded) return;
         writeEvent(response, 'citation', citation);
       }
-      writeEvent(response, 'done', {
-        confidence: result.message.confidence,
-      });
+      writeEvent(response, 'done', { messageId: result.message.id });
     } catch (error) {
       if (connected && !response.writableEnded) {
         writeEvent(response, 'error', {
@@ -133,12 +135,4 @@ export class ChatController {
 
 function writeEvent(response: Response, event: string, data: unknown) {
   response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-}
-
-function splitText(text: string, size: number) {
-  const parts: string[] = [];
-  for (let offset = 0; offset < text.length; offset += size) {
-    parts.push(text.slice(offset, offset + size));
-  }
-  return parts;
 }
