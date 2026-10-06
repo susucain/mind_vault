@@ -2,9 +2,19 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RouterProvider } from 'react-router-dom';
+import { getMemoryStats, listMemories } from '../../api/memories';
 import { getProfile } from '../../api/profile';
 import { router } from '../../app/router';
 import { useAuthStore } from '../../stores/auth.store';
+
+vi.mock('../../api/memories', () => ({
+  clearMemories: vi.fn(),
+  createMemory: vi.fn(),
+  deleteMemory: vi.fn(),
+  getMemoryStats: vi.fn(),
+  listMemories: vi.fn(),
+  updateMemory: vi.fn(),
+}));
 
 vi.mock('../../api/profile', () => ({
   fetchAvatarBlob: vi.fn(),
@@ -22,6 +32,16 @@ describe('SettingsPage', () => {
   }
 
   beforeEach(() => {
+    vi.mocked(listMemories).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: null });
+    vi.mocked(getMemoryStats).mockResolvedValue({
+      active: 0,
+      superseded: 0,
+      total: 0,
+      byKind: { preference: 0, fact: 0, goal: 0 },
+      hitTotal: 0,
+      maxActive: 200,
+      atCapacity: false,
+    });
     vi.mocked(getProfile).mockResolvedValue({
       user: {
         id: 'user-1',
