@@ -2,24 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Camera, LoaderCircle, Trash } from 'lucide-react';
 import { Button, Dialog } from '../../../components/ui';
 import type { Profile } from '../../../api/profile';
-import { AVATAR_ALLOWED_TYPES, validateAvatarFile } from '../../../features/settings/avatar';
+import { AVATAR_ALLOWED_TYPES, fallbackColor, initialOf, validateAvatarFile } from '../../../features/settings/avatar';
 import { describeProfileError } from '../../../features/settings/settings-labels';
 import { useAvatarUrl, useRemoveAvatar, useUploadAvatar } from '../../../features/settings/queries';
 import { AvatarCropDialog } from './AvatarCropDialog';
-
-/** 默认头像底色：取自既有色板，按 id 取模固定，同一用户始终同色（不用随机） */
-const FALLBACK_COLORS = ['#2d6b5c', '#c47a2b', '#3a8a63', '#5f5c52', '#a13030', '#255a4d'];
-
-function initialOf(nickname: string): string {
-  const trimmed = nickname.trim();
-  return trimmed ? trimmed.slice(0, 1).toUpperCase() : '?';
-}
-
-function fallbackColor(id: string): string {
-  let sum = 0;
-  for (let index = 0; index < id.length; index += 1) sum = (sum + id.charCodeAt(index)) % 997;
-  return FALLBACK_COLORS[sum % FALLBACK_COLORS.length];
-}
 
 export function AvatarUploader({ profile }: { profile: Profile }) {
   const inputRef = useRef<HTMLInputElement | null>(null);

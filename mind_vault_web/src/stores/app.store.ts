@@ -10,6 +10,8 @@ interface AppState {
   setDatasetIds: (datasetIds: string[]) => void;
   setTheme: (theme: AppState['theme']) => void;
   setCommandMenuOpen: (open: boolean) => void;
+  /** 退出登录时清掉跟用户绑定的状态；设备级偏好（theme）保留 */
+  resetUserScoped: () => void;
   hydrate: () => void;
 }
 
@@ -32,6 +34,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ theme });
   },
   setCommandMenuOpen: (commandMenuOpen) => set({ commandMenuOpen }),
+  resetUserScoped: () => {
+    persist({ datasetIds: [], theme: get().theme });
+    set({ datasetIds: [] });
+  },
   hydrate: () => {
     const stored = readStoredValue<StoredApp>(STORAGE_KEY);
     if (stored) set(stored);

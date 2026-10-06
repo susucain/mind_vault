@@ -25,7 +25,7 @@ export const READING_LINE_OPTIONS: { css: string; label: string; value: ReadingL
   { css: '2.05', label: '宽松', value: 'loose' },
 ];
 
-const STORAGE_KEY = 'mind-vault.reading-preferences';
+export const READING_PREFERENCES_KEY = 'mind-vault.reading-preferences';
 const DEFAULT_PREFERENCES: ReadingPreferences = { fontSize: 'standard', lineHeight: 'standard' };
 
 function cssOf<T extends string>(options: { css: string; value: T }[], value: T, fallback: string) {
@@ -35,11 +35,11 @@ function cssOf<T extends string>(options: { css: string; value: T }[], value: T,
 /** 初值同步读取 localStorage，避免首屏先按默认档渲染再跳变。 */
 export function useReadingPreferences() {
   const [preferences, setPreferences] = useState<ReadingPreferences>(
-    () => readStoredValue<ReadingPreferences>(STORAGE_KEY) ?? DEFAULT_PREFERENCES,
+    () => readStoredValue<ReadingPreferences>(READING_PREFERENCES_KEY) ?? DEFAULT_PREFERENCES,
   );
 
   useEffect(() => {
-    writeStoredValue(STORAGE_KEY, preferences);
+    writeStoredValue(READING_PREFERENCES_KEY, preferences);
   }, [preferences]);
 
   const update = useCallback((patch: Partial<ReadingPreferences>) => {

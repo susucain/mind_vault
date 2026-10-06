@@ -11,6 +11,9 @@ export const AVATAR_OUTPUT_QUALITY = 0.9;
 export const AVATAR_MIN_SCALE = 1;
 export const AVATAR_MAX_SCALE = 3;
 
+/** 默认头像底色：取自既有色板，按 id 取模固定，同一用户始终同色（不用随机） */
+export const FALLBACK_COLORS = ['#2d6b5c', '#c47a2b', '#3a8a63', '#5f5c52', '#a13030', '#255a4d'];
+
 export interface ImageSize {
   width: number;
   height: number;
@@ -107,4 +110,17 @@ export function cropSourceRect(
   );
 
   return { x, y, width, height };
+}
+
+/** 无头像时的首字母：取昵称首字符并大写，昵称缺失时用 `?` 兜底 */
+export function initialOf(nickname: string): string {
+  const trimmed = nickname.trim();
+  return trimmed ? trimmed.slice(0, 1).toUpperCase() : '?';
+}
+
+/** 由用户 id 派生的稳定底色，保证同一用户在任何位置的头像颜色一致 */
+export function fallbackColor(id: string): string {
+  let sum = 0;
+  for (let index = 0; index < id.length; index += 1) sum = (sum + id.charCodeAt(index)) % 997;
+  return FALLBACK_COLORS[sum % FALLBACK_COLORS.length];
 }

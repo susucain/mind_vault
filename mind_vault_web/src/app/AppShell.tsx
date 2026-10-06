@@ -14,6 +14,7 @@ import {
 import { CommandMenu, Tooltip } from '../components/ui';
 import { useAppStore } from '../stores/app.store';
 import { APP_PATHS } from './navigation';
+import { UserMenu } from './UserMenu';
 
 interface NavigationItem {
   label: string;
@@ -168,9 +169,12 @@ export function AppShell({ children }: PropsWithChildren) {
             {mode === 'mobile' ? <BookOpen aria-hidden="true" size={20} /> : <PanelLeft aria-hidden="true" size={18} />}
             <span>工作台</span>
           </div>
-          <button aria-label="Open command menu" className="icon-button" onClick={() => setCommandMenuOpen(true)} type="button">
-            <Search aria-hidden="true" size={18} />
-          </button>
+          <div className="header-actions">
+            <button aria-label="Open command menu" className="icon-button" onClick={() => setCommandMenuOpen(true)} type="button">
+              <Search aria-hidden="true" size={18} />
+            </button>
+            <UserMenu />
+          </div>
         </header> : null}
         <PageContainer fullscreen={fullscreen}>{children}</PageContainer>
       </div>

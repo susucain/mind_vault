@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { login } from '../../api/auth';
 import { Button, Input } from '../../components/ui';
@@ -22,15 +22,28 @@ function redirectPath(state: unknown): string | undefined {
 
 const ASIDE_CHIPS = ['创建资料集', '上传资料', '开始提问'];
 
+/** 退出登录后由 logout() 透传的一次性标记，用来在登录页显示一条轻提示 */
+function isLoggedOut(state: unknown): boolean {
+  return Boolean(state && typeof state === 'object' && 'loggedOut' in state && state.loggedOut);
+}
+
 export function LoginPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const setSession = useAuthStore((state) => state.setSession);
+  // 只取一次初值：清空 history state 后仍能保留这条提示，而不是随路由更新立刻消失
+  const [notice] = useState(() => (isLoggedOut(location.state) ? '已退出登录' : null));
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
+
+  // 提示只读一次：清掉 history state，避免刷新或前进后退时重复弹出
+  useEffect(() => {
+    if (!isLoggedOut(location.state)) return;
+    void navigate(APP_PATHS.login, { replace: true, state: null });
+  }, [location.state, navigate]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -75,6 +88,12 @@ export function LoginPage() {
       <p className="auth-eyebrow auth-eyebrow--brand">知识工作台</p>
       <h1 className="auth-title">登录 Mind Vault</h1>
       <p className="auth-subtitle">进入你的资料、问答会话与面试训练。</p>
+
+      {notice ? (
+        <p className="auth-notice" role="status">
+          {notice}
+        </p>
+      ) : null}
 
       <form aria-describedby={error ? 'login-error' : undefined} className="login-form" onSubmit={submit}>
         <div className="form-field">

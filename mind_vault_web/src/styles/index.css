@@ -1390,3 +1390,45 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
   .memory-status__chip, .memory-chip { transition: none; }
   .memory-progress::after { width: 100%; animation: none; opacity: 0.5; }
 }
+
+/* ---------- 顶栏用户菜单 ---------- */
+.header-actions { display: flex; align-items: center; gap: 4px; }
+.user-menu__trigger { border-radius: 999px; }
+.user-menu__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+.user-menu__avatar img { width: 100%; height: 100%; object-fit: cover; }
+.user-menu__identity {
+  padding: 6px 8px 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--mv-line);
+  display: grid;
+  gap: 2px;
+}
+.user-menu__identity strong { color: var(--mv-ink); font-size: 0.84rem; }
+.user-menu__identity span { color: var(--mv-muted); font-size: 0.74rem; overflow-wrap: anywhere; }
+
+@media (max-width: 767px) {
+  .header-actions { gap: 2px; }
+}
+
+/* ---------- 登录页：退出登录后的一次性提示 ---------- */
+/* 负上边距抵消 .auth-subtitle 的 26px 下边距，避免提示看起来与上文脱节 */
+.auth-notice {
+  margin: -14px 0 24px;
+  border: 1px solid var(--mv-line-strong);
+  border-radius: 7px;
+  padding: 9px 12px;
+  color: var(--mv-primary);
+  background: var(--mv-primary-soft);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
