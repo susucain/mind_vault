@@ -28,6 +28,14 @@ export function buildConfiguration(env: EnvironmentInput = process.env) {
         env.DEV_AUTH_ENABLED,
         (env.NODE_ENV ?? 'development') !== 'production',
       ),
+      // 开发账号：不落库，登录时直接与环境变量比对。
+      // id 必须是数字，因为业务表的 owner_id 是 BIGINT（默认绑定现有 owner 10001）。
+      devAccount: {
+        id: env.DEV_ACCOUNT_ID ?? '10001',
+        username: (env.DEV_ACCOUNT_USERNAME ?? 'dev').trim().toLowerCase(),
+        password: env.DEV_ACCOUNT_PASSWORD ?? '123456',
+        nickname: env.DEV_ACCOUNT_NICKNAME ?? '开发用户',
+      },
     },
     models: {
       fast: env.FAST_MODEL,
