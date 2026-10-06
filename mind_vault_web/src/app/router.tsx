@@ -9,12 +9,11 @@ import { RegisterPage } from '../pages/auth/RegisterPage';
 import { OverviewPage } from '../pages/overview/OverviewPage';
 import { LibraryPage } from '../pages/library/LibraryPage';
 import { DatasetsPage } from '../pages/library/DatasetsPage';
-import { DocumentDetailPage } from '../pages/library/DocumentDetailPage';
-import { DocumentPreviewPage } from '../pages/library/DocumentPreviewPage';
 import { MockLibraryPage } from '../pages/library/MockLibraryPage';
 import { ArchivePage } from '../pages/library/ArchivePage';
 
-/** 重页面按路由懒加载：检索页含 React Flow 与 d3-force，面试页含 SSE 与评分视图，避免主包膨胀。 */
+/** 重页面按路由懒加载：检索页含 React Flow 与 d3-force，面试页含 SSE 与评分视图，
+ *  预览/详情页依赖 streamdown 与文档阅读组件，避免主包膨胀。 */
 // eslint-disable-next-line react-refresh/only-export-components
 const RetrievalPage = lazy(() =>
   import('../pages/retrieval/RetrievalPage').then((module) => ({ default: module.RetrievalPage })),
@@ -34,6 +33,12 @@ const InterviewFeedbackPage = lazy(() =>
 );
 const ReviewItemsPage = lazy(() =>
   import('../pages/interview/ReviewItemsPage').then((module) => ({ default: module.ReviewItemsPage })),
+);
+const DocumentDetailPage = lazy(() =>
+  import('../pages/library/DocumentDetailPage').then((module) => ({ default: module.DocumentDetailPage })),
+);
+const DocumentPreviewPage = lazy(() =>
+  import('../pages/library/DocumentPreviewPage').then((module) => ({ default: module.DocumentPreviewPage })),
 );
 /* eslint-enable react-refresh/only-export-components */
 
@@ -68,8 +73,8 @@ export const router = createBrowserRouter([
       { path: 'library/folders', element: <MockLibraryPage kind="folders" /> },
       { path: 'library/tags', element: <MockLibraryPage kind="tags" /> },
       { path: 'library/archive', element: <ArchivePage /> },
-      { path: 'library/documents/:documentId', element: <DocumentDetailPage /> },
-      { path: 'library/documents/:documentId/preview', element: <DocumentPreviewPage /> },
+      { path: 'library/documents/:documentId', element: lazyPage(<DocumentDetailPage />, '正在加载文档详情…') },
+      { path: 'library/documents/:documentId/preview', element: lazyPage(<DocumentPreviewPage />, '正在加载原文…') },
       {
         path: 'retrieval',
         element: (
