@@ -6,6 +6,8 @@ type AccessTokenProvider = () => string | undefined;
 type AuthExpiredHandler = () => void;
 export interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: BodyInit | Record<string, unknown> | unknown[] | null;
+  /** 登录 / 注册等匿名端点：401 表示凭据错误，不应触发全局「登录过期」跳转 */
+  skipAuthExpiry?: boolean;
 }
 
 export interface BuiltRequest {
@@ -45,7 +47,10 @@ function isJsonPayload(body: RequestOptions['body']): body is Record<string, unk
   );
 }
 
-export async function responseError(response: Response): Promise<ApiRequestError> {
+export async function responseError(
+  response: Response,
+  notifyAuthExpiry = true,
+): Promise<ApiRequestError> {
   let payload: Partial<ApiErrorPayload> | undefined;
   try {
     payload = (await response.json()) as Partial<ApiErrorPayload>;
@@ -62,24 +67,27 @@ export async function responseError(response: Response): Promise<ApiRequestError
     message,
     requestId: response.headers.get('X-Request-Id') ?? undefined,
   });
-  if (error.status === 401) authExpiredHandler?.();
+  if (error.status === 401 && notifyAuthExpiry) authExpiredHandler?.();
   return error;
 }
 
 export function buildRequest(path: string, init: RequestOptions = {}): BuiltRequest {
-  const headers = new Headers(init.headers);
+  // skipAuthExpiry 由 request() 消费，不进入 fetch init。
+  const { skipAuthExpiry, ...fetchInit } = init;
+  void skipAuthExpiry;
+  const headers = new Headers(fetchInit.headers);
   const token = accessTokenProvider();
-  const body = isJsonPayload(init.body) ? JSON.stringify(init.body) : init.body;
+  const body = isJsonPayload(fetchInit.body) ? JSON.stringify(fetchInit.body) : fetchInit.body;
   headers.set('X-Request-ID', requestId());
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  if (isJsonPayload(init.body) && !headers.has('Content-Type')) {
+  if (isJsonPayload(fetchInit.body) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
 
   return {
     url: apiUrl(path),
-    init: { ...init, body, headers },
+    init: { ...fetchInit, body, headers },
   };
 }
 
@@ -102,14 +110,20 @@ export async function request<T>(
   }
 
   if (!response.ok) {
-    throw await responseError(response);
+    throw await responseError(response, !init.skipAuthExpiry);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
-export function jsonRequest<T>(path: string, method: string, body?: unknown): Promise<T> {
+export function jsonRequest<T>(
+  path: string,
+  method: string,
+  body?: unknown,
+  options: RequestOptions = {},
+): Promise<T> {
   return request<T>(path, {
+    ...options,
     method,
     body: body as RequestOptions['body'],
   });

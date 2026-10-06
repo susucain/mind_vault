@@ -6,9 +6,9 @@ export interface AuthUser {
   nickname?: string;
 }
 
-export interface DevLoginInput {
-  userId?: string;
-  nickname?: string;
+export interface AuthCredentials {
+  username: string;
+  password: string;
 }
 
 export interface AuthSession {
@@ -16,19 +16,31 @@ export interface AuthSession {
   user: AuthUser;
 }
 
-interface DevLoginResponse {
+interface AuthResponse {
   accessToken: string;
   user: AuthUser;
 }
 
-export async function devLogin(input: DevLoginInput = {}): Promise<AuthSession> {
-  if (appConfig.enableMockApi) {
-    return {
-      token: 'mock-development-token',
-      user: { id: 'mock-user', nickname: input.nickname?.trim() || '演示用户' },
-    };
-  }
-  const response = await jsonRequest<DevLoginResponse>('/auth/dev-login', 'POST', input);
+function mockSession(username: string): AuthSession {
+  return {
+    token: 'mock-development-token',
+    user: { id: 'mock-user', nickname: username.trim() || '演示用户' },
+  };
+}
+
+export async function login(input: AuthCredentials): Promise<AuthSession> {
+  if (appConfig.enableMockApi) return mockSession(input.username);
+  const response = await jsonRequest<AuthResponse>('/auth/login', 'POST', input, {
+    skipAuthExpiry: true,
+  });
+  return { token: response.accessToken, user: response.user };
+}
+
+export async function register(input: AuthCredentials): Promise<AuthSession> {
+  if (appConfig.enableMockApi) return mockSession(input.username);
+  const response = await jsonRequest<AuthResponse>('/auth/register', 'POST', input, {
+    skipAuthExpiry: true,
+  });
   return { token: response.accessToken, user: response.user };
 }
 

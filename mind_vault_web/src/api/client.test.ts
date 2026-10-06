@@ -101,4 +101,25 @@ describe('request', () => {
 
     expect(onExpired).toHaveBeenCalledOnce();
   });
+
+  it('keeps credential errors on anonymous endpoints out of the auth expiry handler', async () => {
+    const onExpired = vi.fn();
+    setAuthExpiredHandler(onExpired);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          statusCode: 401,
+          message: '用户名或密码错误',
+          error: 'Unauthorized',
+        }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    await expect(
+      request('/auth/login', { method: 'POST', body: {}, skipAuthExpiry: true }),
+    ).rejects.toThrow('用户名或密码错误');
+
+    expect(onExpired).not.toHaveBeenCalled();
+  });
 });
