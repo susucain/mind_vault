@@ -4,6 +4,9 @@ import { appConfig } from '../lib/config';
 export interface AuthUser {
   id: string;
   nickname?: string;
+  /** 登录 / 注册只回 JWT 载荷，故这两项在进设置页拉到 profile 前都是空的 */
+  username?: string;
+  avatarKey?: string | null;
 }
 
 export interface AuthCredentials {
