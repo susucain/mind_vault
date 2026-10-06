@@ -29,7 +29,13 @@ export class MemoryController {
 
   @Get()
   list(@CurrentUser() user: { id: string }, @Query() query: ListMemoriesDto) {
-    return this.memories.list(user.id, query.status);
+    return this.memories.list(user.id, query);
+  }
+
+  // 声明在 :id 之前：否则会被后续的带参路由抢占匹配
+  @Get('stats')
+  stats(@CurrentUser() user: { id: string }) {
+    return this.memories.stats(user.id);
   }
 
   @Patch(':id')

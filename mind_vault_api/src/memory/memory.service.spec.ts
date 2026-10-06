@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { In } from 'typeorm';
+import { ILike, In } from 'typeorm';
 import { MemoryService } from './memory.service';
+import { memoryConfig } from './memory.types';
 
 /** Langfuse 未启用时的形态：直接执行，不做任何包装 */
 const tracingOff = {
@@ -294,21 +295,126 @@ describe('MemoryService', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('filters the list by status and defaults to active memories', async () => {
+  it('returns every memory when no pagination is requested', async () => {
     const { service, memories } = buildService();
+    const rows = [{ id: 'm2' }, { id: 'm1' }];
+    memories.find.mockResolvedValue(rows);
 
-    await service.list('user_1');
+    const result = await service.list('user_1');
+
+    // 小程序在两个状态间按 items.length 统计条数与满仓，这里绝不能下发 LIMIT
     expect(memories.find).toHaveBeenCalledWith({
       where: { ownerId: 'user_1', status: 'ACTIVE' },
-      order: { updatedAt: 'DESC' },
+      order: { updatedAt: 'DESC', id: 'DESC' },
     });
+    expect(result).toEqual({ items: rows, total: 2, page: 1, pageSize: null });
+    expect(memories.count).not.toHaveBeenCalled();
+  });
 
-    await service.list('user_1', 'SUPERSEDED');
-    expect(memories.find).toHaveBeenLastCalledWith({
+  it('honours the status filter', async () => {
+    const { service, memories } = buildService();
+
+    await service.list('user_1', { status: 'SUPERSEDED' });
+
+    expect(memories.find).toHaveBeenCalledWith({
       where: { ownerId: 'user_1', status: 'SUPERSEDED' },
-      order: { updatedAt: 'DESC' },
+      order: { updatedAt: 'DESC', id: 'DESC' },
     });
   });
+
+  it('filters by kind and escapes LIKE wildcards in the keyword', async () => {
+    const { service, memories } = buildService();
+
+    await service.list('user_1', { kind: 'goal', q: '100%_完成' });
+
+    // % 与 _ 必须按字面量匹配，否则搜索会退化成任意匹配
+    expect(memories.find).toHaveBeenCalledWith({
+      where: {
+        ownerId: 'user_1',
+        status: 'ACTIVE',
+        kind: 'goal',
+        content: ILike('%100\\%\\_完成%'),
+      },
+      order: { updatedAt: 'DESC', id: 'DESC' },
+    });
+  });
+
+  it('pages the list and reports the total across all pages', async () => {
+    const { service, memories } = buildService();
+    memories.find.mockResolvedValue([{ id: 'm21' }]);
+    memories.count.mockResolvedValue(57);
+
+    const result = await service.list('user_1', { page: 3, pageSize: 20 });
+
+    expect(memories.find).toHaveBeenCalledWith({
+      where: { ownerId: 'user_1', status: 'ACTIVE' },
+      order: { updatedAt: 'DESC', id: 'DESC' },
+      skip: 40,
+      take: 20,
+    });
+    expect(result).toEqual({
+      items: [{ id: 'm21' }],
+      total: 57,
+      page: 3,
+      pageSize: 20,
+    });
+  });
+
+  it('applies the default page size and returns an empty out-of-range page', async () => {
+    const { service, memories } = buildService();
+    memories.find.mockResolvedValue([]);
+    memories.count.mockResolvedValue(3);
+
+    const result = await service.list('user_1', { page: 9 });
+
+    expect(memories.find).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 160, take: 20 }),
+    );
+    expect(result).toEqual({ items: [], total: 3, page: 9, pageSize: 20 });
+  });
+
+  it('aggregates the stats by status and kind', async () => {
+    const { service, memories } = buildService();
+    memories.query.mockResolvedValue([
+      { status: 'ACTIVE', kind: 'preference', count: 4, hits: 12 },
+      { status: 'ACTIVE', kind: 'fact', count: 6, hits: 3 },
+      { status: 'SUPERSEDED', kind: 'fact', count: 5, hits: 0 },
+    ]);
+
+    await expect(service.stats('user_1')).resolves.toEqual({
+      active: 10,
+      superseded: 5,
+      total: 15,
+      byKind: { preference: 4, fact: 6, goal: 0 },
+      hitTotal: 15,
+      maxActive: memoryConfig.maxActivePerUser,
+      atCapacity: false,
+    });
+    expect(memories.query).toHaveBeenCalledWith(
+      expect.stringContaining('GROUP BY status, kind'),
+      ['user_1'],
+    );
+  });
+
+  it.each([
+    [199, false],
+    [200, true],
+    [201, true],
+  ])(
+    'marks atCapacity for %i active memories',
+    async (active: number, expected: boolean) => {
+      const { service, memories } = buildService();
+      memories.query.mockResolvedValue([
+        { status: 'ACTIVE', kind: 'fact', count: active, hits: 0 },
+      ]);
+
+      const stats = await service.stats('user_1');
+
+      expect(stats.active).toBe(active);
+      expect(stats.byKind.fact).toBe(active);
+      expect(stats.atCapacity).toBe(expected);
+    },
+  );
 
   it('clears every memory of the owner and reports the count', async () => {
     const { service, memories } = buildService();

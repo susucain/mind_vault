@@ -5,10 +5,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { FindOptionsWhere, ILike, In, Repository } from 'typeorm';
 import { nextSnowflakeId } from '../common/snowflake-id';
 import { EmbeddingService } from '../embedding/embedding.service';
 import { LangfuseService } from '../observability/langfuse.service';
+import { MEMORY_PAGE_SIZE_DEFAULT } from './dto/list-memories.dto';
 import { UserMemoryEntity } from './entities/user-memory.entity';
 import { MemoryModelService } from './memory-model.service';
 import {
@@ -24,6 +25,21 @@ interface MemoryRow {
   content: string;
   kind: MemoryKind;
   score: number;
+}
+
+export interface MemoryListQuery {
+  status?: MemoryStatus;
+  kind?: MemoryKind;
+  q?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+interface MemoryStatsRow {
+  status: MemoryStatus;
+  kind: MemoryKind;
+  count: number;
+  hits: number;
 }
 
 @Injectable()
@@ -233,12 +249,76 @@ export class MemoryService {
     };
   }
 
-  async list(ownerId: string, status: MemoryStatus = 'ACTIVE') {
-    return {
-      items: await this.memories.find({
-        where: { ownerId, status },
-        order: { updatedAt: 'DESC' },
+  /**
+   * 记忆列表。page/pageSize 都不传时返回全量——小程序在两个状态间按
+   * items.length 算条数与满仓状态，一旦默认分页，它的计数会直接失真。
+   */
+  async list(ownerId: string, query: MemoryListQuery = {}) {
+    const status = query.status ?? 'ACTIVE';
+    const where: FindOptionsWhere<UserMemoryEntity> = { ownerId, status };
+    if (query.kind) where.kind = query.kind;
+    if (query.q) where.content = ILike(`%${escapeLikePattern(query.q)}%`);
+    // 批次写入的记忆 updatedAt 常常同秒，补 id 排序才能让分页不重不漏
+    const order = { updatedAt: 'DESC' as const, id: 'DESC' as const };
+
+    if (query.page === undefined && query.pageSize === undefined) {
+      const items = await this.memories.find({ where, order });
+      return { items, total: items.length, page: 1, pageSize: null };
+    }
+
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? MEMORY_PAGE_SIZE_DEFAULT;
+    const [items, total] = await Promise.all([
+      this.memories.find({
+        where,
+        order,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
       }),
+      this.memories.count({ where }),
+    ]);
+    return { items, total, page, pageSize };
+  }
+
+  /**
+   * 记忆概览：按状态与类型聚合，供设置页展示条数、类型分布与容量水位。
+   * byKind 只统计生效中的条目，与 active 求和一致，避免前端两个数对不上。
+   */
+  async stats(ownerId: string) {
+    const result: unknown = await this.memories.query(
+      `SELECT status, kind, COUNT(*)::int AS count, COALESCE(SUM(hit_count), 0)::int AS hits
+         FROM kh_user_memory
+        WHERE owner_id = $1
+        GROUP BY status, kind`,
+      [ownerId],
+    );
+    const rows = result as MemoryStatsRow[];
+    const byKind: Record<MemoryKind, number> = {
+      preference: 0,
+      fact: 0,
+      goal: 0,
+    };
+    let active = 0;
+    let superseded = 0;
+    let hitTotal = 0;
+    for (const row of rows) {
+      const count = Number(row.count);
+      hitTotal += Number(row.hits);
+      if (row.status === 'ACTIVE') {
+        active += count;
+        byKind[row.kind] = (byKind[row.kind] ?? 0) + count;
+      } else {
+        superseded += count;
+      }
+    }
+    return {
+      active,
+      superseded,
+      total: active + superseded,
+      byKind,
+      hitTotal,
+      maxActive: memoryConfig.maxActivePerUser,
+      atCapacity: active >= memoryConfig.maxActivePerUser,
     };
   }
 
@@ -424,6 +504,15 @@ export class MemoryService {
 /** pgvector 的文本输入格式，避免为写入向量引入额外依赖 */
 function vectorLiteral(vector: number[]): string {
   return `[${vector.join(',')}]`;
+}
+
+/**
+ * LIKE 通配符转义。参数化查询已经防了注入，这里只处理语义：
+ * 用户搜 `100%` 或 `a_b` 时应当按字面量匹配，而不是变成任意匹配。
+ * 转义符用反斜杠，与 Postgres LIKE 的默认约定一致。
+ */
+function escapeLikePattern(input: string): string {
+  return input.replace(/[\\%_]/g, (char) => `\\${char}`);
 }
 
 /**
