@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Model } from 'mongoose';
 import { In, Repository } from 'typeorm';
 import { QueryDocumentDto } from './dto/query-document.dto';
+import { QueryDocumentSectionsDto } from './dto/query-document-sections.dto';
 import { DocumentEntity } from './entities/document.entity';
 import { DocumentIngestionJobEntity } from './entities/document-ingestion-job.entity';
 import {
@@ -11,6 +12,10 @@ import {
   DocumentContentDocument,
 } from './schemas/document-content.schema';
 import { DocumentGraphTaskService } from './graph/document-graph-task.service';
+import { DocumentLocator, ParsedSection } from './parser/parsed-document';
+
+/** 单个正文块的目标字符上限，超过的章节会按段落边界切分为多块 */
+const SECTION_CHAR_BUDGET = 2000;
 
 @Injectable()
 export class DocumentCatalogService {
@@ -123,6 +128,63 @@ export class DocumentCatalogService {
     };
   }
 
+  async findOutline(ownerId: string, id: string) {
+    const { document, content } = await this.loadDocument(ownerId, id);
+    const blocks = buildBlocks(content?.sections ?? [], content?.content ?? '');
+    const sections: Array<{
+      sectionId: string;
+      heading?: string;
+      order: number;
+      locator: DocumentLocator;
+    }> = [];
+    const seen = new Set<string>();
+    for (const block of blocks) {
+      if (seen.has(block.sectionId)) continue;
+      seen.add(block.sectionId);
+      sections.push({
+        sectionId: block.sectionId,
+        heading: block.heading,
+        order: block.order,
+        locator: block.locator,
+      });
+    }
+    return {
+      documentId: id,
+      title: document.title,
+      pageCount: content?.pageCount ?? 0,
+      totalSections: sections.length,
+      sections,
+    };
+  }
+
+  async findSections(
+    ownerId: string,
+    id: string,
+    query: QueryDocumentSectionsDto,
+  ) {
+    const { content } = await this.loadDocument(ownerId, id);
+    const blocks = buildBlocks(content?.sections ?? [], content?.content ?? '');
+    const limit = query.limit ?? 10;
+    const startIndex = query.cursor === undefined ? 0 : query.cursor + 1;
+    const items = blocks.slice(startIndex, startIndex + limit);
+    const nextCursor =
+      startIndex + items.length < blocks.length
+        ? items[items.length - 1].order
+        : null;
+    return { items, nextCursor, total: blocks.length };
+  }
+
+  private async loadDocument(ownerId: string, id: string) {
+    const document = await this.documents.findOne({
+      where: { id, ownerId, deleted: false },
+    });
+    if (!document) throw new NotFoundException(`Document ${id} not found`);
+    const content = await this.contents
+      .findOne({ documentId: id, deleted: false })
+      .lean();
+    return { document, content };
+  }
+
   async datasetStats(ownerId: string, datasetId: string) {
     const count = async (status?: number) => {
       const qb = this.documents
@@ -164,4 +226,67 @@ function progressOf(job: DocumentIngestionJobEntity) {
           )
         : null,
   };
+}
+
+export interface DocumentBlock {
+  sectionId: string;
+  heading?: string;
+  text: string;
+  order: number;
+  locator: DocumentLocator;
+}
+
+/**
+ * 将章节展开为按字符预算切分的正文块，`order` 为块的顺序下标。
+ *
+ * 章节通常来自解析器（PDF 按页、Markdown 按标题），但无标题的 Markdown 会把
+ * 整篇塞进单节，故超长章节按段落边界继续切分，避免整篇下发；`sections` 为空时
+ * 退化为按全文切分。
+ */
+function buildBlocks(
+  sections: ParsedSection[],
+  content: string,
+  budget = SECTION_CHAR_BUDGET,
+): DocumentBlock[] {
+  const blocks: DocumentBlock[] = [];
+  const source = sections.length
+    ? [...sections].sort((a, b) => a.order - b.order)
+    : [];
+  if (source.length === 0) {
+    const parts = splitByBudget(content.trim(), budget);
+    parts.forEach((text, index) => {
+      const sectionId = `section_${String(index + 1).padStart(4, '0')}`;
+      blocks.push({ sectionId, text, order: index, locator: {} });
+    });
+    return blocks;
+  }
+  for (const section of source) {
+    const parts = splitByBudget(section.text, budget);
+    parts.forEach((text, partIndex) => {
+      blocks.push({
+        sectionId: section.sectionId,
+        heading: partIndex === 0 ? section.heading : undefined,
+        text,
+        order: blocks.length,
+        locator: section.locator ?? {},
+      });
+    });
+  }
+  return blocks;
+}
+
+/** 按段落/行边界把文本切成不超过 budget 的片段，尽量不切断段落 */
+function splitByBudget(text: string, budget: number): string[] {
+  if (text.length <= budget) return text ? [text] : [];
+  const parts: string[] = [];
+  let remaining = text;
+  while (remaining.length > budget) {
+    let cut = remaining.lastIndexOf('\n\n', budget);
+    if (cut <= 0) cut = remaining.lastIndexOf('\n', budget);
+    if (cut <= 0) cut = budget;
+    parts.push(remaining.slice(0, cut).trim());
+    remaining = remaining.slice(cut).trim();
+  }
+  if (remaining) parts.push(remaining);
+  return parts.filter(Boolean);
 }
