@@ -4,12 +4,7 @@ import { RetrievalHit } from '../../retrieval/retrieval-hit';
 import { MemoryService } from '../../memory/memory.service';
 import { LangfuseService } from '../../observability/langfuse.service';
 import { RagModelService } from './rag-model.service';
-import {
-  AnswerMode,
-  HistoryTurn,
-  historyWindow,
-  RagState,
-} from './rag-types';
+import { AnswerMode, HistoryTurn, historyWindow, RagState } from './rag-types';
 
 export type RagStage =
   'rewrite' | 'recall' | 'classify' | 'gate' | 'retrieve' | 'answer';

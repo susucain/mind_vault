@@ -86,8 +86,9 @@ export class DocumentGraphWorker {
         'graph.extract',
       );
       await channel.prefetch(this.concurrency());
-      await channel.consume('mind-vault.graph.worker', (message) =>
-        void this.handleMessage(channel, message),
+      await channel.consume(
+        'mind-vault.graph.worker',
+        (message) => void this.handleMessage(channel, message),
       );
       this.connection = connection;
       this.channel = channel;
@@ -183,17 +184,18 @@ export class DocumentGraphWorker {
       await this.tasks.save(task);
       await this.publishProgress(task);
       this.logger.log(
-        `图谱任务完成: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} elapsedMs=${task.finishedAt.getTime() - startedAt!.getTime()}`,
+        `图谱任务完成: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} elapsedMs=${task.finishedAt.getTime() - startedAt.getTime()}`,
       );
     } catch (error) {
       task.status = GraphTaskStatus.Failed;
       task.retryCount += 1;
-      task.errorMessage = error instanceof Error ? error.message : String(error);
+      task.errorMessage =
+        error instanceof Error ? error.message : String(error);
       task.finishedAt = new Date();
       await this.tasks.save(task);
       await this.publishProgress(task);
       this.logger.error(
-        `图谱任务失败: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} elapsedMs=${task.finishedAt.getTime() - startedAt!.getTime()} error=${task.errorMessage}`,
+        `图谱任务失败: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} elapsedMs=${task.finishedAt.getTime() - startedAt.getTime()} error=${task.errorMessage}`,
       );
       throw error;
     }
@@ -205,7 +207,9 @@ export class DocumentGraphWorker {
   ) {
     if (!message) return;
     try {
-      await this.process(JSON.parse(message.content.toString()) as GraphTaskMessage);
+      await this.process(
+        JSON.parse(message.content.toString()) as GraphTaskMessage,
+      );
       if (this.channel === channel) channel.ack(message);
     } catch (error) {
       this.logger.error(

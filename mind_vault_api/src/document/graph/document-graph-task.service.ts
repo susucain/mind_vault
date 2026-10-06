@@ -107,13 +107,8 @@ export class DocumentGraphTaskService {
               ? 'PROCESSING'
               : 'PROCESSING';
     const durations = tasks
-      .filter(
-        (task) => task.startedAt && task.finishedAt,
-      )
-      .map(
-        (task) =>
-          task.finishedAt!.getTime() - task.startedAt!.getTime(),
-      );
+      .filter((task) => task.startedAt && task.finishedAt)
+      .map((task) => task.finishedAt!.getTime() - task.startedAt!.getTime());
     const remaining = Math.max(total - terminal, 0);
     const averageDuration =
       durations.length > 0

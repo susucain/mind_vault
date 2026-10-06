@@ -7,7 +7,10 @@ describe('DocumentProgressService', () => {
     const received = firstValueFrom(
       service.stream('user_1', 'doc_1').pipe(timeout(100)),
     );
-    (service as never).streams.set('user_1:doc_1', (service as never).streams.get('user_1:doc_1'));
+    (service as never).streams.set(
+      'user_1:doc_1',
+      (service as never).streams.get('user_1:doc_1'),
+    );
     (service as never).streams.get('user_1:doc_1').next({
       ownerId: 'user_1',
       documentId: 'doc_1',

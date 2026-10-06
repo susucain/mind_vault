@@ -254,7 +254,7 @@ function progressOf(job: {
     : 0;
   const estimatedRemainingSeconds =
     completed > 0 && total > completed
-      ? Math.ceil((elapsedMs / completed) * (total - completed) / 1000)
+      ? Math.ceil(((elapsedMs / completed) * (total - completed)) / 1000)
       : null;
   return {
     completed,

@@ -18,7 +18,10 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { DocumentUploadService } from './document-upload.service';
 import { RateLimitGuard } from '../common/guards/rate-limit.guard';
-import { DocumentProgressEvent, DocumentProgressService } from './document-progress.service';
+import {
+  DocumentProgressEvent,
+  DocumentProgressService,
+} from './document-progress.service';
 
 @Controller('documents')
 @UseGuards(AuthGuard, RateLimitGuard)

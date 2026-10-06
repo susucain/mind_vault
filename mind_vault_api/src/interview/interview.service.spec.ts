@@ -184,7 +184,12 @@ describe('InterviewService', () => {
         {
           id: 'turn_2',
           sessionId: 'session_2',
-          evaluation: { accuracy: 100, depth: 100, structure: 100, clarity: 100 },
+          evaluation: {
+            accuracy: 100,
+            depth: 100,
+            structure: 100,
+            clarity: 100,
+          },
         },
         {
           id: 'turn_3',
@@ -217,7 +222,11 @@ describe('InterviewService', () => {
     const service = buildService({ reviewItems });
 
     await expect(
-      service.listReviewItems('user_1', { status: 'ALL', page: 1, pageSize: 10 }),
+      service.listReviewItems('user_1', {
+        status: 'ALL',
+        page: 1,
+        pageSize: 10,
+      }),
     ).resolves.toEqual({ items, total: 2, page: 1, pageSize: 10 });
     expect(reviewItems.findAndCount).toHaveBeenCalledWith({
       where: { ownerId: 'user_1' },
@@ -456,7 +465,9 @@ describe('InterviewService', () => {
       save: jest.fn(async (input) => ({ id: 'turn_skip', ...input })),
       find: jest
         .fn()
-        .mockResolvedValue([{ id: 'turn_skip', question: '如何处理失败消息？' }]),
+        .mockResolvedValue([
+          { id: 'turn_skip', question: '如何处理失败消息？' },
+        ]),
     };
     const sessions = {
       findOne: jest.fn().mockResolvedValue({
@@ -487,7 +498,10 @@ describe('InterviewService', () => {
     const service = buildService({ sessions, turns, reviewItems, agent });
 
     await expect(
-      service.submitAnswer('user_1', 'session_1', { answer: '', skipped: true }),
+      service.submitAnswer('user_1', 'session_1', {
+        answer: '',
+        skipped: true,
+      }),
     ).resolves.toMatchObject({
       turn: { id: expect.any(String) },
       evaluation: { skipped: true },

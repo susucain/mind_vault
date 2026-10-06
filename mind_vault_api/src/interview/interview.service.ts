@@ -4,12 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import {
-  FindOptionsOrder,
-  FindOptionsWhere,
-  In,
-  Repository,
-} from 'typeorm';
+import { FindOptionsOrder, FindOptionsWhere, In, Repository } from 'typeorm';
 import { DatasetService } from '../dataset/dataset.service';
 import { nextSnowflakeId } from '../common/snowflake-id';
 import {
@@ -136,13 +131,19 @@ export class InterviewService {
           typeof value === 'number' && Number.isFinite(value),
       );
       if (!values.length) continue;
-      const score = values.reduce((total, value) => total + value, 0) / values.length;
-      grouped.set(turn.sessionId, [...(grouped.get(turn.sessionId) ?? []), score]);
+      const score =
+        values.reduce((total, value) => total + value, 0) / values.length;
+      grouped.set(turn.sessionId, [
+        ...(grouped.get(turn.sessionId) ?? []),
+        score,
+      ]);
     }
     for (const [sessionId, list] of grouped) {
       scores.set(
         sessionId,
-        Math.round(list.reduce((total, value) => total + value, 0) / list.length),
+        Math.round(
+          list.reduce((total, value) => total + value, 0) / list.length,
+        ),
       );
     }
     return scores;

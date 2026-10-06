@@ -59,7 +59,9 @@ export class DocumentPipelinePublisher {
 
   async publishProgress(message: Record<string, unknown>): Promise<void> {
     const channel = await this.getChannel();
-    await channel.assertExchange('mind-vault.events', 'topic', { durable: true });
+    await channel.assertExchange('mind-vault.events', 'topic', {
+      durable: true,
+    });
     channel.publish(
       'mind-vault.events',
       'document.progress',

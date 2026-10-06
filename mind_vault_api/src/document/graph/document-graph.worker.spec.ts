@@ -109,7 +109,9 @@ describe('DocumentGraphWorker', () => {
       }),
     };
     const graph = { indexChunk: jest.fn().mockResolvedValue(undefined) };
-    const publisher = { publishProgress: jest.fn().mockResolvedValue(undefined) };
+    const publisher = {
+      publishProgress: jest.fn().mockResolvedValue(undefined),
+    };
     const graphTasks = {
       getProgress: jest.fn().mockResolvedValue({
         status: 'READY',

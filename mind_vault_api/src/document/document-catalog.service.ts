@@ -77,11 +77,17 @@ export class DocumentCatalogService {
       .take(query.pageSize ?? 20);
     const { entities, raw: raws } = await qb.getRawAndEntities();
     const total = await qb.getCount();
-    const datasetMap = new Map<string, { datasetId: string; datasetName: string }>();
+    const datasetMap = new Map<
+      string,
+      { datasetId: string; datasetName: string }
+    >();
     for (const raw of raws) {
       const docId = String(raw.doc_id);
       if (raw.datasetId && !datasetMap.has(docId)) {
-        datasetMap.set(docId, { datasetId: String(raw.datasetId), datasetName: raw.datasetName ?? '' });
+        datasetMap.set(docId, {
+          datasetId: String(raw.datasetId),
+          datasetName: raw.datasetName ?? '',
+        });
       }
     }
     const items = entities.map((entity) => {
@@ -104,24 +110,26 @@ export class DocumentCatalogService {
       }
     }
     return {
-      items: await Promise.all(items.map(async (item) => {
-        const job = latestJobs.get(item.id);
-        const graph = this.graphTasks
-          ? await this.graphTasks.getProgress(
-              ownerId,
-              item.id,
-              job?.documentVersion,
-            )
-          : null;
-        return {
-          ...item,
-          ingestionStatus: job?.status ?? null,
-          ingestionStage: job?.currentStage ?? null,
-          ingestionErrorMessage: job?.errorMessage ?? null,
-          ingestionProgress: job ? progressOf(job) : null,
-          graph,
-        };
-      })),
+      items: await Promise.all(
+        items.map(async (item) => {
+          const job = latestJobs.get(item.id);
+          const graph = this.graphTasks
+            ? await this.graphTasks.getProgress(
+                ownerId,
+                item.id,
+                job?.documentVersion,
+              )
+            : null;
+          return {
+            ...item,
+            ingestionStatus: job?.status ?? null,
+            ingestionStage: job?.currentStage ?? null,
+            ingestionErrorMessage: job?.errorMessage ?? null,
+            ingestionProgress: job ? progressOf(job) : null,
+            graph,
+          };
+        }),
+      ),
       total,
       page: query.page ?? 1,
       pageSize: query.pageSize ?? 20,
@@ -264,8 +272,8 @@ function progressOf(job: DocumentIngestionJobEntity) {
     estimatedRemainingSeconds:
       job.stageStartedAt && completed > 0 && total > completed
         ? Math.ceil(
-            ((Date.now() - job.stageStartedAt.getTime()) / completed) *
-              (total - completed) /
+            (((Date.now() - job.stageStartedAt.getTime()) / completed) *
+              (total - completed)) /
               1000,
           )
         : null,

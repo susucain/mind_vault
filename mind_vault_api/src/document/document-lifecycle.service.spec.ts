@@ -28,7 +28,9 @@ describe('DocumentLifecycleService', () => {
     const index = {
       markDocumentDeleted: jest.fn().mockResolvedValue(undefined),
     };
-    const graphTasks = { cancelActiveTasks: jest.fn().mockResolvedValue(undefined) };
+    const graphTasks = {
+      cancelActiveTasks: jest.fn().mockResolvedValue(undefined),
+    };
     const service = new DocumentLifecycleService(
       documents as never,
       contents as never,
@@ -77,7 +79,9 @@ describe('DocumentLifecycleService', () => {
       save: jest.fn(async (input) => ({ ...input, id: 'job_new' })),
     };
     const publisher = { publishIndex: jest.fn().mockResolvedValue(undefined) };
-    const graphTasks = { cancelActiveTasks: jest.fn().mockResolvedValue(undefined) };
+    const graphTasks = {
+      cancelActiveTasks: jest.fn().mockResolvedValue(undefined),
+    };
     const service = new DocumentLifecycleService(
       documents as never,
       {} as never,

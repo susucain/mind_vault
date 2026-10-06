@@ -129,7 +129,9 @@ describe('DocumentUploadService', () => {
       } as never,
       {
         isEnabled: jest.fn().mockReturnValue(true),
-        uploadBytes: jest.fn().mockResolvedValue('users/user_1/documents/a.pdf'),
+        uploadBytes: jest
+          .fn()
+          .mockResolvedValue('users/user_1/documents/a.pdf'),
       } as never,
       { publishIndex: jest.fn().mockResolvedValue(undefined) } as never,
       { findOne: jest.fn().mockResolvedValue({ id: 'dataset_1' }) } as never,

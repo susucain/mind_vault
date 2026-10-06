@@ -56,10 +56,7 @@ export class EmbeddingService {
   }
 
   private batchSize() {
-    return Math.max(
-      1,
-      this.config.get<number>('EMBEDDING_BATCH_SIZE', 10),
-    );
+    return Math.max(1, this.config.get<number>('EMBEDDING_BATCH_SIZE', 10));
   }
 
   private requestIntervalMs() {
