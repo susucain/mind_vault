@@ -58,6 +58,7 @@ describe('router', () => {
     '/app/library/folders',
     '/app/library/tags',
     '/app/library/archive',
+    '/app/retrieval',
     '/app/chat',
     '/app/interview/sessions',
   ])('protects the registered placeholder route %s', async (path) => {

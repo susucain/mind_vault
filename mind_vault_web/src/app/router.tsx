@@ -1,8 +1,11 @@
+import { lazy, Suspense, type ReactNode } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { LoadingState } from '../components/ui';
 import { ProtectedLayout } from './layouts';
 import { ChatPage, PlaceholderPage } from './pages';
 import { APP_PATHS } from './navigation';
 import { LoginPage } from '../pages/auth/LoginPage';
+import { RegisterPage } from '../pages/auth/RegisterPage';
 import { OverviewPage } from '../pages/overview/OverviewPage';
 import { LibraryPage } from '../pages/library/LibraryPage';
 import { DatasetsPage } from '../pages/library/DatasetsPage';
@@ -10,11 +13,34 @@ import { DocumentDetailPage } from '../pages/library/DocumentDetailPage';
 import { DocumentPreviewPage } from '../pages/library/DocumentPreviewPage';
 import { MockLibraryPage } from '../pages/library/MockLibraryPage';
 import { ArchivePage } from '../pages/library/ArchivePage';
-import { InterviewPage } from '../pages/interview/InterviewPage';
-import { NewInterviewPage } from '../pages/interview/NewInterviewPage';
-import { InterviewSessionPage } from '../pages/interview/InterviewSessionPage';
-import { InterviewFeedbackPage } from '../pages/interview/InterviewFeedbackPage';
-import { ReviewItemsPage } from '../pages/interview/ReviewItemsPage';
+
+/** 重页面按路由懒加载：检索页含 React Flow 与 d3-force，面试页含 SSE 与评分视图，避免主包膨胀。 */
+// eslint-disable-next-line react-refresh/only-export-components
+const RetrievalPage = lazy(() =>
+  import('../pages/retrieval/RetrievalPage').then((module) => ({ default: module.RetrievalPage })),
+);
+/* eslint-disable react-refresh/only-export-components */
+const InterviewPage = lazy(() =>
+  import('../pages/interview/InterviewPage').then((module) => ({ default: module.InterviewPage })),
+);
+const NewInterviewPage = lazy(() =>
+  import('../pages/interview/NewInterviewPage').then((module) => ({ default: module.NewInterviewPage })),
+);
+const InterviewSessionPage = lazy(() =>
+  import('../pages/interview/InterviewSessionPage').then((module) => ({ default: module.InterviewSessionPage })),
+);
+const InterviewFeedbackPage = lazy(() =>
+  import('../pages/interview/InterviewFeedbackPage').then((module) => ({ default: module.InterviewFeedbackPage })),
+);
+const ReviewItemsPage = lazy(() =>
+  import('../pages/interview/ReviewItemsPage').then((module) => ({ default: module.ReviewItemsPage })),
+);
+/* eslint-enable react-refresh/only-export-components */
+
+/** 懒加载路由统一包裹 Suspense，加载期间展示中性占位。 */
+function lazyPage(element: ReactNode, label: string) {
+  return <Suspense fallback={<LoadingState label={label} />}>{element}</Suspense>;
+}
 
 export const router = createBrowserRouter([
   {
@@ -24,6 +50,10 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+  },
+  {
+    path: '/register',
+    element: <RegisterPage />,
   },
   {
     path: '/app',
@@ -40,16 +70,24 @@ export const router = createBrowserRouter([
       { path: 'library/archive', element: <ArchivePage /> },
       { path: 'library/documents/:documentId', element: <DocumentDetailPage /> },
       { path: 'library/documents/:documentId/preview', element: <DocumentPreviewPage /> },
+      {
+        path: 'retrieval',
+        element: (
+          <Suspense fallback={<LoadingState label="正在加载检索页…" />}>
+            <RetrievalPage />
+          </Suspense>
+        ),
+      },
       { path: 'chat', element: <ChatPage isNew /> },
       { path: 'chat/new', element: <ChatPage isNew /> },
       { path: 'chat/:conversationId', element: <ChatPage /> },
-      { path: 'interview', element: <InterviewPage /> },
-      { path: 'interview/new', element: <NewInterviewPage /> },
-      { path: 'interview/sessions', element: <InterviewPage /> },
-      { path: 'interview/sessions/:sessionId', element: <InterviewSessionPage /> },
-      { path: 'interview/sessions/:sessionId/feedback', element: <InterviewFeedbackPage /> },
-      { path: 'interview/review-items', element: <ReviewItemsPage /> },
-      { path: 'interview/review-items/:itemId', element: <ReviewItemsPage /> },
+      { path: 'interview', element: lazyPage(<InterviewPage />, '正在加载训练首页…') },
+      { path: 'interview/new', element: lazyPage(<NewInterviewPage />, '正在加载训练配置…') },
+      { path: 'interview/sessions', element: lazyPage(<InterviewPage />, '正在加载训练首页…') },
+      { path: 'interview/sessions/:sessionId', element: lazyPage(<InterviewSessionPage />, '正在加载训练会话…') },
+      { path: 'interview/sessions/:sessionId/feedback', element: lazyPage(<InterviewFeedbackPage />, '正在加载训练反馈…') },
+      { path: 'interview/review-items', element: lazyPage(<ReviewItemsPage />, '正在加载复习中心…') },
+      { path: 'interview/review-items/:itemId', element: lazyPage(<ReviewItemsPage />, '正在加载复习中心…') },
       { path: 'settings/*', element: <PlaceholderPage title="Settings" /> },
     ],
   },
