@@ -57,6 +57,11 @@
   --mv-code-fg: #edf3fa;
   --mv-code-inline-bg: #eef2f6;
 
+  /* 阅读排版尺度：控制行长与字号/行距，宽屏下正文不再拉满 */
+  --mv-reading-measure: 72ch;
+  --mv-reading-font-size: 0.95rem;
+  --mv-reading-line-height: 1.85;
+
   /* shadcn 语义 token · 全部指向 --mv-*，保持唯一真源 */
   --background: var(--mv-canvas);
   --foreground: var(--mv-ink);
@@ -638,7 +643,37 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .preview-content > section + section { margin-top: 34px; padding-top: 24px; border-top: 1px solid var(--mv-line); }
 .preview-content > section[data-target="true"] { outline: 2px solid var(--mv-blue); outline-offset: 10px; background: #f7faff; }
 .preview-section-heading { display: flex; align-items: center; gap: 8px; }
-.preview-content p, .preview-content pre { color: var(--mv-prose); font: inherit; font-size: 0.9rem; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* 阅读栏宽：正文内容居中并限制行长，宽屏下不再横向拉满（移动端在下方解除上限） */
+.preview-content > section,
+.preview-content > .widget-empty,
+.preview-content > .preview-skeleton,
+.preview-content > .preview-end,
+.preview-content > .preview-retry { max-width: var(--mv-reading-measure); margin-inline: auto; }
+.preview-content .preview-paragraph { margin: 0 0 1.1em; color: var(--mv-prose); font: inherit; font-size: var(--mv-reading-font-size); line-height: var(--mv-reading-line-height); white-space: pre-wrap; overflow-wrap: anywhere; }
+.preview-content .preview-paragraph:last-child { margin-bottom: 0; }
+/* 正文内 Markdown：仅确有块级结构的段落经 streamdown 渲染 */
+.preview-content .markdown-viewer { font-size: var(--mv-reading-font-size); line-height: var(--mv-reading-line-height); }
+.preview-content .markdown-viewer p { margin: 0 0 1.1em; }
+.preview-content .markdown-viewer h3,
+.preview-content .markdown-viewer h4,
+.preview-content .markdown-viewer h5,
+.preview-content .markdown-viewer h6 { margin: 1.5em 0 .6em; color: var(--mv-ink); line-height: 1.45; }
+.preview-content .markdown-viewer h3 { font-size: 1.08rem; }
+.preview-content .markdown-viewer h4 { font-size: 1rem; }
+.preview-content .markdown-viewer h5 { font-size: .94rem; }
+.preview-content .markdown-viewer h6 { font-size: .88rem; color: var(--mv-muted-strong); }
+.preview-content .markdown-viewer > :first-child { margin-top: 0; }
+.preview-content .markdown-viewer ul,
+.preview-content .markdown-viewer ol { margin: .7em 0; padding-left: 1.5em; }
+.preview-content .markdown-viewer li { margin: .32em 0; line-height: var(--mv-reading-line-height); }
+.preview-content .markdown-viewer blockquote { margin: .9em 0; border-left: 3px solid var(--mv-line-strong); padding-left: .95em; color: var(--mv-muted-strong); }
+.preview-content .markdown-viewer table { width: 100%; margin: .9em 0; border-collapse: collapse; font-size: .88em; }
+.preview-content .markdown-viewer th,
+.preview-content .markdown-viewer td { border: 1px solid var(--mv-line); padding: 6px 9px; text-align: left; }
+/* 图文排版：懒加载占位高度避免加载完成后的跳动 */
+.preview-content .asset-image { display: block; max-width: 100%; height: auto; border-radius: 5px; }
+.preview-content .asset-image:not([data-loaded]) { width: 100%; min-height: 140px; background: var(--mv-canvas); }
+.preview-content .asset-image--missing { display: grid; place-items: center; min-height: 72px; border: 1px dashed var(--mv-line-strong); color: var(--mv-muted); font-size: .8rem; }
 .locator-list { display: flex; flex-wrap: wrap; gap: 5px; margin: 9px 0; }
 .locator-list span { border-radius: 4px; padding: 3px 6px; color: var(--mv-primary); background: var(--mv-primary-soft); font-size: 0.7rem; }
 .preview-sentinel { height: 1px; }
@@ -1040,7 +1075,7 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
   .page-container--fullscreen { width: 100%; max-width: none; padding: 0; }
   .page-container--fullscreen .document-preview { margin: 0; min-height: 100vh; min-height: 100dvh; }
   .preview-header { padding: 14px 16px; border-bottom: 1px solid var(--mv-line); }
-  .preview-content { border: 0; border-radius: 0; padding: 20px 16px 40px; }
+  .preview-content { border: 0; border-radius: 0; padding: 20px 16px 40px; --mv-reading-measure: none; }
   /* 问答页：底部导航占 68px，工作区定高让「消息区」独立滚动 */
   .app-workspace:has(> .page-container > .chat-page) { height: calc(100vh - 68px); height: calc(100dvh - 68px); }
   .chat-page { grid-template-columns: minmax(0, 1fr); }

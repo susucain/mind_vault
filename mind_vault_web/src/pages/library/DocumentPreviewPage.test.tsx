@@ -1,13 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getDocumentOutline, getDocumentSections } from '../../api/documents';
+import { fetchDocumentAsset, getDocumentOutline, getDocumentSections } from '../../api/documents';
 import type { DocumentSectionPageParam } from '../../api/documents';
 import type { DocumentSection } from '../../types/domain';
 import { DocumentPreviewPage } from './DocumentPreviewPage';
 
 vi.mock('../../api/documents', () => ({
+  fetchDocumentAsset: vi.fn(),
   getDocumentOutline: vi.fn(),
   getDocumentSections: vi.fn(),
 }));
@@ -111,5 +112,71 @@ describe('DocumentPreviewPage locators', () => {
     const section = (await screen.findByRole('heading', { name: '章节 11' })).closest('section');
     expect(section).toHaveAttribute('data-target', 'true');
     expect(getDocumentSections).toHaveBeenCalledWith('doc-1', { cursor: 10, limit: 10 });
+  });
+});
+
+/** 立即判定为进入视口的 IntersectionObserver 替身，避免依赖真实布局。 */
+class ImmediateObserver {
+  root = null;
+  rootMargin = '';
+  thresholds = [];
+  private readonly callback: IntersectionObserverCallback;
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback;
+  }
+  observe(target: Element) {
+    this.callback(
+      [{ isIntersecting: true, target } as unknown as IntersectionObserverEntry],
+      this as unknown as IntersectionObserver,
+    );
+  }
+  disconnect() {}
+  unobserve() {}
+  takeRecords() {
+    return [];
+  }
+}
+
+describe('DocumentPreviewPage markdown body', () => {
+  const sections: DocumentSection[] = [
+    {
+      sectionId: 'page-1',
+      heading: '第 1 页',
+      content: '# 小节标题\n\n![](pdf-images/p1.png)',
+      order: 0,
+      locator: { page: 1 },
+    },
+  ];
+
+  beforeEach(() => {
+    vi.stubGlobal('IntersectionObserver', ImmediateObserver);
+    Object.defineProperty(URL, 'createObjectURL', { value: vi.fn(() => 'blob:asset'), writable: true });
+    Object.defineProperty(URL, 'revokeObjectURL', { value: vi.fn(), writable: true });
+    vi.mocked(fetchDocumentAsset).mockReset();
+    vi.mocked(fetchDocumentAsset).mockResolvedValue(new Blob(['x'], { type: 'image/png' }));
+    vi.mocked(getDocumentOutline).mockResolvedValue({
+      documentId: 'doc-1',
+      title: '带插图的文档',
+      pageCount: 1,
+      totalSections: sections.length,
+      sections: sections.map(({ sectionId, heading, order, locator }) => ({ sectionId, heading, order, locator })),
+    });
+    vi.mocked(getDocumentSections).mockImplementation((_id, param = {}) =>
+      Promise.resolve(sliceBodies(sections, param)));
+  });
+
+  it('demotes body markdown headings so the document keeps a single h1', async () => {
+    renderRoute('/app/library/documents/doc-1/preview');
+
+    expect(await screen.findByRole('heading', { level: 3, name: '小节标题' })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+  });
+
+  it('renders an asset reference as an authenticated image instead of blocked text', async () => {
+    renderRoute('/app/library/documents/doc-1/preview');
+
+    await waitFor(() => expect(fetchDocumentAsset).toHaveBeenCalledWith('pdf-images/p1.png'));
+    expect(document.querySelector('img.asset-image')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('Image blocked');
   });
 });

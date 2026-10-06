@@ -1,4 +1,4 @@
-import { jsonRequest, request } from './client';
+import { buildRequest, jsonRequest, request, responseError } from './client';
 import { appConfig } from '../lib/config';
 import { ApiRequestError } from '../lib/errors';
 import type { PageResult } from '../types/api';
@@ -107,6 +107,26 @@ export async function getDocumentSections(
   }>(`/documents/${id}/sections${query ? `?${query}` : ''}`);
   return { ...page, items: page.items.map(normalizeSection) };
 }
+/**
+ * 读取正文引用的只读资产（PDF 插图等）。
+ * `<img src>` 无法携带 Bearer 令牌，故由调用方取回 Blob 后再转 object URL 渲染。
+ */
+export async function fetchDocumentAsset(key: string): Promise<Blob> {
+  const built = buildRequest(`/documents/assets?${queryString({ key })}`);
+  let response: Response;
+  try {
+    response = await fetch(built.url, built.init);
+  } catch (error) {
+    throw new ApiRequestError({
+      status: 0,
+      code: 'NETWORK_ERROR',
+      message: error instanceof Error ? error.message : 'Asset request failed',
+    });
+  }
+  if (!response.ok) throw await responseError(response);
+  return response.blob();
+}
+
 export const getDocumentStatus = (id: string) =>
   request<DocumentProcessingStatus>(`/documents/${id}/status`);
 export const retryDocument = (id: string) =>

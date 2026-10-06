@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, FileText } from 'lucide-react';
 import { Link, useLocation, useParams } from 'react-router-dom';
+import type { Components } from 'streamdown';
 import { Button, LoadingState } from '../../components/ui';
+import { MarkdownViewer } from '../../features/chat';
+import { AssetImage } from '../../features/documents/AssetImage';
 import { DocumentLocatorView } from '../../features/documents/DocumentLocator';
 import { useDocumentOutline, useDocumentSections } from '../../features/documents/use-document';
 import type { DocumentLocator, DocumentSection } from '../../types/domain';
@@ -39,6 +42,85 @@ function isTarget(section: DocumentSection, target: ReturnType<typeof selectedLo
 /** 正文块以 order 作为稳定且唯一的锚点（超长章节切分后 sectionId 会重复）。 */
 function sectionDomId(order: number): string {
   return `section-${order}`;
+}
+
+/**
+ * 段落级分流依据：命中任一块级 Markdown 语法才交给 streamdown。
+ *
+ * 真实语料以 PDF 逐行抽取的纯文本为主（大量硬换行），整节交给 Markdown
+ * 渲染会把换行合并成一整段；只在确有结构时渲染，纯文本段落保留换行。
+ */
+const MARKDOWN_BLOCK_PATTERNS = [
+  /^#{1,6}\s+\S/m,
+  /^\s*(?:```|~~~)/m,
+  /^\s*>\s?\S/m,
+  /^\s*(?:[-*+]|\d{1,9}[.)])\s+\S/m,
+  /^\s*\|.*\|\s*$/m,
+  /!\[[^\]]*\]\([^)]*\)/,
+];
+
+function isMarkdownBlock(text: string): boolean {
+  return MARKDOWN_BLOCK_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function splitParagraphs(content: string): string[] {
+  return content
+    .split(/\n{2,}/)
+    .map((part) => part.replace(/^\n+|\n+$/g, ''))
+    .filter((part) => part.trim().length > 0);
+}
+
+const MARKDOWN_IMAGE_PATTERN = /(!\[[^\]]*\]\()([^)\s]+)(\))/g;
+const ABSOLUTE_SRC_PATTERN = /^(?:https?:|\/|data:|blob:)/i;
+
+/**
+ * 正文里的插图是相对 key（如 `pdf-images/x.png`）。streamdown 会校验图片地址，
+ * 裸相对路径无法解析成 URL 而被替换为「Image blocked」占位；补上前导 `/`
+ * 使其成为根相对路径即可放行，真正的取图仍由 AssetImage 带鉴权完成。
+ */
+function toRootRelativeAssets(text: string): string {
+  return text.replace(
+    MARKDOWN_IMAGE_PATTERN,
+    (_match, prefix: string, src: string, suffix: string) =>
+      ABSOLUTE_SRC_PATTERN.test(src) ? `${prefix}${src}${suffix}` : `${prefix}/${src}${suffix}`,
+  );
+}
+
+/** 正文内标题降级到 h3 起，保证每页只有文档标题 h1 与章节标题 h2。 */
+const PREVIEW_MARKDOWN_COMPONENTS: Components = {
+  img: ({ alt, src }) => (
+    <AssetImage
+      alt={alt}
+      assetKey={typeof src === 'string' ? src.replace(/^\/+/, '') : undefined}
+    />
+  ),
+  h1: 'h3',
+  h2: 'h4',
+  h3: 'h5',
+  h4: 'h6',
+};
+
+function SectionBody({ content }: { content?: string }) {
+  const paragraphs = useMemo(() => splitParagraphs(content ?? ''), [content]);
+  if (!paragraphs.length) {
+    return <p className="preview-paragraph">此章节暂无可预览文本。</p>;
+  }
+  return (
+    <>
+      {paragraphs.map((paragraph, index) =>
+        isMarkdownBlock(paragraph) ? (
+          <MarkdownViewer
+            components={PREVIEW_MARKDOWN_COMPONENTS}
+            content={toRootRelativeAssets(paragraph)}
+            key={`block-${index}`}
+            mode="static"
+          />
+        ) : (
+          <p className="preview-paragraph" key={`text-${index}`}>{paragraph}</p>
+        ),
+      )}
+    </>
+  );
 }
 
 export function DocumentPreviewPage() {
@@ -183,7 +265,7 @@ export function DocumentPreviewPage() {
             >
               {section.heading ? <div className="preview-section-heading"><FileText size={17} /><h2>{section.heading}</h2></div> : null}
               <DocumentLocatorView locator={section.locator} />
-              <p>{section.content || '此章节暂无可预览文本。'}</p>
+              <SectionBody content={section.content} />
             </section>
           )) : <p className="widget-empty">暂无可预览文本。</p>}
           {isFetchingNextPage ? <div aria-label="正在加载后续内容" className="preview-skeleton"><span /><span /><span /></div> : null}
