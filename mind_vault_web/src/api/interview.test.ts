@@ -26,7 +26,7 @@ describe('interview API contracts', () => {
   });
 
   it('unwraps the backend items envelope and normalizes IN_PROGRESS', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       items: [{
         id: 'session-1',
         datasetId: 'dataset-1',
@@ -39,16 +39,38 @@ describe('interview API contracts', () => {
         createdAt: '2026-09-30T08:00:00.000Z',
         updatedAt: '2026-09-30T09:00:00.000Z',
       }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
     }), { headers: { 'Content-Type': 'application/json' } }));
 
-    await expect(listInterviewSessions()).resolves.toEqual([
-      expect.objectContaining({
-        id: 'session-1',
-        status: 'active',
-        currentIndex: 2,
-        totalQuestions: 5,
-      }),
-    ]);
+    await expect(listInterviewSessions()).resolves.toEqual({
+      items: [
+        expect.objectContaining({
+          id: 'session-1',
+          status: 'active',
+          currentIndex: 2,
+          totalQuestions: 5,
+        }),
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    expect(fetchSpy.mock.calls[0]?.[0]).toContain('/interview/sessions?page=1&pageSize=20');
+  });
+
+  it('falls back to the requested page when the backend omits pagination meta', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      items: [{ id: 'session-2', datasetId: 'dataset-1', topic: 'job_fit', intensity: 'quick', status: 'COMPLETED' }],
+    }), { headers: { 'Content-Type': 'application/json' } }));
+
+    await expect(listInterviewSessions({ page: 2, pageSize: 10 })).resolves.toEqual({
+      items: [expect.objectContaining({ id: 'session-2' })],
+      total: 1,
+      page: 2,
+      pageSize: 10,
+    });
   });
 
   it('keeps the review item detail response envelope', async () => {

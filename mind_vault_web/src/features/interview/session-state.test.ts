@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyInterviewEvent, createSessionState } from './session-state';
+import { applyInterviewEvent, createSessionState, stageLabel } from './session-state';
 
 describe('interview session state', () => {
   it('keeps the question and draft when the stream is interrupted', () => {
@@ -20,5 +20,16 @@ describe('interview session state', () => {
     expect(next.question).toBe('第二题');
     expect(next.answered).toBe(1);
     expect(next.interrupted).toBe(false);
+  });
+
+  it('maps backend stages to operation-specific waiting copy', () => {
+    expect(stageLabel('retrieving', 'create')).toBe('正在检索相关资料…');
+    expect(stageLabel('generating', 'create')).toBe('正在生成第一题…');
+    expect(stageLabel('evaluating', 'answer')).toBe('正在评估你的回答…');
+  });
+
+  it('falls back to the default waiting copy for unknown stages', () => {
+    expect(stageLabel('', 'create')).toBe('正在检索资料并生成第一题…');
+    expect(stageLabel('unknown', 'answer')).toBe('正在评估你的回答，并准备下一题…');
   });
 });

@@ -26,7 +26,7 @@ export function useDocumentCount() {
 export function useConversations() {
   return useQuery({
     queryKey: ['overview', 'conversations'],
-    queryFn: listConversations,
+    queryFn: () => listConversations({ page: 1, pageSize: 5 }),
   });
 }
 
@@ -34,7 +34,9 @@ export function useContinueInterview() {
   return useQuery({
     queryKey: ['overview', 'continue-interview'],
     queryFn: async () => {
-      const sessions = appConfig.enableMockApi ? mockSessions : await listInterviewSessions();
+      const sessions = appConfig.enableMockApi
+        ? mockSessions
+        : (await listInterviewSessions({ page: 1, pageSize: 20 })).items;
       return sessions.filter((session) => ['active', 'created', 'in_progress', 'in-progress'].includes(session.status.toLowerCase()));
     },
   });

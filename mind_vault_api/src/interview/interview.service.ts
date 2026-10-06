@@ -4,7 +4,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import {
+  FindOptionsOrder,
+  FindOptionsWhere,
+  In,
+  Repository,
+} from 'typeorm';
 import { DatasetService } from '../dataset/dataset.service';
 import { nextSnowflakeId } from '../common/snowflake-id';
 import {
@@ -17,6 +22,7 @@ import { SubmitInterviewAnswerDto } from './dto/submit-interview-answer.dto';
 import { SubmitReviewAnswerDto } from './dto/submit-review-answer.dto';
 import { UpdateReviewItemDto } from './dto/update-review-item.dto';
 import { QueryReviewItemsDto } from './dto/query-review-items.dto';
+import { QueryInterviewSessionsDto } from './dto/query-interview-sessions.dto';
 import { InterviewSessionEntity } from './entities/interview-session.entity';
 import { InterviewTurnEntity } from './entities/interview-turn.entity';
 import { ReviewAttemptEntity } from './entities/review-attempt.entity';
@@ -81,13 +87,65 @@ export class InterviewService {
     return { ...session, turns };
   }
 
-  async listSessions(ownerId: string) {
+  async listSessions(ownerId: string, query: QueryInterviewSessionsDto = {}) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const [items, total] = await this.sessions.findAndCount({
+      where: { ownerId },
+      order: { updatedAt: 'DESC' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    const scores = await this.averageScoresBySession(
+      ownerId,
+      items.map((item) => item.id),
+    );
     return {
-      items: await this.sessions.find({
-        where: { ownerId },
-        order: { updatedAt: 'DESC' },
-      }),
+      items: items.map((item) => ({
+        ...item,
+        averageScore: scores.get(item.id) ?? null,
+      })),
+      total,
+      page,
+      pageSize,
     };
+  }
+
+  /**
+   * 单次查询聚合每个会话的平均得分（各题四维均值的均值）。
+   * 首页「平均得分」据此计算，避免逐个会话查询 turns 造成 N+1。
+   */
+  private async averageScoresBySession(ownerId: string, sessionIds: string[]) {
+    const scores = new Map<string, number>();
+    if (!sessionIds.length) return scores;
+    const turns = await this.turns.find({
+      where: { ownerId, sessionId: In(sessionIds) },
+      select: { id: true, sessionId: true, evaluation: true },
+    });
+    const grouped = new Map<string, number[]>();
+    for (const turn of turns) {
+      const evaluation = turn.evaluation as Partial<InterviewEvaluation> | null;
+      if (!evaluation) continue;
+      const values = [
+        evaluation.accuracy,
+        evaluation.depth,
+        evaluation.structure,
+        evaluation.clarity,
+      ].filter(
+        (value): value is number =>
+          typeof value === 'number' && Number.isFinite(value),
+      );
+      if (!values.length) continue;
+      const score = values.reduce((total, value) => total + value, 0) / values.length;
+      grouped.set(turn.sessionId, [...(grouped.get(turn.sessionId) ?? []), score]);
+    }
+    for (const [sessionId, list] of grouped) {
+      scores.set(
+        sessionId,
+        Math.round(list.reduce((total, value) => total + value, 0) / list.length),
+      );
+    }
+    return scores;
   }
 
   async submitAnswer(
@@ -101,6 +159,35 @@ export class InterviewService {
       throw new BadRequestException('当前训练会话不可提交回答');
     }
     const question = dto.question ?? session.currentQuestion;
+    if (dto.skipped) {
+      // 跳过本题：不调用模型、不生成复习项，仅记录占位以推进会话流程
+      const skippedTurn = await this.turns.save(
+        this.turns.create({
+          id: nextSnowflakeId(),
+          ownerId,
+          sessionId: id,
+          question,
+          answer: '',
+          evaluation: { skipped: true },
+          citationIds: [],
+        }),
+      );
+      session.currentIndex += 1;
+      const skippedCompleted = session.currentIndex >= session.totalQuestions;
+      session.status = skippedCompleted ? 'COMPLETED' : 'IN_PROGRESS';
+      session.currentQuestion = skippedCompleted
+        ? null
+        : await this.generateNextQuestion(session, onStage);
+      await this.sessions.save(session);
+      return {
+        turn: skippedTurn,
+        evaluation: { skipped: true },
+        citations: [],
+        nextQuestion: session.currentQuestion,
+        reviewItems: [],
+        status: session.status,
+      };
+    }
     const result = (await this.agent.evaluate({
       ownerId,
       datasetId: session.datasetId,
@@ -170,12 +257,16 @@ export class InterviewService {
     const status = query.status ?? 'PENDING';
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    // ALL 时不加状态过滤，仍走后端分页，保证 total 与分页语义正确
+    const where: FindOptionsWhere<ReviewItemEntity> = { ownerId };
+    if (status !== 'ALL') where.status = status;
+    const order: FindOptionsOrder<ReviewItemEntity> =
+      status === 'COMPLETED'
+        ? { completedAt: 'DESC', createdAt: 'DESC' }
+        : { createdAt: 'DESC' };
     const [items, total] = await this.reviewItems.findAndCount({
-      where: { ownerId, status },
-      order:
-        status === 'COMPLETED'
-          ? { completedAt: 'DESC', createdAt: 'DESC' }
-          : { createdAt: 'DESC' },
+      where,
+      order,
       skip: (page - 1) * pageSize,
       take: pageSize,
     });
@@ -284,6 +375,14 @@ export class InterviewService {
     onStage?: StageReporter,
   ) {
     if (session.intensity !== 'quick') return result.evaluation.followUp;
+    return this.generateNextQuestion(session, onStage);
+  }
+
+  /** 基于会话上下文重新出一题（用于快速强度换题与跳过本题），传入已问过的题目去重。 */
+  private async generateNextQuestion(
+    session: InterviewSessionEntity,
+    onStage?: StageReporter,
+  ) {
     const asked = await this.turns.find({
       where: { ownerId: session.ownerId, sessionId: session.id },
       order: { createdAt: 'ASC' },

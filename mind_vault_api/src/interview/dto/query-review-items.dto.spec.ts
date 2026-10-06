@@ -19,4 +19,11 @@ describe('QueryReviewItemsDto', () => {
       ]),
     );
   });
+
+  it('accepts the ALL status for the combined filter', async () => {
+    const dto = new QueryReviewItemsDto();
+    dto.status = 'ALL';
+
+    await expect(validate(dto)).resolves.toEqual([]);
+  });
 });

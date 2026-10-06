@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { interviewConfigSchema } from './interview-schema';
+import { interviewConfigSchema, intensityHints, topicHints, topicLabels } from './interview-schema';
 
 describe('interviewConfigSchema', () => {
   it('accepts a complete training configuration', () => {
@@ -44,5 +44,13 @@ describe('interviewConfigSchema', () => {
       expect(result.data).not.toHaveProperty('difficulty');
       expect(result.data).not.toHaveProperty('answerMode');
     }
+  });
+
+  it('provides a readable hint for every topic and intensity', () => {
+    for (const topic of Object.keys(topicLabels)) {
+      expect(topicHints[topic as keyof typeof topicHints]).toBeTruthy();
+    }
+    expect(intensityHints.quick).toContain('每题独立出新题');
+    expect(intensityHints.deep).toContain('基于本题追问');
   });
 });

@@ -15,6 +15,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { CreateInterviewSessionDto } from './dto/create-interview-session.dto';
 import { QueryReviewItemsDto } from './dto/query-review-items.dto';
+import { QueryInterviewSessionsDto } from './dto/query-interview-sessions.dto';
 import { SubmitInterviewAnswerDto } from './dto/submit-interview-answer.dto';
 import { SubmitReviewAnswerDto } from './dto/submit-review-answer.dto';
 import { UpdateReviewItemDto } from './dto/update-review-item.dto';
@@ -61,8 +62,11 @@ export class InterviewController {
   }
 
   @Get('sessions')
-  listSessions(@CurrentUser() user: { id: string }) {
-    return this.service.listSessions(user.id);
+  listSessions(
+    @CurrentUser() user: { id: string },
+    @Query() query: QueryInterviewSessionsDto,
+  ) {
+    return this.service.listSessions(user.id, query);
   }
 
   @Get('sessions/:id')

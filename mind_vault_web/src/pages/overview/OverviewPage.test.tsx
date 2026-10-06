@@ -50,12 +50,19 @@ describe('OverviewPage', () => {
       pageSize: 5,
       total: 1,
     }));
-    vi.mocked(listConversations).mockResolvedValue([
-      { id: 'c1' }, { id: 'c2' }, { id: 'c3' },
-    ] as never);
-    vi.mocked(listInterviewSessions).mockResolvedValue([
-      { id: 'i1', title: '系统设计训练', status: 'active', currentIndex: 2, totalQuestions: 5 },
-    ] as never);
+    vi.mocked(listConversations).mockResolvedValue({
+      items: [{ id: 'c1' }, { id: 'c2' }, { id: 'c3' }],
+      page: 1,
+      pageSize: 20,
+      total: 3,
+      hasNext: false,
+    } as never);
+    vi.mocked(listInterviewSessions).mockResolvedValue({
+      items: [{ id: 'i1', title: '系统设计训练', status: 'active', currentIndex: 2, totalQuestions: 5 }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    } as never);
     vi.mocked(listReviewItems).mockResolvedValue({
       items: [{ id: 'r1', title: '解释 CAP 定理' }, { id: 'r2', title: '说明缓存一致性' }],
       page: 1,
@@ -84,9 +91,12 @@ describe('OverviewPage', () => {
   it('keeps session and review queries independent when conversations fail', async () => {
     vi.mocked(listDocuments).mockResolvedValue({ items: [], page: 1, pageSize: 5, total: 0 });
     vi.mocked(listConversations).mockRejectedValue(new Error('conversations unavailable'));
-    vi.mocked(listInterviewSessions).mockResolvedValue([
-      { id: 'i1', title: '系统设计训练', status: 'active', currentIndex: 2, totalQuestions: 5 },
-    ] as never);
+    vi.mocked(listInterviewSessions).mockResolvedValue({
+      items: [{ id: 'i1', title: '系统设计训练', status: 'active', currentIndex: 2, totalQuestions: 5 }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    } as never);
     vi.mocked(listReviewItems).mockResolvedValue({
       items: [{ id: 'r1', title: '解释 CAP 定理' }],
       page: 1,

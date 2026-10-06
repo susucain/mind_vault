@@ -24,7 +24,7 @@ export function ReviewItemsPanel({
     <div className="review-workspace">
       <div className="review-toolbar">
         <div className="review-search"><Search aria-hidden="true" size={16} /><Input aria-label="搜索复习项" onChange={(event) => setSearch(event.target.value)} placeholder="搜索主题或薄弱点" value={search} /></div>
-        <div aria-label="复习状态筛选" className="segmented-control">
+        <div aria-label="复习状态筛选" className="segmented-control segmented-control--text">
           {(['PENDING', 'COMPLETED', 'ALL'] as const).map((value) => <button aria-pressed={status === value} key={value} onClick={() => onStatusChange?.(value)} type="button">{value === 'PENDING' ? '待复习' : value === 'COMPLETED' ? '已掌握' : '全部'}</button>)}
         </div>
       </div>

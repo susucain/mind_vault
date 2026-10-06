@@ -124,16 +124,106 @@ describe('InterviewService', () => {
     const newer = { id: 'session_2', updatedAt: new Date('2026-09-22') };
     const older = { id: 'session_1', updatedAt: new Date('2026-09-21') };
     const sessions = {
-      find: jest.fn().mockResolvedValue([newer, older]),
+      findAndCount: jest.fn().mockResolvedValue([[newer, older], 2]),
     };
-    const service = buildService({ sessions });
+    const turns = { find: jest.fn().mockResolvedValue([]) };
+    const service = buildService({ sessions, turns });
 
     await expect(service.listSessions('user_1')).resolves.toEqual({
-      items: [newer, older],
+      items: [
+        { ...newer, averageScore: null },
+        { ...older, averageScore: null },
+      ],
+      total: 2,
+      page: 1,
+      pageSize: 20,
     });
-    expect(sessions.find).toHaveBeenCalledWith({
+    expect(sessions.findAndCount).toHaveBeenCalledWith({
       where: { ownerId: 'user_1' },
       order: { updatedAt: 'DESC' },
+      skip: 0,
+      take: 20,
+    });
+  });
+
+  it('pages the session list with the requested page and size', async () => {
+    const sessions = {
+      findAndCount: jest.fn().mockResolvedValue([[], 43]),
+    };
+    const turns = { find: jest.fn().mockResolvedValue([]) };
+    const service = buildService({ sessions, turns });
+
+    await expect(
+      service.listSessions('user_1', { page: 3, pageSize: 10 }),
+    ).resolves.toEqual({ items: [], total: 43, page: 3, pageSize: 10 });
+    expect(sessions.findAndCount).toHaveBeenCalledWith({
+      where: { ownerId: 'user_1' },
+      order: { updatedAt: 'DESC' },
+      skip: 20,
+      take: 10,
+    });
+  });
+
+  it('aggregates each session average score from its evaluated turns', async () => {
+    const sessions = {
+      findAndCount: jest.fn().mockResolvedValue([
+        [
+          { id: 'session_2', updatedAt: new Date('2026-09-22') },
+          { id: 'session_1', updatedAt: new Date('2026-09-21') },
+        ],
+        2,
+      ]),
+    };
+    const turns = {
+      find: jest.fn().mockResolvedValue([
+        {
+          id: 'turn_1',
+          sessionId: 'session_2',
+          evaluation: { accuracy: 80, depth: 60, structure: 70, clarity: 90 },
+        },
+        {
+          id: 'turn_2',
+          sessionId: 'session_2',
+          evaluation: { accuracy: 100, depth: 100, structure: 100, clarity: 100 },
+        },
+        {
+          id: 'turn_3',
+          sessionId: 'session_1',
+          evaluation: { accuracy: 40, depth: 40, structure: 40, clarity: 40 },
+        },
+        { id: 'turn_4', sessionId: 'session_1', evaluation: { skipped: true } },
+      ]),
+    };
+    const service = buildService({ sessions, turns });
+
+    const result = await service.listSessions('user_1');
+
+    // session_2: round((75 + 100) / 2) = 88；session_1: 40（跳过题不计入）
+    expect(result.items).toEqual([
+      expect.objectContaining({ id: 'session_2', averageScore: 88 }),
+      expect.objectContaining({ id: 'session_1', averageScore: 40 }),
+    ]);
+    expect(turns.find).toHaveBeenCalledWith({
+      where: { ownerId: 'user_1', sessionId: expect.anything() },
+      select: { id: true, sessionId: true, evaluation: true },
+    });
+  });
+
+  it('returns all review items without a status filter when status is ALL', async () => {
+    const items = [{ id: 'review_1' }, { id: 'review_2' }];
+    const reviewItems = {
+      findAndCount: jest.fn().mockResolvedValue([items, 2]),
+    };
+    const service = buildService({ reviewItems });
+
+    await expect(
+      service.listReviewItems('user_1', { status: 'ALL', page: 1, pageSize: 10 }),
+    ).resolves.toEqual({ items, total: 2, page: 1, pageSize: 10 });
+    expect(reviewItems.findAndCount).toHaveBeenCalledWith({
+      where: { ownerId: 'user_1' },
+      order: { createdAt: 'DESC' },
+      skip: 0,
+      take: 10,
     });
   });
 
@@ -357,6 +447,58 @@ describe('InterviewService', () => {
       expect.objectContaining({
         currentQuestion: '说说索引失效的常见场景。',
       }),
+    );
+  });
+
+  it('records a skipped turn without evaluating or creating review items', async () => {
+    const turns = {
+      create: jest.fn((input) => input),
+      save: jest.fn(async (input) => ({ id: 'turn_skip', ...input })),
+      find: jest
+        .fn()
+        .mockResolvedValue([{ id: 'turn_skip', question: '如何处理失败消息？' }]),
+    };
+    const sessions = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'session_1',
+        ownerId: 'user_1',
+        datasetId: 'dataset_1',
+        topic: 'technical_fundamentals',
+        intensity: 'quick',
+        focus: null,
+        jobDescription: null,
+        currentIndex: 0,
+        totalQuestions: 3,
+        status: 'IN_PROGRESS',
+        currentQuestion: '如何处理失败消息？',
+      }),
+      save: jest.fn(async (input) => input),
+    };
+    const reviewItems = {
+      create: jest.fn((input) => input),
+      save: jest.fn(async (input) => ({ id: 'review_1', ...input })),
+    };
+    const agent = {
+      evaluate: jest.fn(),
+      generateQuestion: jest
+        .fn()
+        .mockResolvedValue({ question: '说说索引失效的常见场景。' }),
+    };
+    const service = buildService({ sessions, turns, reviewItems, agent });
+
+    await expect(
+      service.submitAnswer('user_1', 'session_1', { answer: '', skipped: true }),
+    ).resolves.toMatchObject({
+      turn: { id: expect.any(String) },
+      evaluation: { skipped: true },
+      nextQuestion: '说说索引失效的常见场景。',
+      reviewItems: [],
+    });
+    // 跳过不调用评估、不生成复习项，且不把占位文本当答案
+    expect(agent.evaluate).not.toHaveBeenCalled();
+    expect(reviewItems.create).not.toHaveBeenCalled();
+    expect(turns.create).toHaveBeenCalledWith(
+      expect.objectContaining({ answer: '', evaluation: { skipped: true } }),
     );
   });
 

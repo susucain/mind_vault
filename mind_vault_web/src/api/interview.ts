@@ -38,6 +38,16 @@ interface BackendInterviewSession extends Omit<InterviewSession, 'status'> {
 
 interface BackendSessionList {
   items: BackendInterviewSession[];
+  total?: number;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface InterviewSessionList {
+  items: InterviewSession[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 export type ReviewItemRecord = ReviewItem;
@@ -51,6 +61,8 @@ export interface InterviewEvaluation {
   gaps: string[];
   followUp: string;
   reviewItems: string[];
+  /** 该题被跳过时置为 true，此时不含四维评分。 */
+  skipped?: boolean;
 }
 
 export interface InterviewTurnResponse {
@@ -132,11 +144,24 @@ function normalizeSession(session: BackendInterviewSession): InterviewSession {
   return { ...session, status };
 }
 
-export async function listInterviewSessions(): Promise<InterviewSession[]> {
+/** 会话列表分页拉取；mock 模式同样按页切分，保持与后端一致的分页语义。 */
+export async function listInterviewSessions(params: { page?: number; pageSize?: number } = {}): Promise<InterviewSessionList> {
+  const page = params.page ?? 1;
+  const pageSize = params.pageSize ?? 20;
   const response = appConfig.enableMockApi
-    ? { items: mockSessions }
-    : await request<BackendSessionList>('/interview/sessions');
-  return response.items.map(normalizeSession);
+    ? {
+        items: mockSessions.slice((page - 1) * pageSize, page * pageSize),
+        total: mockSessions.length,
+        page,
+        pageSize,
+      }
+    : await request<BackendSessionList>(`/interview/sessions?page=${page}&pageSize=${pageSize}`);
+  return {
+    items: response.items.map(normalizeSession),
+    total: response.total ?? response.items.length,
+    page: response.page ?? page,
+    pageSize: response.pageSize ?? pageSize,
+  };
 }
 export async function getInterviewSession(id: string): Promise<InterviewSession & { turns?: InterviewTurnResponse[] }> {
   const response = await request<InterviewSession & { turns?: InterviewTurnResponse[] } | { data: InterviewSession & { turns?: InterviewTurnResponse[] } }>(`/interview/sessions/${id}`);
@@ -146,11 +171,14 @@ export const submitInterviewAnswer = (id: string, answer: string) =>
   jsonRequest<InterviewAnswerResult>(`/interview/sessions/${id}/answers`, 'POST', { answer });
 export const submitInterviewAnswerStream = (id: string, answer: string) =>
   ({ path: `/interview/sessions/${id}/answers/stream`, body: { answer } });
+/** 跳过本题：独立动作，不把占位文本当作答案提交。 */
+export const skipInterviewQuestionStream = (id: string) =>
+  ({ path: `/interview/sessions/${id}/answers/stream`, body: { answer: '', skipped: true } });
 export const createInterviewSessionStream = (input: InterviewSessionInput) =>
   ({ path: '/interview/sessions/stream', body: { ...input } });
 export const finishInterviewSession = (id: string) =>
   jsonRequest<InterviewSession>(`/interview/sessions/${id}/finish`, 'POST');
-export const listReviewItems = (query: { status?: 'PENDING' | 'COMPLETED'; page?: number; pageSize?: number } = {}) => {
+export const listReviewItems = (query: { status?: 'PENDING' | 'COMPLETED' | 'ALL'; page?: number; pageSize?: number } = {}) => {
   if (appConfig.enableMockApi) {
     const items = query.status === 'COMPLETED' ? [] : mockReviewItems;
     return Promise.resolve({ items, total: items.length, page: query.page ?? 1, pageSize: query.pageSize ?? 20 });

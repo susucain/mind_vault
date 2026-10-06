@@ -50,6 +50,10 @@ export function OverviewPage() {
   const interview = useContinueInterview();
   const reviews = usePendingReviewItems();
 
+  const recentConversations = conversations.data
+    ? [...conversations.data.items].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 3)
+    : [];
+
   function ask(question: string) {
     void navigate(`/app/chat/new?prompt=${encodeURIComponent(question)}`);
   }
@@ -82,34 +86,58 @@ export function OverviewPage() {
 
       <section aria-label="工作台统计" className="stats-grid">
         <StatItem Icon={FileText} error={documentCount.isError} label="资料文件" loading={documentCount.isPending} retry={() => void documentCount.refetch()} value={documentCount.data} />
-        <StatItem Icon={MessageSquareText} error={conversations.isError} label="问答会话" loading={conversations.isPending} retry={() => void conversations.refetch()} value={conversations.data?.length} />
+        <StatItem Icon={MessageSquareText} error={conversations.isError} label="问答会话" loading={conversations.isPending} retry={() => void conversations.refetch()} value={conversations.data?.total} />
         <StatItem Icon={RotateCcw} error={reviews.isError} label="待复习" loading={reviews.isPending} retry={() => void reviews.refetch()} value={reviews.data?.total} />
       </section>
 
       <div className="overview-grid">
-        <section className="workspace-panel recent-panel">
-          <div className="section-heading"><h2>最近资料</h2><Link to="/app/library">查看全部<ArrowRight size={15} /></Link></div>
-          {recent.isPending ? <LoadingState label="加载最近文件" /> : recent.isError ? (
-            <WidgetError label="最近文件加载失败" retry={() => void recent.refetch()} />
-          ) : recent.data.items.length === 0 ? <p className="widget-empty">上传第一份资料开始使用。</p> : (
-            <ul className="file-list">
-              {recent.data.items.map((document) => (
-                <li key={document.id}>
-                  <FileText aria-hidden="true" size={18} />
-                  <div className="recent-document-copy">
-                    <Link to={`/app/library/documents/${document.id}`}>{document.title}</Link>
-                    <span>{fileType(document).toUpperCase()} · {formatFileSize(document.sourceFileSize)} · {formatDate(document.createdAt)}</span>
-                  </div>
-                  <StatusBadge tone={documentTone(document)}>{documentStatusLabel(document)}</StatusBadge>
-                  <div className="recent-document-actions">
-                    <Tooltip content="查看详情"><Link aria-label={`查看 ${document.title}`} className="icon-button" to={`/app/library/documents/${document.id}`}><FileText size={16} /></Link></Tooltip>
-                    <Tooltip content="预览原文"><Link aria-label={`预览 ${document.title}`} className="icon-button" to={`/app/library/documents/${document.id}/preview`}><Eye size={16} /></Link></Tooltip>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <div className="overview-main">
+          <section className="workspace-panel recent-panel">
+            <div className="section-heading"><h2>最近资料</h2><Link to="/app/library">查看全部<ArrowRight size={15} /></Link></div>
+            {recent.isPending ? <LoadingState label="加载最近文件" /> : recent.isError ? (
+              <WidgetError label="最近文件加载失败" retry={() => void recent.refetch()} />
+            ) : recent.data.items.length === 0 ? <p className="widget-empty">上传第一份资料开始使用。</p> : (
+              <ul className="file-list">
+                {recent.data.items.map((document) => (
+                  <li key={document.id}>
+                    <FileText aria-hidden="true" size={18} />
+                    <div className="recent-document-copy">
+                      <Link to={`/app/library/documents/${document.id}`}>{document.title}</Link>
+                      <span>{fileType(document).toUpperCase()} · {formatFileSize(document.sourceFileSize)} · {formatDate(document.createdAt)}</span>
+                    </div>
+                    <StatusBadge tone={documentTone(document)}>{documentStatusLabel(document)}</StatusBadge>
+                    <div className="recent-document-actions">
+                      <Tooltip content="查看详情"><Link aria-label={`查看 ${document.title}`} className="icon-button" to={`/app/library/documents/${document.id}`}><FileText size={16} /></Link></Tooltip>
+                      <Tooltip content="预览原文"><Link aria-label={`预览 ${document.title}`} className="icon-button" to={`/app/library/documents/${document.id}/preview`}><Eye size={16} /></Link></Tooltip>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="workspace-panel">
+            <div className="section-heading"><h2>最近会话</h2><Link to="/app/chat">全部<ArrowRight size={15} /></Link></div>
+            {conversations.isPending ? <LoadingState label="加载会话" /> : conversations.isError ? (
+              <WidgetError label="会话加载失败" retry={() => void conversations.refetch()} />
+            ) : recentConversations.length === 0 ? <p className="widget-empty">还没有会话，开始向资料提问吧。</p> : (
+              <ul className="conversation-list">
+                {recentConversations.map((conversation) => (
+                  <li key={conversation.id}>
+                    <Link className="conversation-item" to={`/app/chat/${conversation.id}`}>
+                      <MessageSquareText aria-hidden="true" size={17} />
+                      <div className="conversation-copy">
+                        <strong>{conversation.title || '未命名会话'}</strong>
+                        <span>{formatDate(conversation.updatedAt)}</span>
+                      </div>
+                      <ArrowRight aria-hidden="true" size={15} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
 
         <div className="overview-side">
           <section className="workspace-panel">
@@ -133,7 +161,14 @@ export function OverviewPage() {
             {reviews.isPending ? <LoadingState label="加载复习项" /> : reviews.isError ? (
               <WidgetError label="复习项加载失败" retry={() => void reviews.refetch()} />
             ) : reviews.data.items.length ? (
-              <ul className="review-list">{reviews.data.items.slice(0, 3).map((item) => <li key={item.id}>{item.title || '待复习问题'}</li>)}</ul>
+              <ul className="review-list">{reviews.data.items.slice(0, 3).map((item) => (
+                <li key={item.id}>
+                  <Link className="review-question" to={`/app/interview/review-items/${item.id}`}>
+                    <span className="review-q-mark" aria-hidden="true">?</span>
+                    <span className="review-q-text">{item.title || '待复习问题'}</span>
+                  </Link>
+                </li>
+              ))}</ul>
             ) : <p className="widget-empty">今天没有待复习内容。</p>}
           </section>
         </div>
