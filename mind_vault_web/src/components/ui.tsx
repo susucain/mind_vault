@@ -50,11 +50,13 @@ export function Tabs({
 
 export function Dialog({
   children,
+  className,
   open,
   onOpenChange,
   title,
   trigger,
 }: PropsWithChildren<{
+  className?: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   title: string;
@@ -65,7 +67,7 @@ export function Dialog({
       {trigger ? <DialogPrimitive.Trigger asChild>{trigger}</DialogPrimitive.Trigger> : null}
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="dialog-overlay" />
-        <DialogPrimitive.Content className="dialog-content">
+        <DialogPrimitive.Content className={clsx('dialog-content', className)}>
           <div className="dialog-header">
             <DialogPrimitive.Title>{title}</DialogPrimitive.Title>
             <DialogPrimitive.Close aria-label="Close dialog" className="icon-button">
@@ -145,11 +147,19 @@ export function EmptyState({ action, description, title }: { action?: ReactNode;
   );
 }
 
-export function ErrorState({ onRetry, title = 'Something went wrong' }: { onRetry?: () => void; title?: string }) {
+export function ErrorState({
+  onRetry,
+  title = '出错了，请稍后重试',
+  retryLabel = '重试',
+}: {
+  onRetry?: () => void;
+  title?: string;
+  retryLabel?: string;
+}) {
   return (
     <section className="state-panel state-panel--error" role="alert">
       <h2>{title}</h2>
-      {onRetry ? <Button onClick={onRetry} variant="secondary">Try again</Button> : null}
+      {onRetry ? <Button onClick={onRetry} variant="secondary">{retryLabel}</Button> : null}
     </section>
   );
 }
