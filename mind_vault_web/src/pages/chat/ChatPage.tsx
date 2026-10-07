@@ -7,7 +7,7 @@ import { createConversation, createMessageStreamRequest, getConversation, listCo
 import { listDatasets } from '../../api/datasets';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/shadcn/ui/popover';
 import { Button, Drawer, EmptyState, ErrorState, StatusBadge } from '../../components/ui';
-import { CitationCard, MarkdownViewer, chatReducer, draftOf, initialChatState, messagesOf, type ChatDraft } from '../../features/chat';
+import { CitationCard, MarkdownViewer, MessageGraph, chatReducer, draftOf, initialChatState, messagesOf, type ChatDraft } from '../../features/chat';
 import { useSse, type StreamEvent } from '../../hooks/use-sse';
 import { useStickyScroll } from '../../hooks/use-sticky-scroll';
 import type { ChatMessage, Citation, Conversation, Dataset } from '../../types/domain';
@@ -172,6 +172,7 @@ function MessageCitations({ citations }: { citations: Citation[] }) {
       <div className="message-citations__list">
         {citations.map((citation) => <CitationCard citation={citation} key={citation.id} />)}
       </div>
+      <MessageGraph citations={citations} />
     </section>
   );
 }

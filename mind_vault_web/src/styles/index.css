@@ -810,6 +810,24 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .message-citations { margin-top: 4px; border-top: 1px dashed var(--mv-line-strong); padding-top: 12px; display: grid; gap: 9px; }
 .message-citations__title { margin: 0; display: flex; align-items: center; gap: 6px; color: var(--mv-muted); font-size: .72rem; font-weight: 700; }
 .message-citations__list { display: grid; gap: 9px; }
+/* 回答相关图谱：默认折叠，展开时才请求（见方案 7.2） */
+.message-graph { margin-top: 4px; border: 1px solid var(--mv-line); border-radius: 6px; background: var(--mv-canvas); }
+.message-graph__toggle { width: 100%; min-height: 34px; padding: 0 11px; border: 0; display: flex; align-items: center; gap: 7px; color: var(--mv-muted); background: transparent; font-size: .73rem; font-weight: 700; text-align: left; }
+.message-graph__toggle:hover { color: var(--mv-blue); }
+.message-graph__toggle:focus-visible { outline: 2px solid var(--mv-primary); outline-offset: -2px; border-radius: 6px; }
+.message-graph__chevron { transition: transform .15s ease; }
+.message-graph__chevron.is-open { transform: rotate(180deg); }
+.message-graph__hint { margin-left: auto; color: var(--mv-muted); font-weight: 400; }
+.message-graph__body { padding: 0 11px 11px; display: grid; gap: 10px; }
+.message-graph__body .state-panel { border: 0; background: transparent; }
+.message-graph__notice { margin: 0; display: flex; align-items: center; gap: 6px; border-left: 3px solid var(--mv-orange); padding: 6px 10px; color: var(--mv-notice-ink); background: var(--mv-notice-soft); font-size: .72rem; }
+.message-graph__canvas { position: relative; height: 340px; border: 1px solid var(--mv-line); border-radius: 6px; overflow: hidden; background: var(--mv-surface); }
+.message-graph__canvas .loading-state { min-height: 100%; }
+@media (max-width: 768px) {
+  /* 窄屏封顶并可内部滚动，避免图谱把整条消息撑得过长 */
+  .message-graph__canvas { height: 300px; }
+}
+@media (prefers-reduced-motion: reduce) { .message-graph__chevron { transition: none; } }
 .message-actions { opacity: .75; }
 .message-actions button { border: 0; padding: 3px; display: inline-flex; align-items: center; gap: 4px; color: var(--mv-muted); background: transparent; font-size: .72rem; }
 .message-actions button:hover { color: var(--mv-blue); }

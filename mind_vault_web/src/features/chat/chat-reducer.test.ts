@@ -16,7 +16,7 @@ describe('chatReducer', () => {
     let state = chatReducer(initialChatState(), { type: 'begin', conversationId: 'c1', user: user('c1') });
     state = chatReducer(state, { type: 'event', conversationId: 'c1', event: { type: 'message_start', messageId: 'm1' } });
     state = chatReducer(state, { type: 'event', conversationId: 'c1', event: { type: 'token', content: '答案' } });
-    state = chatReducer(state, { type: 'event', conversationId: 'c1', event: { type: 'citation', citation: { id: 'cite-1', documentId: 'doc-1', documentName: '资料', excerpt: '原文', locator: { page: 4 } } } });
+    state = chatReducer(state, { type: 'event', conversationId: 'c1', event: { type: 'citation', citation: { id: 'cite-1', documentId: 'doc-1', documentName: '资料', chunkId: 'chunk-1', excerpt: '原文', locator: { page: 4 } } } });
     state = chatReducer(state, { type: 'event', conversationId: 'c1', event: { type: 'done', messageId: 'm1' } });
     state = chatReducer(state, { type: 'settle' });
 
@@ -46,7 +46,7 @@ describe('chatReducer', () => {
     state = chatReducer(state, {
       type: 'event',
       conversationId: 'c1',
-      event: { type: 'result', result: { answer: '最终答案', citations: [{ id: 'c1', documentId: 'd1', documentName: '资料', excerpt: '片段', locator: { page: 2 } }] } },
+      event: { type: 'result', result: { answer: '最终答案', citations: [{ id: 'c1', documentId: 'd1', documentName: '资料', chunkId: 'chunk-1', excerpt: '片段', locator: { page: 2 } }] } },
     });
 
     expect(draftOf(state, 'c1')).toMatchObject({ content: '最终答案', tokens: 4, citations: [{ id: 'c1' }] });

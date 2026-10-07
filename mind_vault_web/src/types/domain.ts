@@ -75,8 +75,12 @@ export interface Citation {
   id: string;
   documentId: string;
   documentName: string;
+  /** 来源分块：回答相关图谱按这批 chunk 取实体关系 */
+  chunkId: string;
   excerpt: string;
   locator: DocumentLocator;
+  /** 命中关键字分段；语义路径与存量数据为 null，此时按 excerpt 原样渲染 */
+  highlight?: HighlightSegment[] | null;
 }
 
 export interface Conversation {

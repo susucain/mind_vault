@@ -24,6 +24,12 @@ export interface NeighborhoodRequest {
   limit?: number;
 }
 
+export interface AnswerContextRequest {
+  /** 本条回答实际引用的 chunk；图谱只收敛在这批 chunk 上 */
+  chunkIds: string[];
+  limit?: number;
+}
+
 const MOCK_NAMES = ['向量检索', '倒排索引', 'Elasticsearch', 'Kafka', '召回策略', 'RAG 检索增强'];
 const MOCK_TYPES: EntityType[] = ['TECHNOLOGY', 'CONCEPT', 'TECHNOLOGY', 'TECHNOLOGY', 'CONCEPT', 'CONCEPT'];
 
@@ -102,4 +108,13 @@ export async function fetchNeighborhood(input: NeighborhoodRequest): Promise<Gra
 
   if (appConfig.enableMockApi) return mockNeighborhood(payload.entity, payload.maxHops ?? 1);
   return jsonRequest<GraphView>('/graph/neighborhood', 'POST', payload);
+}
+
+/** 回答相关图谱：入口是本轮引用的 chunk（回答侧没有实体名可用）。 */
+export async function fetchAnswerContext(input: AnswerContextRequest): Promise<GraphView> {
+  if (appConfig.enableMockApi) return mockNeighborhood('本轮引用', 1);
+  return jsonRequest<GraphView>('/graph/answer-context', 'POST', {
+    chunkIds: input.chunkIds,
+    ...(input.limit ? { limit: input.limit } : {}),
+  });
 }
