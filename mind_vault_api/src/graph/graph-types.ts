@@ -9,7 +9,8 @@ export const entityTypeSchema = z.enum([
   'EVENT',
 ]);
 
-export const relationTypeSchema = z.enum([
+/** 关系类型白名单。Neo4j 关系类型无法参数化，批量写入时按类型分组并据此校验。 */
+export const RELATION_TYPES = [
   'USES',
   'USED_FOR',
   'DEPENDS_ON',
@@ -18,7 +19,9 @@ export const relationTypeSchema = z.enum([
   'PART_OF',
   'CREATED_BY',
   'MENTIONED_WITH',
-]);
+] as const;
+
+export const relationTypeSchema = z.enum(RELATION_TYPES);
 
 export const extractionSchema = z.object({
   entities: z
@@ -28,7 +31,8 @@ export const extractionSchema = z.object({
         type: entityTypeSchema,
       }),
     )
-    .max(30),
+    // 实际上限由配置决定（graph.maxEntities），这里只兜底防爆量输出
+    .max(200),
   relations: z
     .array(
       z.object({
@@ -38,7 +42,7 @@ export const extractionSchema = z.object({
         confidence: z.number().min(0).max(1),
       }),
     )
-    .max(50),
+    .max(400),
 });
 
 export type GraphExtraction = z.infer<typeof extractionSchema>;

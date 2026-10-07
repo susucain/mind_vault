@@ -71,7 +71,7 @@ export class DocumentIngestionWorker {
   ) {}
 
   async onModuleInit() {
-    if (!this.config.get<boolean>('INGESTION_WORKER_ENABLED', false)) return;
+    if (!this.config.get<boolean>('ingestion.workerEnabled', false)) return;
     this.shuttingDown = false;
     await this.failStaleJobs();
     this.staleJobTimer = setInterval(

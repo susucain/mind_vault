@@ -58,11 +58,11 @@ describe('DocumentGraphWorker', () => {
       {} as never,
       {} as never,
       {
-        get: jest.fn((key: string) =>
-          key === 'INGESTION_WORKER_ENABLED'
-            ? true
-            : 'amqp://guest:guest@localhost:5672',
-        ),
+        get: jest.fn((key: string) => {
+          if (key === 'graph.workerEnabled') return true;
+          if (key === 'graph.workerConcurrency') return 5;
+          return 'amqp://guest:guest@localhost:5672';
+        }),
       } as never,
     );
 
@@ -71,7 +71,7 @@ describe('DocumentGraphWorker', () => {
     await jest.advanceTimersByTimeAsync(5_000);
 
     expect(connectMock).toHaveBeenCalledTimes(2);
-    expect(secondChannel.prefetch).toHaveBeenCalledWith(3);
+    expect(secondChannel.prefetch).toHaveBeenCalledWith(5);
     expect(secondChannel.consume).toHaveBeenCalledWith(
       'mind-vault.graph.worker',
       expect.any(Function),

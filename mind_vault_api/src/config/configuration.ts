@@ -63,6 +63,23 @@ export function buildConfiguration(env: EnvironmentInput = process.env) {
       // 不让用户为「回答之外的东西」多等。
       followupTimeoutMs: parseNumber(env.CHAT_FOLLOWUP_TIMEOUT_MS, 3000),
     },
+    ingestion: {
+      // 摄取 worker 是否消费队列（start:worker 脚本会置为 true）
+      workerEnabled: parseBoolean(env.INGESTION_WORKER_ENABLED, false),
+    },
+    graph: {
+      // 图谱 worker 是否消费队列；默认跟随摄取 worker，避免多一个必须同步的开关
+      workerEnabled: parseBoolean(env.INGESTION_WORKER_ENABLED, false),
+      // 单进程并发（RabbitMQ prefetch）。需与模型服务配额匹配，可按需放大。
+      workerConcurrency: parseNumber(env.GRAPH_WORKER_CONCURRENCY, 6),
+      // 短于该字符数的块不入图（标题行、目录、表格残片等低价值块）
+      minChunkChars: parseNumber(env.GRAPH_MIN_CHUNK_CHARS, 80),
+      // 抽取输出上限：prompt 声明与截断阈值共用，超过即丢弃
+      maxEntities: parseNumber(env.GRAPH_MAX_ENTITIES, 15),
+      maxRelations: parseNumber(env.GRAPH_MAX_RELATIONS, 30),
+      // 单次抽取的输出 token 上限（15 实体 + 30 关系足够容纳）
+      extractionMaxTokens: parseNumber(env.GRAPH_EXTRACTION_MAX_TOKENS, 2000),
+    },
     langfuse: {
       enabled: parseBoolean(env.LANGFUSE_ENABLED, false),
       publicKey: env.LANGFUSE_PUBLIC_KEY,

@@ -16,6 +16,9 @@ export interface GraphProgress {
   total: number;
   failed: number;
   estimatedRemainingSeconds: number | null;
+  /** 已终态任务的耗时聚合（毫秒），用于文档级汇总日志 */
+  averageDurationMs?: number | null;
+  totalDurationMs?: number | null;
 }
 
 @Injectable()
@@ -29,29 +32,88 @@ export class DocumentGraphTaskService {
 
   async enqueue(chunks: DocumentChunk[]) {
     if (chunks.length === 0) return;
-    const tasks = chunks.map((chunk) =>
-      this.tasks.create({
-        id: nextSnowflakeId(),
-        ownerId: chunk.ownerId,
-        documentId: chunk.documentId,
-        documentVersion: chunk.documentVersion,
-        chunkId: chunk.chunkId,
-        text: chunk.text,
-        datasetIds: chunk.datasetIds ?? [],
+    const minChars = this.minChunkChars();
+    const seenContent = new Set<string>();
+    const candidates = chunks.filter((chunk) => {
+      const text = (chunk.text ?? '').trim();
+      // 短块（标题行、目录、表格残片）不入图
+      if (text.length < minChars) return false;
+      // 同文档内完全相同的文本只抽一次（分块有重叠，正文也可能重复）
+      const fingerprint = text.replace(/\s+/g, ' ').toLocaleLowerCase('zh-CN');
+      if (seenContent.has(fingerprint)) return false;
+      seenContent.add(fingerprint);
+      return true;
+    });
+    if (candidates.length === 0) return;
+
+    const { ownerId, documentId, documentVersion } = candidates[0];
+    const existing = await this.tasks.find({
+      where: { ownerId, documentId, documentVersion },
+      select: { id: true, chunkId: true, status: true },
+    });
+    const existingByChunkId = new Map(
+      existing.map((task) => [task.chunkId, task]),
+    );
+
+    const fresh: DocumentGraphTaskEntity[] = [];
+    const requeued: string[] = [];
+    for (const chunk of candidates) {
+      const task = existingByChunkId.get(chunk.chunkId);
+      if (!task) {
+        fresh.push(
+          this.tasks.create({
+            id: nextSnowflakeId(),
+            ownerId: chunk.ownerId,
+            documentId: chunk.documentId,
+            documentVersion: chunk.documentVersion,
+            chunkId: chunk.chunkId,
+            text: chunk.text,
+            datasetIds: chunk.datasetIds ?? [],
+            status: GraphTaskStatus.Pending,
+            retryCount: 0,
+          }),
+        );
+        continue;
+      }
+      // 已完成或已在途的块不重复入队——重试续跑不重复消耗 token 的关键
+      if (
+        task.status === GraphTaskStatus.Ready ||
+        task.status === GraphTaskStatus.Pending ||
+        task.status === GraphTaskStatus.Processing
+      ) {
+        continue;
+      }
+      // 失败/取消的块复用原行重投，避免同一 chunk 留下多行污染进度统计
+      requeued.push(task.id);
+    }
+
+    const savedTasks = fresh.length > 0 ? await this.tasks.save(fresh) : [];
+    if (requeued.length > 0) {
+      await this.tasks.update(requeued, {
         status: GraphTaskStatus.Pending,
         retryCount: 0,
-      }),
-    );
-    const savedTasks = await this.tasks.save(tasks);
+        errorMessage: null,
+        startedAt: null,
+        finishedAt: null,
+      });
+    }
+
+    const messages = [
+      ...savedTasks.map((task) => ({
+        taskId: task.id,
+        ownerId: task.ownerId,
+        documentId: task.documentId,
+        documentVersion: task.documentVersion,
+      })),
+      ...requeued.map((taskId) => ({
+        taskId,
+        ownerId,
+        documentId,
+        documentVersion,
+      })),
+    ];
     await Promise.all(
-      savedTasks.map((task) =>
-        this.publisher.publishGraph({
-          taskId: task.id,
-          ownerId: task.ownerId,
-          documentId: task.documentId,
-          documentVersion: task.documentVersion,
-        }),
-      ),
+      messages.map((message) => this.publisher.publishGraph(message)),
     );
   }
 
@@ -116,6 +178,10 @@ export class DocumentGraphTaskService {
           durations.length
         : null;
     const concurrency = this.concurrency();
+    const totalDuration =
+      durations.length > 0
+        ? durations.reduce((sum, duration) => sum + duration, 0)
+        : null;
     return {
       status,
       completed,
@@ -125,13 +191,24 @@ export class DocumentGraphTaskService {
         averageDuration === null || remaining === 0
           ? null
           : Math.ceil((averageDuration * remaining) / concurrency / 1000),
+      averageDurationMs:
+        averageDuration === null ? null : Math.round(averageDuration),
+      totalDurationMs:
+        totalDuration === null ? null : Math.round(totalDuration),
     };
   }
 
   private concurrency() {
     const configured = Number(
-      this.config?.get<string | number>('GRAPH_WORKER_CONCURRENCY', 3) ?? 3,
+      this.config?.get<string | number>('graph.workerConcurrency', 6) ?? 6,
     );
-    return Number.isInteger(configured) && configured > 0 ? configured : 3;
+    return Number.isInteger(configured) && configured > 0 ? configured : 6;
+  }
+
+  private minChunkChars() {
+    const configured = Number(
+      this.config?.get<string | number>('graph.minChunkChars', 80) ?? 80,
+    );
+    return Number.isFinite(configured) && configured >= 0 ? configured : 80;
   }
 }

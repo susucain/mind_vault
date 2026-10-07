@@ -40,7 +40,7 @@ export class DocumentGraphWorker {
   ) {}
 
   async onModuleInit() {
-    if (!this.config.get<boolean>('INGESTION_WORKER_ENABLED', false)) return;
+    if (!this.config.get<boolean>('graph.workerEnabled', false)) return;
     this.shuttingDown = false;
     await this.connectAndConsume();
   }
@@ -153,6 +153,7 @@ export class DocumentGraphWorker {
       `图谱任务开始: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} retry=${task.retryCount}`,
     );
     try {
+      const extractStartedAt = Date.now();
       const extraction = await this.extraction.extract({
         chunkId: task.chunkId,
         ownerId: task.ownerId,
@@ -161,6 +162,7 @@ export class DocumentGraphWorker {
         text: task.text,
         datasetIds: task.datasetIds,
       } as never);
+      const extractMs = Date.now() - extractStartedAt;
       if (!(await this.findActiveDocument(task))) {
         task.status = GraphTaskStatus.Cancelled;
         await this.tasks.save(task);
@@ -170,6 +172,7 @@ export class DocumentGraphWorker {
         where: { id: task.id, status: GraphTaskStatus.Processing },
       });
       if (!activeTask) return;
+      const graphStartedAt = Date.now();
       await this.graph.indexChunk({
         ownerId: task.ownerId,
         documentId: task.documentId,
@@ -178,13 +181,14 @@ export class DocumentGraphWorker {
         datasetIds: task.datasetIds,
         ...extraction,
       });
+      const graphMs = Date.now() - graphStartedAt;
       task.status = GraphTaskStatus.Ready;
       task.errorMessage = null;
       task.finishedAt = new Date();
       await this.tasks.save(task);
       await this.publishProgress(task);
       this.logger.log(
-        `图谱任务完成: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} elapsedMs=${task.finishedAt.getTime() - startedAt.getTime()}`,
+        `图谱任务完成: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} extractMs=${extractMs} graphMs=${graphMs} elapsedMs=${task.finishedAt.getTime() - startedAt.getTime()}`,
       );
     } catch (error) {
       task.status = GraphTaskStatus.Failed;
@@ -231,9 +235,9 @@ export class DocumentGraphWorker {
 
   private concurrency() {
     const configured = Number(
-      this.config.get<string | number>('GRAPH_WORKER_CONCURRENCY', 3),
+      this.config.get<string | number>('graph.workerConcurrency', 6) ?? 6,
     );
-    return Number.isInteger(configured) && configured > 0 ? configured : 3;
+    return Number.isInteger(configured) && configured > 0 ? configured : 6;
   }
 
   private async publishProgress(task: DocumentGraphTaskEntity) {
@@ -255,5 +259,15 @@ export class DocumentGraphWorker {
           : 0,
       graph,
     });
+    // 文档级汇总：全部块进入终态时输出一行，作为图谱耗时基线（改造前后对比用）
+    if (
+      graph &&
+      graph.total > 0 &&
+      graph.completed + graph.failed >= graph.total
+    ) {
+      this.logger.log(
+        `图谱文档汇总: documentId=${task.documentId} version=${task.documentVersion} chunks=${graph.total} completed=${graph.completed} failed=${graph.failed} llmCalls=${graph.total} avgMs=${graph.averageDurationMs ?? '-'} totalMs=${graph.totalDurationMs ?? '-'}`,
+      );
+    }
   }
 }

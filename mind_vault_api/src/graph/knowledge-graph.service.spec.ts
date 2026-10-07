@@ -33,16 +33,33 @@ describe('KnowledgeGraphService', () => {
       ],
     });
 
-    expect(tx.run).toHaveBeenCalledTimes(4);
-    expect(tx.run.mock.calls[3]).toEqual([
-      expect.stringContaining('MERGE (source)-[relation:USED_FOR'),
+    // 1 次骨架 + 1 次实体批量 + 1 次关系批量（按类型分组），与实体/关系数量解耦
+    expect(tx.run).toHaveBeenCalledTimes(3);
+    const calls = tx.run.mock.calls as unknown as [
+      string,
+      Record<string, unknown>,
+    ][];
+    expect(calls[1][0]).toContain('UNWIND $entities');
+    expect(calls[1][1]).toEqual(
       expect.objectContaining({
         ownerId: 'user_1',
-        sourceName: 'kafka',
-        targetName: '消息队列',
-        sourceChunkId: 'chunk_1',
+        chunkId: 'chunk_1',
+        entities: [
+          { normalizedName: 'kafka', name: 'Kafka', type: 'TECHNOLOGY' },
+          { normalizedName: '消息队列', name: '消息队列', type: 'CONCEPT' },
+        ],
       }),
-    ]);
+    );
+    expect(calls[2][0]).toContain('MERGE (source)-[relation:USED_FOR');
+    expect(calls[2][1]).toEqual(
+      expect.objectContaining({
+        ownerId: 'user_1',
+        sourceChunkId: 'chunk_1',
+        relations: [
+          { sourceName: 'kafka', targetName: '消息队列', confidence: 0.9 },
+        ],
+      }),
+    );
   });
 
   it('queries paths with owner and dataset-independent document scope', async () => {

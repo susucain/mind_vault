@@ -30,4 +30,34 @@ describe('configuration', () => {
     expect(config.models.reasoning).toBeUndefined();
     expect(config.models.embedding).toBeUndefined();
   });
+
+  it('collects the worker switches and graph tuning into configuration', () => {
+    const defaults = buildConfiguration({ INGESTION_WORKER_ENABLED: 'true' });
+
+    expect(defaults.ingestion.workerEnabled).toBe(true);
+    // 图谱 worker 默认跟随摄取 worker，避免多一个必须同步的开关
+    expect(defaults.graph.workerEnabled).toBe(true);
+    expect(defaults.graph.workerConcurrency).toBe(6);
+    expect(defaults.graph.minChunkChars).toBe(80);
+    expect(defaults.graph.maxEntities).toBe(15);
+    expect(defaults.graph.maxRelations).toBe(30);
+    expect(defaults.graph.extractionMaxTokens).toBe(2000);
+  });
+
+  it('lets the graph tuning be overridden from the environment', () => {
+    const config = buildConfiguration({
+      GRAPH_WORKER_CONCURRENCY: '8',
+      GRAPH_MIN_CHUNK_CHARS: '0',
+      GRAPH_MAX_ENTITIES: '20',
+      GRAPH_MAX_RELATIONS: '40',
+      GRAPH_EXTRACTION_MAX_TOKENS: '1200',
+    });
+
+    expect(config.graph.workerConcurrency).toBe(8);
+    expect(config.graph.minChunkChars).toBe(0);
+    expect(config.graph.maxEntities).toBe(20);
+    expect(config.graph.maxRelations).toBe(40);
+    expect(config.graph.extractionMaxTokens).toBe(1200);
+    expect(config.graph.workerEnabled).toBe(false);
+  });
 });

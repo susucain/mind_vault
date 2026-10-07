@@ -6,7 +6,7 @@ const tracingOff = {
 } as never;
 
 describe('GraphExtractionService', () => {
-  it('limits oversized model extraction results before schema validation', async () => {
+  it('truncates oversized model extraction results to the configured caps', async () => {
     const entities = Array.from({ length: 31 }, (_, index) => ({
       name: `Entity ${index}`,
       type: 'CONCEPT',
@@ -39,7 +39,14 @@ describe('GraphExtractionService', () => {
     });
 
     const result = await service.extract({ text: '内容' } as never);
-    expect(result.entities).toHaveLength(30);
-    expect(result.relations).toHaveLength(50);
+    expect(result.entities).toHaveLength(15);
+    expect(result.relations).toHaveLength(30);
+    expect(gateway.invokeJson).toHaveBeenCalledWith(
+      'fast',
+      expect.any(Array),
+      false,
+      expect.any(Function),
+      { maxTokens: 2000 },
+    );
   });
 });

@@ -11,6 +11,7 @@ import {
   GraphViewEdge,
   GraphViewNode,
   RelationType,
+  RELATION_TYPES,
 } from './graph-types';
 
 export const NEO4J_DRIVER = Symbol('NEO4J_DRIVER');
@@ -53,6 +54,26 @@ export class KnowledgeGraphService {
     const entitiesByName = new Map(
       entities.map((entity) => [entity.normalizedName, entity]),
     );
+    // 关系类型无法作为 Cypher 参数，按类型分组后每种一次 UNWIND 批量写
+    const relationsByType = new Map<
+      RelationType,
+      { sourceName: string; targetName: string; confidence: number }[]
+    >();
+    for (const relation of input.relations) {
+      if (!RELATION_TYPE_SET.has(relation.type)) continue;
+      const source = entitiesByName.get(normalizeName(relation.source));
+      const target = entitiesByName.get(normalizeName(relation.target));
+      if (!source || !target || source.normalizedName === target.normalizedName)
+        continue;
+      const rows = relationsByType.get(relation.type) ?? [];
+      rows.push({
+        sourceName: source.normalizedName,
+        targetName: target.normalizedName,
+        confidence: relation.confidence,
+      });
+      relationsByType.set(relation.type, rows);
+    }
+
     const session = this.driver.session();
     try {
       await session.run(
@@ -71,11 +92,13 @@ export class KnowledgeGraphService {
           datasetIds: input.datasetIds ?? [],
         },
       );
-      for (const entity of entities) {
+      if (entities.length > 0) {
+        // 单次 UNWIND 写完整块实体与 MENTIONED_IN，替代逐实体串行往返
         await session.run(
           `
-          MERGE (entity:Entity {ownerId: $ownerId, normalizedName: $normalizedName})
-          SET entity.name = $name, entity.type = $type
+          UNWIND $entities AS row
+          MERGE (entity:Entity {ownerId: $ownerId, normalizedName: row.normalizedName})
+          SET entity.name = row.name, entity.type = row.type
           WITH entity
           MATCH (chunk:Chunk {ownerId: $ownerId, id: $chunkId})
           MERGE (entity)-[:MENTIONED_IN {ownerId: $ownerId}]->(chunk)
@@ -83,29 +106,28 @@ export class KnowledgeGraphService {
           {
             ownerId: input.ownerId,
             chunkId: input.chunkId,
-            normalizedName: entity.normalizedName,
-            name: entity.name,
-            type: entity.type,
+            entities: entities.map((entity) => ({
+              normalizedName: entity.normalizedName,
+              name: entity.name,
+              type: entity.type,
+            })),
           },
         );
       }
-      for (const relation of input.relations) {
-        const source = entitiesByName.get(normalizeName(relation.source));
-        const target = entitiesByName.get(normalizeName(relation.target));
-        if (
-          !source ||
-          !target ||
-          source.normalizedName === target.normalizedName
-        )
-          continue;
-        await this.mergeRelationship(
-          session,
-          input.ownerId,
-          input.chunkId,
-          relation.type,
-          relation.confidence,
-          source,
-          target,
+      for (const [relationType, rows] of relationsByType) {
+        await session.run(
+          `
+          UNWIND $relations AS row
+          MATCH (source:Entity {ownerId: $ownerId, normalizedName: row.sourceName})
+          MATCH (target:Entity {ownerId: $ownerId, normalizedName: row.targetName})
+          MERGE (source)-[relation:${relationType} {ownerId: $ownerId, sourceChunkId: $sourceChunkId}]->(target)
+          SET relation.confidence = row.confidence
+          `,
+          {
+            ownerId: input.ownerId,
+            sourceChunkId: input.chunkId,
+            relations: rows,
+          },
         );
       }
     } finally {
@@ -483,33 +505,9 @@ export class KnowledgeGraphService {
       await session.close();
     }
   }
-
-  private async mergeRelationship(
-    session: ReturnType<Driver['session']>,
-    ownerId: string,
-    sourceChunkId: string,
-    relationType: RelationType,
-    confidence: number,
-    source: { name: string; normalizedName: string },
-    target: { name: string; normalizedName: string },
-  ) {
-    await session.run(
-      `
-      MATCH (source:Entity {ownerId: $ownerId, normalizedName: $sourceName})
-      MATCH (target:Entity {ownerId: $ownerId, normalizedName: $targetName})
-      MERGE (source)-[relation:${relationType} {ownerId: $ownerId, sourceChunkId: $sourceChunkId}]->(target)
-      SET relation.confidence = $confidence
-      `,
-      {
-        ownerId,
-        sourceName: source.normalizedName,
-        targetName: target.normalizedName,
-        sourceChunkId,
-        confidence,
-      },
-    );
-  }
 }
+
+const RELATION_TYPE_SET = new Set<string>(RELATION_TYPES);
 
 function normalizeName(value: string): string {
   return value.trim().toLocaleLowerCase('zh-CN').replace(/\s+/g, ' ');

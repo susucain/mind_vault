@@ -107,7 +107,7 @@ describe('DocumentIngestionWorker', () => {
       {} as never,
       {
         get: jest.fn((key: string) =>
-          key === 'INGESTION_WORKER_ENABLED'
+          key === 'ingestion.workerEnabled'
             ? true
             : 'amqp://guest:guest@localhost:5672',
         ),

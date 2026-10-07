@@ -20,7 +20,12 @@ export class ModelGatewayService {
    * 流式回答需要模型直接吐 Markdown 正文，此时必须关掉 JSON 模式，
    * 否则流出来的是 JSON 片段，无法当正文渲染。
    */
-  getChatModel(kind: 'fast' | 'reasoning', thinking: boolean, json = true) {
+  getChatModel(
+    kind: 'fast' | 'reasoning',
+    thinking: boolean,
+    json = true,
+    maxTokens?: number,
+  ) {
     const model = this.getModelName(kind);
     const modelKwargs: Record<string, unknown> = {};
     if (json && !model.startsWith('codex-')) {
@@ -28,6 +33,9 @@ export class ModelGatewayService {
     }
     if (thinking) {
       modelKwargs.extra_body = { enable_thinking: true };
+    }
+    if (maxTokens !== undefined) {
+      modelKwargs.max_tokens = maxTokens;
     }
     return new ChatOpenAI({
       apiKey: this.apiKey(),
@@ -45,19 +53,20 @@ export class ModelGatewayService {
     messages: BaseMessage[],
     thinking: boolean,
     parse: (raw: unknown) => S,
-    options: { signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal; maxTokens?: number } = {},
   ): Promise<{ data: S; usage: Record<string, unknown> }> {
-    const model = this.getChatModel(kind, thinking);
+    const model = this.getChatModel(kind, thinking, true, options.maxTokens);
     // 全项目唯一的模型出口：业务层只要开了 trace，这里的调用就会挂到那条 trace 下
     const callbacks = this.langfuse.callbacks();
+    const invokeOptions =
+      callbacks.length > 0
+        ? { signal: options.signal, callbacks }
+        : { signal: options.signal };
     let lastError: unknown;
     let conversation = messages;
     // 首次调用 + 一次带错误反馈的重试
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const response = await model.invoke(
-        conversation,
-        callbacks.length > 0 ? { ...options, callbacks } : options,
-      );
+      const response = await model.invoke(conversation, invokeOptions);
       const content = textOf(response.content);
       try {
         return {
