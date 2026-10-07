@@ -47,6 +47,7 @@ export class DocumentUploadController {
       tags: dto.tags,
       remark: dto.remark,
       sourceFileName: dto.sourceFileName,
+      graphEnabled: dto.graphEnabled,
     });
   }
 

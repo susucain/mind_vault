@@ -298,7 +298,9 @@ describe('DocumentUploadService', () => {
       }),
     };
     const service = new DocumentUploadService(
-      {} as never,
+      {
+        findOne: jest.fn().mockResolvedValue({ graphEnabled: true }),
+      } as never,
       {} as never,
       jobs as never,
       {} as never,
@@ -310,6 +312,7 @@ describe('DocumentUploadService', () => {
     await expect(service.status('user_1', 'doc_1')).resolves.toMatchObject({
       status: 'EMBEDDING',
       currentStage: 'embedding',
+      graphEnabled: true,
       stageProgress: expect.objectContaining({
         completed: 4,
         total: 10,
@@ -328,5 +331,44 @@ describe('DocumentUploadService', () => {
       'doc_1',
       undefined,
     );
+  });
+
+  it('reports graph as null when the document has not enabled graph building', async () => {
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'job_1',
+        documentId: 'doc_1',
+        status: 'READY',
+        currentStage: 'ready',
+        retryCount: 0,
+        documentVersion: 1,
+      }),
+    };
+    const graphTasks = {
+      getProgress: jest.fn().mockResolvedValue({
+        status: 'NOT_STARTED',
+        completed: 0,
+        total: 0,
+        failed: 0,
+        estimatedRemainingSeconds: null,
+      }),
+    };
+    const service = new DocumentUploadService(
+      {
+        findOne: jest.fn().mockResolvedValue({ graphEnabled: false }),
+      } as never,
+      {} as never,
+      jobs as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      graphTasks as never,
+    );
+
+    await expect(service.status('user_1', 'doc_1')).resolves.toMatchObject({
+      graphEnabled: false,
+      graph: null,
+    });
+    expect(graphTasks.getProgress).not.toHaveBeenCalled();
   });
 });

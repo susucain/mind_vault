@@ -378,7 +378,18 @@ export class DocumentIngestionWorker {
         chunks.length,
         chunks.length,
       );
-      await this.graphTasks?.enqueue(chunks);
+      if (document.graphEnabled) {
+        await this.graphTasks?.enqueue(chunks);
+      } else {
+        // 未开启图谱：显式记一帧「已跳过」，让前端能区分「未启用」与「启用了但还没开始」
+        await this.updateJob(
+          job,
+          IngestionJobStatus.Ready,
+          'graph_skipped',
+          1,
+          1,
+        );
+      }
       await this.updateJob(job, IngestionJobStatus.Ready, 'ready', 1, 1, true);
       await this.documents.update(
         { id: document.id, ownerId: message.ownerId, deleted: false },

@@ -545,6 +545,7 @@ describe('DocumentIngestionWorker', () => {
           sourceFileName: 'notes.md',
           sourceFileKey: null,
           contentId: 'content_1',
+          graphEnabled: true,
         }),
         update: jest.fn().mockResolvedValue({ affected: 1 }),
       } as never,
@@ -615,6 +616,86 @@ describe('DocumentIngestionWorker', () => {
     );
     expect(index.deleteByDocument.mock.invocationCallOrder[0]).toBeLessThan(
       index.indexChunks.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('skips graph enqueue and records a graph_skipped frame when graph is not enabled', async () => {
+    const job = {
+      id: 'job_1',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      status: IngestionJobStatus.Uploaded,
+      currentStage: 'uploaded',
+      retryCount: 0,
+    };
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue(job),
+      save: jest.fn(async (entity) => entity),
+    };
+    const publisher = {
+      publishProgress: jest.fn().mockResolvedValue(undefined),
+    };
+    const graphTasks = { enqueue: jest.fn().mockResolvedValue(undefined) };
+    const worker = new DocumentIngestionWorker(
+      jobs as never,
+      {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'doc_1',
+          ownerId: 'user_1',
+          sourceFileName: 'notes.md',
+          sourceFileKey: null,
+          contentId: 'content_1',
+          graphEnabled: false,
+        }),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      } as never,
+      {
+        findOne: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({
+            sourceBytes: Buffer.from('# 标题\n正文'),
+          }),
+        }),
+        updateOne: jest.fn().mockResolvedValue({ matchedCount: 1 }),
+      } as never,
+      {
+        parseStructured: jest.fn().mockResolvedValue({
+          rawText: '# 标题\n正文',
+          sections: [],
+          assets: [],
+        }),
+      } as never,
+      { downloadBytes: jest.fn() } as never,
+      { get: jest.fn().mockReturnValue(false) } as never,
+      {
+        chunk: jest
+          .fn()
+          .mockReturnValue([
+            { chunkId: 'chunk_1', text: '标题\n正文', documentId: 'doc_1' },
+          ]),
+      } as never,
+      { embedDocuments: jest.fn().mockResolvedValue([[0.1, 0.2]]) } as never,
+      { indexChunks: jest.fn().mockResolvedValue(undefined) } as never,
+      { extract: jest.fn() } as never,
+      { indexChunk: jest.fn() } as never,
+      { find: jest.fn().mockResolvedValue([]) } as never,
+      graphTasks as never,
+      publisher as never,
+    );
+
+    await expect(
+      worker.process({
+        jobId: 'job_1',
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        documentVersion: 1,
+        operation: 'index',
+      }),
+    ).resolves.toMatchObject({ status: IngestionJobStatus.Ready });
+
+    expect(graphTasks.enqueue).not.toHaveBeenCalled();
+    expect(publisher.publishProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ stage: 'graph_skipped' }),
     );
   });
 });

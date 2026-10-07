@@ -68,7 +68,12 @@ export class DocumentUploadService {
       buffer: Buffer;
     },
     datasetId: string,
-    metadata: { tags?: string; remark?: string; sourceFileName?: string } = {},
+    metadata: {
+      tags?: string;
+      remark?: string;
+      sourceFileName?: string;
+      graphEnabled?: boolean;
+    } = {},
   ) {
     if (!file?.buffer?.length) {
       throw new BadRequestException('文件不能为空');
@@ -123,6 +128,7 @@ export class DocumentUploadService {
       status: DocumentStatus.Processing,
       wordCount: 0,
       isPublic: false,
+      graphEnabled: metadata.graphEnabled ?? false,
       deleted: false,
     });
     const savedDocument = await this.em.save(document);
@@ -164,6 +170,7 @@ export class DocumentUploadService {
       fileExtension: extension,
       fileSize: file.size,
       fileKey,
+      graphEnabled: savedDocument.graphEnabled,
       status: IngestionJobStatus.Uploaded,
     };
   }
@@ -174,11 +181,17 @@ export class DocumentUploadService {
       order: { createdAt: 'DESC' },
     });
     if (!job) throw new BadRequestException('未找到文档处理任务');
-    const graph = await this.graphTasks?.getProgress(
-      ownerId,
-      documentId,
-      job.documentVersion,
-    );
+    const document = await this.em.findOne(DocumentEntity, {
+      where: { id: documentId, ownerId, deleted: false },
+    });
+    const graphEnabled = document?.graphEnabled ?? false;
+    const graph = graphEnabled
+      ? ((await this.graphTasks?.getProgress(
+          ownerId,
+          documentId,
+          job.documentVersion,
+        )) ?? null)
+      : null;
     const stageProgress = progressOf(job);
     return {
       documentId,
@@ -189,7 +202,8 @@ export class DocumentUploadService {
       errorCode: job.errorCode,
       errorMessage: job.errorMessage,
       stageProgress,
-      graph: graph ?? null,
+      graphEnabled,
+      graph,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
     };

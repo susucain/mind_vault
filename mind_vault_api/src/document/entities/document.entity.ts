@@ -113,6 +113,10 @@ export class DocumentEntity {
   @Column({ name: 'is_public', type: 'boolean', default: false })
   isPublic: boolean;
 
+  /** 是否对该文档构建知识图谱，默认关闭，仅上传时显式开启 */
+  @Column({ name: 'graph_enabled', type: 'boolean', default: false })
+  graphEnabled: boolean;
+
   /** 创建时间 */
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

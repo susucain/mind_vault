@@ -113,13 +113,14 @@ export class DocumentCatalogService {
       items: await Promise.all(
         items.map(async (item) => {
           const job = latestJobs.get(item.id);
-          const graph = this.graphTasks
-            ? await this.graphTasks.getProgress(
-                ownerId,
-                item.id,
-                job?.documentVersion,
-              )
-            : null;
+          const graph =
+            item.graphEnabled && this.graphTasks
+              ? await this.graphTasks.getProgress(
+                  ownerId,
+                  item.id,
+                  job?.documentVersion,
+                )
+              : null;
           return {
             ...item,
             ingestionStatus: job?.status ?? null,
