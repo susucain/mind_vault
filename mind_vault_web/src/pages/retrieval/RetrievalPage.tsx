@@ -31,7 +31,6 @@ import { useGraphExploration } from '@/features/retrieval/use-graph-exploration'
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { cn } from '@/lib/utils';
 
-const DEBOUNCE_MS = 300;
 /** 与设计方案 4.5.4 一致：< 1100px 时图谱区收起为抽屉。 */
 const COMPACT_QUERY = '(max-width: 1099px)';
 
@@ -55,10 +54,10 @@ export function RetrievalPage() {
 
   const updateState = useCallback(
     (patch: Partial<RetrievalQueryState>, replace = false) => {
-      // 始终带上当前输入草稿，避免「未防抖完成就切换方式」丢失已输入内容。
-      setSearchParams(serializeRetrievalParams({ ...state, query: draft, ...patch }), { replace });
+      // 只提交显式给出的条件；检索词仅在点击检索按钮（或选择历史/实体）时才写入。
+      setSearchParams(serializeRetrievalParams({ ...state, ...patch }), { replace });
     },
-    [state, draft, setSearchParams],
+    [state, setSearchParams],
   );
 
   // URL 是查询条件的唯一真源；外部变化（前进后退、历史回填）需回写输入草稿。
@@ -66,13 +65,6 @@ export function RetrievalPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraft(state.query);
   }, [state.query]);
-
-  // 输入草稿防抖写 URL：打字不产生请求风暴，也不写检索历史。
-  useEffect(() => {
-    if (draft === state.query) return;
-    const timer = window.setTimeout(() => updateState({ query: draft }, true), DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [draft, state.query, updateState]);
 
   const datasets = useDatasets().data?.items ?? [];
   const history = useSearchHistory();
