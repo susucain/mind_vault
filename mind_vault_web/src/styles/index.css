@@ -571,6 +571,11 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .upload-controls { width: min(100%, 360px); }
 .upload-dataset-row { display: flex; align-items: center; gap: 8px; }
 .upload-dataset-row select { flex: 1; min-width: 0; }
+.upload-graph-toggle { display: flex; align-items: flex-start; gap: 8px; color: var(--mv-ink-soft); cursor: pointer; }
+.upload-graph-toggle input { margin-top: 2px; }
+.upload-graph-toggle__copy { display: grid; gap: 2px; }
+.upload-graph-toggle__copy strong { color: var(--mv-ink); font-size: 0.85rem; font-weight: 600; }
+.upload-graph-toggle__copy span { color: var(--mv-muted); font-size: 0.75rem; }
 .upload-panel--empty { border: 1px dashed var(--mv-line-strong); border-radius: 8px; background: var(--mv-canvas); }
 .upload-empty-state { padding: 28px 20px; display: grid; justify-items: center; gap: 8px; text-align: center; }
 .upload-empty-state__icon { width: 52px; height: 52px; border-radius: 12px; display: grid; place-items: center; color: var(--mv-primary); background: var(--mv-primary-soft); }

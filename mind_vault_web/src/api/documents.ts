@@ -19,6 +19,8 @@ export interface UploadDocumentInput {
   datasetId: string;
   tags?: string;
   remark?: string;
+  /** 是否为该文档构建知识图谱，默认关闭 */
+  graphEnabled?: boolean;
 }
 
 export interface UploadDocumentResult {
@@ -145,6 +147,7 @@ export async function uploadDocument(
   if (input.tags) body.append('tags', input.tags);
   if (input.remark) body.append('remark', input.remark);
   body.append('sourceFileName', file.name);
+  body.append('graphEnabled', String(input.graphEnabled ?? false));
   return request<UploadDocumentResult>('/documents/upload', { method: 'POST', body, signal: options.signal });
 }
 

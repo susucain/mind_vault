@@ -29,7 +29,7 @@ export function UploadQueue({
                 {item.status === 'uploading' && '正在上传（服务端未提供进度）'}
                 {item.status === 'queued' && '等待上传'}
                 {item.status === 'processing' && `正在处理${item.currentStage ? `：${item.currentStage}` : ''}${item.stageProgress?.total ? ` · ${item.stageProgress.completed}/${item.stageProgress.total}` : ''}`}
-                {item.status === 'ready' && '已可问答'}
+                {item.status === 'ready' && (item.graphEnabled ? '已可问答' : '已可问答（未构建图谱）')}
                 {item.status === 'cancelled' && '已取消上传'}
                 {item.status === 'failed' && `失败${item.failedStage ? `于 ${item.failedStage}` : ''}${item.errorMessage ? `：${item.errorMessage}` : ''}`}
               </span>

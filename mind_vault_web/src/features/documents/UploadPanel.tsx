@@ -20,13 +20,14 @@ export function UploadPanel({
   const inputRef = useRef<HTMLInputElement>(null);
   const [datasetId, setDatasetId] = useState('');
   const [dragging, setDragging] = useState(false);
+  const [graphEnabled, setGraphEnabled] = useState(false);
   const selectedDatasetId = datasetId || datasets[0]?.id || '';
 
   function addFiles(files: FileList | File[]) {
     if (!selectedDatasetId) return;
     const nextFiles = Array.from(files);
     if (!nextFiles.length) return;
-    enqueue(nextFiles, selectedDatasetId);
+    enqueue(nextFiles, selectedDatasetId, { graphEnabled });
     onEnqueued(selectedDatasetId);
   }
 
@@ -69,6 +70,18 @@ export function UploadPanel({
           <Button className="button--sm" onClick={onCreateDataset} variant="secondary"><FolderPlus size={14} />新建</Button>
         </div>
       </div>
+      <label className="upload-graph-toggle" htmlFor="upload-graph-enabled">
+        <input
+          checked={graphEnabled}
+          id="upload-graph-enabled"
+          onChange={(event) => setGraphEnabled(event.target.checked)}
+          type="checkbox"
+        />
+        <span className="upload-graph-toggle__copy">
+          <strong>构建知识图谱</strong>
+          <span>图谱能提升关联检索与可视化效果，但处理更慢、会额外消耗模型额度</span>
+        </span>
+      </label>
       <div
         className="drop-zone"
         data-dragging={dragging}

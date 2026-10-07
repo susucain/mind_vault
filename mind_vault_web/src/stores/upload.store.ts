@@ -12,6 +12,8 @@ export interface QueuedUpload {
   localId: string;
   file: File;
   datasetId: string;
+  /** 入队时选择的图谱开关，用于区分「已可问答」与「已可问答（未构建图谱）」 */
+  graphEnabled?: boolean;
   status: UploadQueueStatus;
   progress: number;
   documentId?: string;

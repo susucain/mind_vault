@@ -32,4 +32,21 @@ describe('UploadQueue', () => {
     expect(retry).toHaveBeenCalledWith('3');
     expect(cancel).toHaveBeenCalledWith('1');
   });
+
+  it('区分已可问答与未构建图谱的完成文案', () => {
+    render(
+      <UploadQueue
+        cancel={vi.fn()}
+        items={[
+          { localId: '1', file: new File(['a'], 'graph.md'), datasetId: 'd', graphEnabled: true, status: 'ready', progress: 100 },
+          { localId: '2', file: new File(['b'], 'plain.md'), datasetId: 'd', graphEnabled: false, status: 'ready', progress: 100 },
+        ]}
+        retry={vi.fn()}
+        stopTracking={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('已可问答')).toBeInTheDocument();
+    expect(screen.getByText('已可问答（未构建图谱）')).toBeInTheDocument();
+  });
 });

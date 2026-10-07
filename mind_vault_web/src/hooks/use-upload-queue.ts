@@ -94,7 +94,11 @@ export function useUploadQueue() {
     controllers.current.set(item.localId, controller);
     update(item.localId, { status: 'uploading', progress: 0 });
     try {
-      const response = await uploadDocument(item.file, { datasetId: item.datasetId }, { signal: controller.signal });
+      const response = await uploadDocument(
+        item.file,
+        { datasetId: item.datasetId, graphEnabled: item.graphEnabled },
+        { signal: controller.signal },
+      );
       if (controller.signal.aborted) return;
       update(item.localId, {
         status: 'processing',
@@ -121,7 +125,8 @@ export function useUploadQueue() {
       .forEach((item) => void startUpload(item));
   }, [items, startUpload]);
 
-  const enqueue = useCallback((files: File[], datasetId: string) => {
+  const enqueue = useCallback((files: File[], datasetId: string, options: { graphEnabled?: boolean } = {}) => {
+    const graphEnabled = options.graphEnabled ?? false;
     const queued: QueuedUpload[] = files.map((file) => {
       let errorMessage: string | undefined;
       if (!ALLOWED_EXTENSIONS.has(extension(file))) errorMessage = `Unsupported file type: .${extension(file) || 'none'}`;
@@ -130,6 +135,7 @@ export function useUploadQueue() {
         localId: id(),
         file,
         datasetId,
+        graphEnabled,
         status: errorMessage ? 'failed' : 'queued',
         progress: 0,
         failedStage: errorMessage ? 'validation' : undefined,

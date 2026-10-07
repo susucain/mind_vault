@@ -67,7 +67,7 @@ describe('UploadPanel', () => {
 
     await user.upload(screen.getByLabelText('选择文件'), file);
 
-    expect(enqueue).toHaveBeenCalledWith([file], 'dataset-1');
+    expect(enqueue).toHaveBeenCalledWith([file], 'dataset-1', { graphEnabled: false });
     expect(onEnqueued).toHaveBeenCalledWith('dataset-1');
   });
 
@@ -80,7 +80,18 @@ describe('UploadPanel', () => {
     await user.click(await screen.findByRole('option', { name: /算法笔记/ }));
     await user.upload(screen.getByLabelText('选择文件'), file);
 
-    expect(enqueue).toHaveBeenCalledWith([file], 'dataset-2');
+    expect(enqueue).toHaveBeenCalledWith([file], 'dataset-2', { graphEnabled: false });
     expect(onEnqueued).toHaveBeenCalledWith('dataset-2');
+  });
+
+  it('勾选构建知识图谱后按开启状态入队', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    const file = new File(['content'], 'notes.md', { type: 'text/markdown' });
+
+    await user.click(screen.getByLabelText(/构建知识图谱/));
+    await user.upload(screen.getByLabelText('选择文件'), file);
+
+    expect(enqueue).toHaveBeenCalledWith([file], 'dataset-1', { graphEnabled: true });
   });
 });
