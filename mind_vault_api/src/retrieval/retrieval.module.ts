@@ -25,6 +25,6 @@ import { RetrievalService } from './retrieval.service';
   ],
   controllers: [RetrievalController],
   providers: [RetrievalService, DocumentMetaService],
-  exports: [RetrievalService],
+  exports: [RetrievalService, DocumentMetaService],
 })
 export class RetrievalModule {}

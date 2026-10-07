@@ -26,6 +26,23 @@ export class DocumentMetaService {
     private readonly datasets: Repository<DatasetEntity>,
   ) {}
 
+  /**
+   * 批量解析文档标题。引用卡片、消息列表这类只需要「id → 标题」映射的场景直接用它，
+   * 不必先构造完整的检索命中对象。文档已删除时该 id 不出现在结果里，调用方按无标题处理。
+   */
+  async titlesOf(
+    ownerId: string,
+    documentIds: string[],
+  ): Promise<Map<string, string>> {
+    const ids = [...new Set(documentIds.filter(Boolean))];
+    if (ids.length === 0) return new Map();
+    const documents = await this.documents.find({
+      where: { id: In(ids), ownerId },
+      select: { id: true, title: true },
+    });
+    return new Map(documents.map((document) => [document.id, document.title]));
+  }
+
   async enrich(
     ownerId: string,
     hits: RetrievalHit[],
@@ -34,13 +51,8 @@ export class DocumentMetaService {
     const documentIds = [
       ...new Set(hits.map((hit) => hit.documentId).filter(Boolean)),
     ];
-    const [documents, links] = await Promise.all([
-      documentIds.length
-        ? this.documents.find({
-            where: { id: In(documentIds), ownerId },
-            select: { id: true, title: true },
-          })
-        : Promise.resolve([] as DocumentEntity[]),
+    const [titles, links] = await Promise.all([
+      this.titlesOf(ownerId, documentIds),
       documentIds.length
         ? this.datasetDocuments.find({
             where: { documentId: In(documentIds), ownerId },
@@ -48,7 +60,6 @@ export class DocumentMetaService {
         : Promise.resolve([] as DatasetDocumentEntity[]),
     ]);
 
-    const titles = new Map(documents.map((doc) => [doc.id, doc.title]));
     const datasetIdsByDocument = new Map<string, string[]>();
     for (const link of links) {
       const list = datasetIdsByDocument.get(link.documentId) ?? [];

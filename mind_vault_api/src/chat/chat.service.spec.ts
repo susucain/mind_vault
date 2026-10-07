@@ -57,6 +57,15 @@ function buildService(input: {
   const datasets = {
     find: jest.fn().mockResolvedValue([]),
   };
+  const citations = {
+    find: jest.fn().mockResolvedValue([] as unknown[]),
+    create: jest.fn((entity) => entity),
+    save: jest.fn(async (entity) => ({ ...entity })),
+  };
+  // 文档名在读取时批量解析，默认无命中标题（文档已删除的情形）
+  const documentMeta = {
+    titlesOf: jest.fn().mockResolvedValue(new Map<string, string>()),
+  };
   const agent = {
     invoke: jest.fn().mockResolvedValue({
       answer: '答案',
@@ -75,10 +84,11 @@ function buildService(input: {
   const service = new ChatService(
     conversations as never,
     messages as never,
-    {} as never,
+    citations as never,
     agent as never,
     memories as never,
     datasets as never,
+    documentMeta as never,
   );
   return {
     service,
@@ -87,6 +97,8 @@ function buildService(input: {
     messages,
     conversations,
     datasets,
+    citations,
+    documentMeta,
     agent,
     memories,
   };
@@ -362,6 +374,95 @@ describe('ChatService', () => {
         Array.from({ length: 21 }, (_, index) => `dataset_${index}`),
       ),
     ).rejects.toThrow('资料集范围最多包含 20 个资料集');
+  });
+
+  it('resolves document names for stored citations when listing messages', async () => {
+    const { service, citations, documentMeta } = buildService({
+      messageCount: 2,
+    });
+    citations.find.mockResolvedValue([
+      {
+        id: 'citation_1',
+        messageId: 'message_1',
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        chunkId: 'chunk_1',
+        quote: '片段',
+        locator: { page: 1 },
+        rank: 0,
+      },
+    ]);
+    documentMeta.titlesOf.mockResolvedValue(
+      new Map([['doc_1', '系统设计手册']]),
+    );
+
+    const { items } = await service.listMessages('user_1', 'conversation_1');
+
+    expect(documentMeta.titlesOf).toHaveBeenCalledWith('user_1', ['doc_1']);
+    expect(items[1].citations).toEqual([
+      expect.objectContaining({
+        id: 'citation_1',
+        documentName: '系统设计手册',
+      }),
+    ]);
+  });
+
+  it('leaves the document name empty when the document no longer exists', async () => {
+    const { service, citations } = buildService({ messageCount: 2 });
+    citations.find.mockResolvedValue([
+      {
+        id: 'citation_1',
+        messageId: 'message_1',
+        ownerId: 'user_1',
+        documentId: 'doc_deleted',
+        chunkId: 'chunk_1',
+        quote: '片段',
+        locator: { page: 1 },
+        rank: 0,
+      },
+    ]);
+
+    const { items } = await service.listMessages('user_1', 'conversation_1');
+
+    expect(items[1].citations).toEqual([
+      expect.objectContaining({ documentId: 'doc_deleted', documentName: '' }),
+    ]);
+  });
+
+  it('attaches document names to the citations returned by ask', async () => {
+    const { service, agent, documentMeta } = buildService({ messageCount: 0 });
+    agent.invoke.mockResolvedValue({
+      answer: '答案',
+      usedTools: ['keyword'],
+      thinking: false,
+      citedChunkIds: ['chunk_1'],
+      hits: [
+        {
+          chunkId: 'chunk_1',
+          documentId: 'doc_1',
+          text: '命中片段内容',
+          parentContext: '',
+          locator: { page: 1 },
+          titlePath: [],
+          datasetIds: ['dataset_1'],
+          score: 1,
+          sources: ['keyword'],
+        },
+      ],
+      answerMode: 'rag',
+    });
+    documentMeta.titlesOf.mockResolvedValue(
+      new Map([['doc_1', '系统设计手册']]),
+    );
+
+    const result = await service.ask('user_1', 'conversation_1', '问题');
+
+    expect(result.citations).toEqual([
+      expect.objectContaining({
+        documentId: 'doc_1',
+        documentName: '系统设计手册',
+      }),
+    ]);
   });
 
   it('handles an explicit memory request without invoking the RAG agent', async () => {

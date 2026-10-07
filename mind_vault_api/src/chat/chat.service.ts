@@ -10,12 +10,21 @@ import { nextSnowflakeId } from '../common/snowflake-id';
 import { MemoryService } from '../memory/memory.service';
 import type { ExplicitMemoryResult } from '../memory/memory.types';
 import { DatasetEntity } from '../dataset/entities/dataset.entity';
+import { DocumentMetaService } from '../retrieval/document-meta.service';
 import { RagAgentService } from './agent/rag-agent.service';
 import { HistoryTurn, historyWindow, RagState } from './agent/rag-types';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ChatCitationEntity } from './entities/citation.entity';
 import { ConversationEntity } from './entities/conversation.entity';
 import { ChatMessageEntity } from './entities/chat-message.entity';
+
+/**
+ * 引用项视图：实体字段原样透传，另带展示用的文档名。
+ * 文档名在读取时按 documentId 解析（不落库），因此文档改名或历史存量数据都能显示正确名称。
+ */
+export interface ChatCitationView extends ChatCitationEntity {
+  documentName: string;
+}
 
 @Injectable()
 export class ChatService {
@@ -32,6 +41,7 @@ export class ChatService {
     private readonly memories: MemoryService,
     @InjectRepository(DatasetEntity)
     private readonly datasets: Repository<DatasetEntity>,
+    private readonly documentMeta: DocumentMetaService,
   ) {}
 
   async updateDatasetScope(
@@ -120,14 +130,32 @@ export class ChatService {
           order: { rank: 'ASC' },
         })
       : [];
+    // 存量 citation 未存文档名，这里统一按 documentId 批量解析，历史会话也能显示名称
+    const citationViews = await this.withDocumentNames(ownerId, citations);
     return {
       items: messages.map((message) => ({
         ...message,
-        citations: citations.filter(
+        citations: citationViews.filter(
           (citation) => citation.messageId === message.id,
         ),
       })),
     };
+  }
+
+  /** 批量补上展示用文档名；文档已删除时留空串，由前端显示中性占位 */
+  private async withDocumentNames(
+    ownerId: string,
+    citations: ChatCitationEntity[],
+  ): Promise<ChatCitationView[]> {
+    if (citations.length === 0) return [];
+    const titles = await this.documentMeta.titlesOf(
+      ownerId,
+      citations.map((citation) => citation.documentId),
+    );
+    return citations.map((citation) => ({
+      ...citation,
+      documentName: titles.get(citation.documentId) ?? '',
+    }));
   }
 
   async ask(
@@ -291,7 +319,7 @@ export class ChatService {
     return {
       userMessage,
       message,
-      citations,
+      citations: await this.withDocumentNames(ownerId, citations),
       answerMode: result.answerMode,
       memoryAction,
     };

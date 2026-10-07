@@ -69,7 +69,8 @@ function resultCitations(result: unknown): Citation[] {
       .filter((item): item is Citation & { quote?: string } => Boolean(item && typeof item === 'object' && 'id' in item))
       .map((citation) => ({
         ...citation,
-        documentName: citation.documentName || citation.documentId,
+        // 文档名由后端解析下发；缺失时留空，由卡片显示中性占位而不是 ID
+        documentName: citation.documentName ?? '',
         excerpt: citation.excerpt || citation.quote || '',
       }))
     : [];

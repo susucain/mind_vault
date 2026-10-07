@@ -51,7 +51,8 @@ function normalizeMessage(message: BackendMessage): ChatMessage {
     ...message,
     citations: (message.citations ?? []).map((citation) => ({
       ...citation,
-      documentName: citation.documentName || citation.documentId,
+      // 文档名由后端按 documentId 解析下发；缺失时不回退成 ID，由卡片显示中性占位
+      documentName: citation.documentName ?? '',
       excerpt: citation.excerpt || citation.quote || '',
     })),
   };

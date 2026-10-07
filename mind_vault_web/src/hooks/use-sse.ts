@@ -41,7 +41,7 @@ function normalize(eventName: string, payload: unknown): StreamEvent | undefined
         type: 'citation',
         citation: {
           ...(payload as Citation & { quote?: string }),
-          documentName: String(data.documentName ?? data.documentId ?? ''),
+          documentName: String(data.documentName ?? ''),
           excerpt: String(data.excerpt ?? data.quote ?? ''),
         },
       };
