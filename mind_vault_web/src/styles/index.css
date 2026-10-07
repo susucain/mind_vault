@@ -806,6 +806,13 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .markdown-viewer pre { overflow-x: auto; border-radius: 5px; padding: 12px; color: var(--mv-code-fg); background: var(--mv-code-bg); }
 .markdown-viewer code { border-radius: 3px; padding: 2px 4px; background: var(--mv-code-inline-bg); font-size: .88em; }
 .markdown-viewer pre code { padding: 0; background: transparent; }
+/* 表格用块级 + 横向滚动，避免宽表把消息气泡撑破；单元格内长词强制断行 */
+.markdown-viewer table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: .9em; }
+.markdown-viewer th, .markdown-viewer td { border: 1px solid var(--mv-line); padding: 6px 9px; text-align: left; }
+.markdown-viewer th { background: var(--mv-canvas); font-weight: 650; }
+.markdown-viewer a { color: var(--mv-blue); }
+.markdown-viewer blockquote { margin: .8em 0; border-left: 3px solid var(--mv-line-strong); padding: 2px 0 2px 12px; color: var(--mv-muted-strong); }
+.markdown-viewer img { max-width: 100%; height: auto; }
 /* 轮次内联引用 */
 .message-citations { margin-top: 4px; border-top: 1px dashed var(--mv-line-strong); padding-top: 12px; display: grid; gap: 9px; }
 .message-citations__title { margin: 0; display: flex; align-items: center; gap: 6px; color: var(--mv-muted); font-size: .72rem; font-weight: 700; }
@@ -1179,7 +1186,17 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
   .chat-scope-trigger { max-width: none; }
   .chat-scope-trigger__label { max-width: 116px; }
   .chat-scroll { padding: 20px 16px 12px; }
+  /* 触控目标放大到 44px（仅窄屏，桌面保持 34px 的紧凑密度） */
+  .icon-button { width: 44px; height: 44px; }
+  .chat-history-item { min-height: 44px; }
+  .message-actions button { min-height: 44px; }
+  /* 推荐问题窄屏横向滚动，不折行挤压输入框 */
+  .prompt-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .prompt-chips::-webkit-scrollbar { display: none; }
+  .prompt-chips button { flex: 0 0 auto; min-height: 36px; }
   .chat-composer-wrap { width: 100%; padding: 0 12px max(10px, env(safe-area-inset-bottom)); }
+  /* 底部抽屉滚动区避开手势条 */
+  .drawer-content[data-side="bottom"] { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
   .chat-composer-hint { display: none; }
   .drawer-content .chat-history { height: min(72vh, 560px); height: min(72dvh, 560px); padding: 0; border: 0; background: transparent; }
   .message-list { gap: 22px; }

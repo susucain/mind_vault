@@ -56,6 +56,23 @@ describe('ChatPage', () => {
     expect(screen.getByRole('button', { name: '资料集范围：全部资料集' })).toBeInTheDocument();
   });
 
+  it('sends on Enter and keeps Shift+Enter for a newline', async () => {
+    const user = userEvent.setup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(chatWorkspace(client));
+
+    const composer = await screen.findByRole('textbox', { name: '输入问题' });
+    await user.type(composer, '第一行');
+    await user.keyboard('{Shift>}{Enter}{/Shift}');
+    // Shift+Enter 只换行，不触发发送
+    expect(sseMock.start).not.toHaveBeenCalled();
+    expect(composer).toHaveValue('第一行\n');
+
+    await user.type(composer, '第二行{Enter}');
+    await waitFor(() => expect(sseMock.start).toHaveBeenCalledTimes(1));
+    expect(sseMock.start.mock.calls[0]?.[1]?.init?.body).toEqual({ content: '第一行\n第二行' });
+  });
+
   it('shows a retryable error when creating a conversation fails', async () => {
     vi.mocked(createConversation).mockRejectedValueOnce(new Error('创建失败'));
     const user = userEvent.setup();

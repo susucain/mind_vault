@@ -126,6 +126,27 @@ describe('useSse', () => {
     });
   });
 
+  it('merges same-frame tokens into one event and flushes before done', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      streamResponse([
+        'event: token\ndata: {"text":"he"}\n\nevent: token\ndata: {"text":"llo"}\n\nevent: done\ndata: {}\n\n',
+      ]),
+    );
+    const onEvent = vi.fn();
+    const { result } = renderHook(() => useSse());
+
+    await act(async () => {
+      await result.current.start('/stream', { onEvent });
+    });
+
+    // 逐 token 派发会让消息树每收一个 token 重排一次，合并到一帧内只派发一次
+    expect(onEvent.mock.calls.map(([event]) => event).filter((event) => event.type === 'token')).toEqual([
+      { type: 'token', content: 'hello' },
+    ]);
+    const order = onEvent.mock.calls.map(([event]) => event.type);
+    expect(order.indexOf('token')).toBeLessThan(order.indexOf('done'));
+  });
+
   it('parses events split across chunks', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       streamResponse(['event: token\ndata: {"text":"hel', 'lo"}\n\n']),

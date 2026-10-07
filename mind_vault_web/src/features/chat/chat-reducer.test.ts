@@ -12,6 +12,32 @@ const user = (conversationId: string, content = '问题', id = 'u1'): ChatMessag
 });
 
 describe('chatReducer', () => {
+  it('keeps at most five cached conversations, evicting the least recently written', () => {
+    let state = initialChatState();
+    for (const id of ['c1', 'c2', 'c3', 'c4', 'c5', 'c6']) {
+      state = chatReducer(state, { type: 'begin', conversationId: id, user: user(id) });
+      state = chatReducer(state, { type: 'discard' });
+    }
+
+    // 访问过的会话多了以后，只保留最近 5 个，最旧的 c1 被淘汰
+    expect(Object.keys(state.byConversation)).toEqual(['c2', 'c3', 'c4', 'c5', 'c6']);
+    expect(messagesOf(state, 'c1')).toEqual([]);
+    expect(messagesOf(state, 'c6')).toHaveLength(1);
+  });
+
+  it('promotes a re-visited conversation so it is not evicted next', () => {
+    let state = initialChatState();
+    for (const id of ['c1', 'c2', 'c3', 'c4', 'c5']) {
+      state = chatReducer(state, { type: 'begin', conversationId: id, user: user(id) });
+      state = chatReducer(state, { type: 'discard' });
+    }
+    // 重新写入 c1 后它变成最近使用，再接入 c6 时被淘汰的是 c2
+    state = chatReducer(state, { type: 'history', conversationId: 'c1', messages: [user('c1', '旧问题')] });
+    state = chatReducer(state, { type: 'begin', conversationId: 'c6', user: user('c6') });
+
+    expect(Object.keys(state.byConversation)).toEqual(['c3', 'c4', 'c5', 'c1', 'c6']);
+  });
+
   it('keeps streamed tokens and citations through settle', () => {
     let state = chatReducer(initialChatState(), { type: 'begin', conversationId: 'c1', user: user('c1') });
     state = chatReducer(state, { type: 'event', conversationId: 'c1', event: { type: 'message_start', messageId: 'm1' } });

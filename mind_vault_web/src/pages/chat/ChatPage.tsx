@@ -206,7 +206,8 @@ function MessageBubble({ message }: { message: BubbleModel }) {
     <article className={`message-bubble message-bubble--${message.role}`}>
       <div className="message-bubble__avatar">{isUser ? '我' : <Bot size={17} />}</div>
       <div className="message-bubble__body">
-        {isUser ? null : <span className="message-bubble__role">Mind Vault {message.streaming ? <StatusBadge tone="warning">{stageLabel(message.stage)}</StatusBadge> : null}</span>}
+        {/* 播报范围只圈住阶段徽标：若把流式正文放进 live region，会逐字播报，反而不可用 */}
+        {isUser ? null : <span className="message-bubble__role">Mind Vault {message.streaming ? <span aria-live="polite" role="status"><StatusBadge tone="warning">{stageLabel(message.stage)}</StatusBadge></span> : null}</span>}
         {isUser ? <p>{message.content}</p> : <><MarkdownViewer content={message.content} isAnimating={message.streaming} /><MessageCitations citations={message.citations} /></>}
         {message.error ? <p className="form-error">{message.error}</p> : null}
         <div className="message-actions">
@@ -462,7 +463,21 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
         <div className="chat-composer-wrap">
           <div className="prompt-chips">{promptChips.map((prompt) => <button key={prompt} onClick={() => insertPrompt(prompt)} type="button">{prompt}</button>)}</div>
           <form className="chat-composer" onSubmit={(event) => void sendMessage(event)}>
-            <textarea aria-label="输入问题" onChange={(event) => setInput(event.target.value)} placeholder="询问你的资料…" ref={composerRef} rows={2} value={input} />
+            <textarea
+              aria-label="输入问题"
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => {
+                // Enter 发送、Shift+Enter 换行；输入法组合中的回车是在选词，不能当发送
+                if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+                if (busy || !input.trim()) return;
+                event.preventDefault();
+                void sendMessage();
+              }}
+              placeholder="询问你的资料…"
+              ref={composerRef}
+              rows={2}
+              value={input}
+            />
             {busy ? <Button aria-label="停止生成" onClick={() => { sse.abort(); dispatch({ type: 'interrupted' }); }} type="button" variant="secondary"><Pause size={17} /></Button> : <Button aria-label="发送问题" disabled={!input.trim() || create.isPending} type="submit"><Send size={17} /></Button>}
           </form>
           <p className="chat-composer-hint">回答由资料范围生成，请核对引用原文。</p>

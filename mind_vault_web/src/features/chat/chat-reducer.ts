@@ -56,6 +56,26 @@ export function draftOf(state: ChatState, conversationId?: string): ChatDraft | 
   return state.draft && state.draft.conversationId === conversationId ? state.draft : undefined;
 }
 
+/**
+ * 按会话缓存上限：切一次会话就多留一份消息，长期浏览会持续涨。
+ * 超出按「最近写入」淘汰最旧的一份（对象键序即插入序，重新赋值会排到末尾）。
+ */
+const MAX_CACHED_CONVERSATIONS = 5;
+
+function cacheFor(
+  byConversation: Record<string, ChatMessage[]>,
+  conversationId: string,
+  messages: ChatMessage[],
+): Record<string, ChatMessage[]> {
+  const rest = { ...byConversation };
+  delete rest[conversationId];
+  const ids = [...Object.keys(rest), conversationId];
+  const kept = ids.slice(Math.max(0, ids.length - MAX_CACHED_CONVERSATIONS));
+  const next: Record<string, ChatMessage[]> = {};
+  for (const id of kept) next[id] = id === conversationId ? messages : rest[id] ?? [];
+  return next;
+}
+
 function createDraft(conversationId: string): ChatDraft {
   return {
     id: `draft-${Date.now()}`,
@@ -128,7 +148,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       const messages = alignIds(previous, action.messages);
       return {
         ...state,
-        byConversation: { ...state.byConversation, [action.conversationId]: messages },
+        byConversation: cacheFor(state.byConversation, action.conversationId, messages),
         status: messages.length ? 'done' : 'idle',
         error: undefined,
       };
@@ -136,13 +156,10 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'begin':
       return {
         ...state,
-        byConversation: {
-          ...state.byConversation,
-          [action.conversationId]: [
-            ...(state.byConversation[action.conversationId] ?? []),
-            action.user,
-          ],
-        },
+        byConversation: cacheFor(state.byConversation, action.conversationId, [
+          ...(state.byConversation[action.conversationId] ?? []),
+          action.user,
+        ]),
         draft: createDraft(action.conversationId),
         status: 'loading',
         error: undefined,
@@ -167,10 +184,10 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
       return {
         ...state,
-        byConversation: {
-          ...state.byConversation,
-          [draft.conversationId]: [...(state.byConversation[draft.conversationId] ?? []), settled],
-        },
+        byConversation: cacheFor(state.byConversation, draft.conversationId, [
+          ...(state.byConversation[draft.conversationId] ?? []),
+          settled,
+        ]),
         draft: undefined,
         status: 'done',
         backendStage: 'done',

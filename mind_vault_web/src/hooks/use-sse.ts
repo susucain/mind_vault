@@ -76,6 +76,16 @@ function stageStatus(stage: string): Extract<StreamEvent, { type: 'status' }>['s
   return 'backend';
 }
 
+/** 非浏览器环境（SSR 与部分测试环境）没有 rAF，退化为 16ms 定时器 */
+const scheduleFrame: (callback: () => void) => number =
+  typeof requestAnimationFrame === 'function'
+    ? (callback) => requestAnimationFrame(callback)
+    : (callback) => window.setTimeout(callback, 16);
+const cancelFrame: (handle: number) => void =
+  typeof cancelAnimationFrame === 'function'
+    ? (handle) => cancelAnimationFrame(handle)
+    : (handle) => window.clearTimeout(handle);
+
 export function useSse() {
   const controllerRef = useRef<AbortController | undefined>(undefined);
   const [status, setStatus] = useState<SseStatus>('idle');
@@ -91,6 +101,21 @@ export function useSse() {
     controllerRef.current = controller;
     setStatus('streaming');
     setError(undefined);
+
+    // 流式增量按动画帧合并：逐 token 直接派发会让消息树每收一个 token 就重排一次，
+    // 合并到一帧内只渲染一次。非 token 事件（stage/done/error）前先冲刷，保证顺序不乱。
+    let tokenBuffer = '';
+    let frameHandle: number | undefined;
+    const flushTokens = () => {
+      if (frameHandle !== undefined) {
+        cancelFrame(frameHandle);
+        frameHandle = undefined;
+      }
+      if (!tokenBuffer) return;
+      const content = tokenBuffer;
+      tokenBuffer = '';
+      options.onEvent({ type: 'token', content });
+    };
 
     try {
       const built = buildRequest(path, { ...options.init, signal: controller.signal });
@@ -123,18 +148,24 @@ export function useSse() {
             continue;
           }
           if (rawData === '[DONE]') {
+            flushTokens();
             options.onEvent({ type: 'done', messageId: '' });
             stopped = true;
             break;
           }
           try {
             const event = normalize(eventName, JSON.parse(rawData));
-            if (event) {
-              options.onEvent(event);
-              if (event.type === 'done') {
-                stopped = true;
-                break;
-              }
+            if (!event) continue;
+            if (event.type === 'token') {
+              tokenBuffer += event.content;
+              frameHandle ??= scheduleFrame(flushTokens);
+              continue;
+            }
+            flushTokens();
+            options.onEvent(event);
+            if (event.type === 'done') {
+              stopped = true;
+              break;
             }
           } catch {
             const malformed = { type: 'error', code: 'MALFORMED_SSE', message: 'Malformed SSE JSON payload' } as const;
@@ -169,6 +200,8 @@ export function useSse() {
       options.onEvent(streamError);
       setStatus('error');
     } finally {
+      // 收尾兜底：流正常结束、中断或报错时都先把帧内缓冲的增量交出去，不让最后的字符丢掉
+      flushTokens();
       if (controllerRef.current === controller) controllerRef.current = undefined;
     }
   }, []);
