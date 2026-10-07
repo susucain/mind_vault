@@ -24,6 +24,10 @@ export class ChatMessageEntity {
   @Column({ name: 'used_tools_json', type: 'jsonb', default: () => "'[]'" })
   usedTools: string[];
 
+  /** 追问推荐（仅助手消息）：每轮回答后生成，供前端渲染可点的后续问题 */
+  @Column({ name: 'suggestions_json', type: 'jsonb', default: () => "'[]'" })
+  suggestions: string[];
+
   @Column({ type: 'varchar', nullable: true })
   model?: string | null;
 

@@ -5,14 +5,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
 import { Brackets, Repository } from 'typeorm';
 import { nextSnowflakeId } from '../common/snowflake-id';
 import { MemoryService } from '../memory/memory.service';
 import type { ExplicitMemoryResult } from '../memory/memory.types';
 import { DatasetEntity } from '../dataset/entities/dataset.entity';
 import { DocumentMetaService } from '../retrieval/document-meta.service';
+import { RetrievalHit } from '../retrieval/retrieval-hit';
 import { RagAgentService } from './agent/rag-agent.service';
-import { HistoryTurn, historyWindow, RagState } from './agent/rag-types';
+import { HistoryTurn, historyWindow, RagState, suggestionCount } from './agent/rag-types';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ChatCitationEntity } from './entities/citation.entity';
 import { ConversationEntity } from './entities/conversation.entity';
@@ -42,6 +44,7 @@ export class ChatService {
     @InjectRepository(DatasetEntity)
     private readonly datasets: Repository<DatasetEntity>,
     private readonly documentMeta: DocumentMetaService,
+    private readonly config: ConfigService,
   ) {}
 
   async updateConversation(
@@ -294,11 +297,21 @@ export class ChatService {
       throw error;
     }
     // 成功：更新同一行，把答案与元信息补齐
-    assistantMessage.content =
-      result.answer ?? '当前资料范围内没有足够证据回答这个问题。';
+    const answer = result.answer ?? '当前资料范围内没有足够证据回答这个问题。';
+    // 追问推荐是「回答之外」的附加产物：失败、超时、条数不足都不影响主流程落库
+    const suggestions = await this.buildSuggestions(
+      ownerId,
+      conversationId,
+      question,
+      answer,
+      result.hits,
+      options,
+    );
+    assistantMessage.content = answer;
     assistantMessage.usedTools = result.usedTools;
     assistantMessage.model = result.model;
     assistantMessage.thinking = result.thinking;
+    assistantMessage.suggestions = suggestions;
     assistantMessage.status = 'COMPLETED';
     const message = await this.messages.save(assistantMessage);
     const hits = new Map(result.hits.map((hit) => [hit.chunkId, hit]));
@@ -327,9 +340,60 @@ export class ChatService {
       userMessage,
       message,
       citations: await this.withDocumentNames(ownerId, citations),
+      suggestions,
       answerMode: result.answerMode,
       memoryAction,
     };
+  }
+
+  /**
+   * 追问推荐：回答完成后追加一次轻量调用，产出 3 条后续问题。
+   * 这是「回答之外」的附加产物，所以开关关闭、超时、模型失败、条数不足
+   * 一律返回空数组，由前端回落静态引导——绝不因为它影响主回答的落库与下发。
+   */
+  private async buildSuggestions(
+    ownerId: string,
+    conversationId: string,
+    question: string,
+    answer: string,
+    hits: RetrievalHit[],
+    options: { signal?: AbortSignal; emitStage?: (stage: string) => void },
+  ): Promise<string[]> {
+    if (!this.config.get<boolean>('chat.followupSuggestionsEnabled')) return [];
+    const timeoutMs = this.config.get<number>('chat.followupTimeoutMs') ?? 3000;
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(new Error('追问推荐超时')),
+      timeoutMs,
+    );
+    // 主请求被取消时同步取消，避免用户已经离开还在烧模型调用
+    const forwardAbort = () => controller.abort(options.signal?.reason);
+    options.signal?.addEventListener('abort', forwardAbort, { once: true });
+    try {
+      // 先补一个阶段文案，尾部等待期间界面才有反馈
+      options.emitStage?.('suggest');
+      const titles = await this.documentMeta.titlesOf(
+        ownerId,
+        hits.map((hit) => hit.documentId),
+      );
+      const items = await this.agent.suggestFollowups(
+        { question, answer, documentNames: [...new Set(titles.values())] },
+        { signal: controller.signal, sessionId: conversationId },
+      );
+      if (items.length < suggestionCount) {
+        this.logger.warn(`追问推荐条数不足，回落静态引导: ${items.length}`);
+        return [];
+      }
+      return items;
+    } catch (error) {
+      this.logger.warn(
+        `追问推荐失败，回落静态引导: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return [];
+    } finally {
+      clearTimeout(timer);
+      options.signal?.removeEventListener('abort', forwardAbort);
+    }
   }
 
   /**

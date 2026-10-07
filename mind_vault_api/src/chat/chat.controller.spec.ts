@@ -64,6 +64,7 @@ describe('ChatController.stream', () => {
         },
         answerMode: 'rag',
         citations: [],
+        suggestions: [],
       });
     };
     const chat = { ask: jest.fn(answer) };
@@ -107,6 +108,7 @@ describe('ChatController.stream', () => {
             rank: 0,
           },
         ],
+        suggestions: [],
       }),
     };
     const controller = new ChatController(chat as never);
@@ -124,6 +126,59 @@ describe('ChatController.stream', () => {
       'done',
     ]);
     expect(events[1]).toContain('"documentName":"系统设计手册"');
+  });
+
+  it('emits the follow-up suggestions between citations and done', async () => {
+    const { response, events } = buildResponse();
+    const chat = {
+      ask: jest.fn().mockResolvedValue({
+        message: { id: 'm1' },
+        answerMode: 'rag',
+        citations: [],
+        suggestions: ['那它的缺点呢', '还有别的方案吗', '怎么落地'],
+      }),
+    };
+    const controller = new ChatController(chat as never);
+
+    await controller.stream(
+      { id: 'u1' },
+      'c1',
+      { content: 'question' },
+      response as never,
+    );
+
+    expect(events.map((event) => event.match(/^event: (\w+)/)?.[1])).toEqual([
+      'stage',
+      'suggestions',
+      'done',
+    ]);
+    expect(events[1]).toContain('"items":["那它的缺点呢"');
+  });
+
+  it('keeps the stream silent about suggestions when the switch is off', async () => {
+    const { response, events } = buildResponse();
+    const chat = {
+      ask: jest.fn().mockResolvedValue({
+        message: { id: 'm1' },
+        answerMode: 'rag',
+        citations: [],
+        suggestions: [],
+      }),
+    };
+    const controller = new ChatController(chat as never);
+
+    await controller.stream(
+      { id: 'u1' },
+      'c1',
+      { content: 'question' },
+      response as never,
+    );
+
+    // 不下发空数组，前端直接按静态引导渲染
+    expect(events.map((event) => event.match(/^event: (\w+)/)?.[1])).toEqual([
+      'stage',
+      'done',
+    ]);
   });
 });
 

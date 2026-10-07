@@ -21,6 +21,19 @@ export const summarySchema = z.object({
   summary: z.string().catch(''),
 });
 
+// 不设 catch：输出不成形时让 invokeJson 带上错误反馈重试一次，
+// 真的失败再由调用方回落到静态引导。
+export const suggestionsSchema = z.object({
+  items: z.array(z.string().min(1)).max(6),
+});
+
+/** 追问推荐的输入：只用「本轮问题 + 回答正文 + 命中文档名」，不塞证据全文 */
+export interface FollowupInput {
+  question: string;
+  answer: string;
+  documentNames: string[];
+}
+
 /**
  * rag      基于资料回答
  * general  通用知识回答：资料无依据时自动补答（正文自带来源提示行，不产出引用）
@@ -45,6 +58,13 @@ export const historyWindow = {
   maxChars: 2000,
   summarizeBatch: 4,
 };
+
+/**
+ * 追问推荐条数：前端固定展示这么多条。
+ * 模型给多了截断；给少了整体丢弃，由前端回落静态通用引导——
+ * 半套推荐问题会让「点哪条」这件事变得不可预期。
+ */
+export const suggestionCount = 3;
 
 export interface RagState {
   ownerId: string;

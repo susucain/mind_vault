@@ -106,6 +106,20 @@ describe('chatReducer', () => {
     expect(messagesOf(next, 'c1')).toHaveLength(2);
   });
 
+  it('carries the follow-up suggestions from the stream into the settled message', () => {
+    let state = chatReducer(initialChatState(), { type: 'begin', conversationId: 'c1', user: user('c1') });
+    state = chatReducer(state, { type: 'event', conversationId: 'c1', event: { type: 'message_start', messageId: 'm1' } });
+    state = chatReducer(state, { type: 'event', conversationId: 'c1', event: { type: 'token', content: '答案' } });
+    state = chatReducer(state, { type: 'event', conversationId: 'c1', event: { type: 'suggestions', items: ['那它的缺点呢', '还有别的方案吗', '怎么落地'] } });
+
+    expect(draftOf(state, 'c1')?.suggestions).toEqual(['那它的缺点呢', '还有别的方案吗', '怎么落地']);
+
+    state = chatReducer(state, { type: 'event', conversationId: 'c1', event: { type: 'done', messageId: 'm1' } });
+    state = chatReducer(state, { type: 'settle' });
+
+    expect(messagesOf(state, 'c1').at(-1)?.suggestions).toEqual(['那它的缺点呢', '还有别的方案吗', '怎么落地']);
+  });
+
   it('drops the draft when starting a new conversation', () => {
     let state = chatReducer(initialChatState(), { type: 'begin', conversationId: 'c1', user: user('c1') });
     state = chatReducer(state, { type: 'discard' });

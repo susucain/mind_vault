@@ -4,7 +4,7 @@ import { RetrievalHit } from '../../retrieval/retrieval-hit';
 import { MemoryService } from '../../memory/memory.service';
 import { LangfuseService } from '../../observability/langfuse.service';
 import { RagModelService } from './rag-model.service';
-import { AnswerMode, HistoryTurn, historyWindow, RagState } from './rag-types';
+import { AnswerMode, FollowupInput, HistoryTurn, historyWindow, RagState, suggestionCount } from './rag-types';
 
 export type RagStage =
   'rewrite' | 'recall' | 'classify' | 'gate' | 'retrieve' | 'answer';
@@ -165,6 +165,35 @@ export class RagAgentService {
         output: (summary) => ({ summaryChars: summary.length }),
       },
       () => this.models.summarize(input, options),
+    );
+  }
+
+  /**
+   * 追问推荐：回答完成后追加的一次独立调用，产出 3 条可点的后续问题。
+   * 单独记一条 trace（runName = chat.suggest-followups），
+   * 便于把这部分成本与质量跟主问答链路分开观测。
+   */
+  suggestFollowups(
+    input: FollowupInput,
+    options: { signal?: AbortSignal; sessionId?: string } = {},
+  ): Promise<string[]> {
+    const { sessionId, ...runOptions } = options;
+    return this.langfuse.trace(
+      {
+        name: 'chat.suggest-followups',
+        tags: ['chat', 'suggest'],
+        sessionId,
+        input: {
+          question: input.question,
+          answerChars: input.answer.length,
+          documents: input.documentNames.length,
+        },
+        output: (items) => ({ items }),
+      },
+      async () => {
+        const items = await this.models.suggestFollowups(input, runOptions);
+        return items.slice(0, suggestionCount);
+      },
     );
   }
 

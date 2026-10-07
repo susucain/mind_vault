@@ -96,6 +96,8 @@ export interface ChatMessage {
   role: ChatMessageRole;
   content: string;
   citations: Citation[];
+  /** 追问推荐（仅助手消息）：本轮回答后生成，空数组表示回落到静态通用引导 */
+  suggestions?: string[];
   createdAt: string;
 }
 

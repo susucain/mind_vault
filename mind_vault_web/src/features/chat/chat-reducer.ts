@@ -9,6 +9,7 @@ export interface ChatDraft {
   role: 'assistant';
   content: string;
   citations: Citation[];
+  suggestions: string[];
   createdAt: string;
   tokens: number;
   status: ChatStatus;
@@ -62,6 +63,7 @@ function createDraft(conversationId: string): ChatDraft {
     role: 'assistant',
     content: '',
     citations: [],
+    suggestions: [],
     createdAt: new Date().toISOString(),
     tokens: 0,
     status: 'loading',
@@ -160,6 +162,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         role: 'assistant',
         content: draft.content,
         citations: draft.citations,
+        suggestions: draft.suggestions,
         createdAt: draft.createdAt,
       };
       return {
@@ -187,6 +190,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       if (event.type === 'message_start') return { ...state, status: 'streaming', draft: { ...draft, id: event.messageId || draft.id, meta: event.meta } };
       if (event.type === 'token') return { ...state, status: 'streaming', draft: { ...draft, content: draft.content + event.content, tokens: draft.tokens + event.content.length, status: 'streaming' } };
       if (event.type === 'citation') return { ...state, draft: { ...draft, citations: draft.citations.some((item) => item.id === event.citation.id) ? draft.citations : [...draft.citations, event.citation] } };
+      if (event.type === 'suggestions') return { ...state, draft: { ...draft, suggestions: event.items } };
       if (event.type === 'status') return { ...state, status: event.status === 'answering' ? 'streaming' : 'loading', backendStage: event.backendStage, draft: { ...draft, backendStage: event.backendStage } };
       if (event.type === 'error') return { ...state, status: 'error', error: event.message, draft: { ...draft, status: 'error', error: event.message } };
       if (event.type === 'done') return { ...state, status: 'done', backendStage: 'done', draft: { ...draft, status: 'done', backendStage: 'done' } };

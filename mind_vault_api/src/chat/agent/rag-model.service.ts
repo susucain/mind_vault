@@ -3,10 +3,12 @@ import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { RetrievalHit } from '../../retrieval/retrieval-hit';
 import { MemoryItem } from '../../memory/memory.types';
 import {
+  FollowupInput,
   HistoryTurn,
   RagRoute,
   rewriteSchema,
   routeSchema,
+  suggestionsSchema,
   summarySchema,
 } from './rag-types';
 import { ModelGatewayService } from '../../model/model-gateway.service';
@@ -154,6 +156,36 @@ export class RagModelService {
       thinking: input.useReasoning,
       text,
     };
+  }
+
+  /**
+   * 追问推荐：回答完成后追加一次轻量调用。
+   * 只给「问题 + 回答正文（截断）+ 命中文档名」，不塞证据全文，
+   * 这次追加调用的成本才可控。
+   */
+  async suggestFollowups(
+    input: FollowupInput,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<string[]> {
+    const { data } = await this.gateway.invokeJson(
+      'fast',
+      [
+        new SystemMessage(
+          '你是追问推荐器。根据用户的问题、助手回答与涉及的文档，给出 3 条用户最可能继续追问的中文问题：每条不超过 30 字，必须能在现有资料范围内回答，不要与已问过的重复，不要编号、不要引号、不要解释。仅输出 JSON：{"items":["","",""]}',
+        ),
+        new HumanMessage(
+          JSON.stringify({
+            question: input.question,
+            answer: input.answer.slice(0, 1200),
+            documents: input.documentNames,
+          }),
+        ),
+      ],
+      false,
+      (raw) => suggestionsSchema.parse(raw),
+      options,
+    );
+    return data.items.map((item) => item.trim()).filter(Boolean);
   }
 
   /**

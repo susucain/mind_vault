@@ -13,7 +13,37 @@ import { useStickyScroll } from '../../hooks/use-sticky-scroll';
 import type { ChatMessage, Citation, Conversation, Dataset } from '../../types/domain';
 
 const PAGE_SIZE = 20;
-const prompts = ['总结这组资料的关键结论', '对比不同方案的优缺点', '给我一个可执行的复习计划'];
+/** 兜底推荐问题：新会话、追问推荐被关闭或生成失败时用它，保证问题区永不空白 */
+const fallbackPrompts = ['总结这组资料的关键结论', '对比不同方案的优缺点', '给我一个可执行的复习计划'];
+
+/** 后端阶段 key → 中文文案；未知阶段原样显示，避免出现空白徽标 */
+const STAGE_LABEL: Record<string, string> = {
+  preparing: '准备中',
+  rewrite: '理解上下文',
+  recall: '回忆偏好',
+  classify: '判断意图',
+  gate: '判断是否有依据',
+  retrieve: '检索资料',
+  answer: '生成回答',
+  suggest: '整理后续追问',
+};
+
+function stageLabel(stage?: string) {
+  if (!stage) return '生成中';
+  return STAGE_LABEL[stage] ?? stage;
+}
+
+/** 乐观插入的本地用户消息；服务端历史回来后由 alignIds 沿用这个 id（见 chat-reducer） */
+function localUserMessage(conversationId: string, content: string): ChatMessage {
+  return {
+    id: `local-${Date.now()}`,
+    conversationId,
+    role: 'user',
+    content,
+    citations: [],
+    createdAt: new Date().toISOString(),
+  };
+}
 
 function formatHistoryDate(date: string) {
   const value = new Date(date);
@@ -175,7 +205,7 @@ function MessageBubble({ message }: { message: BubbleModel }) {
     <article className={`message-bubble message-bubble--${message.role}`}>
       <div className="message-bubble__avatar">{isUser ? '我' : <Bot size={17} />}</div>
       <div className="message-bubble__body">
-        {isUser ? null : <span className="message-bubble__role">Mind Vault {message.streaming ? <StatusBadge tone="warning">{message.stage || '生成中'}</StatusBadge> : null}</span>}
+        {isUser ? null : <span className="message-bubble__role">Mind Vault {message.streaming ? <StatusBadge tone="warning">{stageLabel(message.stage)}</StatusBadge> : null}</span>}
         {isUser ? <p>{message.content}</p> : <><MarkdownViewer content={message.content} isAnimating={message.streaming} /><MessageCitations citations={message.citations} /></>}
         {message.error ? <p className="form-error">{message.error}</p> : null}
         <div className="message-actions">
@@ -217,6 +247,10 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
   const [scopeEdits, setScopeEdits] = useState<Record<string, string[]>>({});
   const [favoriteError, setFavoriteError] = useState<string>();
   const [lastPrompt, setLastPrompt] = useState('');
+  // 每次自增表示「请求把光标落到输入框末尾」；用信号而不是直接操作 DOM，
+  // 保证光标是在 React 提交了新值之后才设置的
+  const [focusSignal, setFocusSignal] = useState(0);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const sse = useSse();
 
   const conversationId = routeId ?? (isNew ? undefined : createdConversationId);
@@ -286,6 +320,15 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
   // 粘底：内容变化时跟随，用户上滑阅读时不打断；流式增量用瞬时滚动，避免动画互相打断
   const scrollRef = useStickyScroll(`${bubbles.length}:${visibleDraft?.content.length ?? 0}`, !visibleDraft);
 
+  // 点推荐问题：填充输入框 + 聚焦 + 光标置尾，不自动发送（避免误发，用户可按回车）
+  useEffect(() => {
+    if (!focusSignal) return;
+    const node = composerRef.current;
+    if (!node) return;
+    node.focus();
+    node.setSelectionRange(node.value.length, node.value.length);
+  }, [focusSignal]);
+
   const datasetItems = datasets.data?.items ?? [];
   // 范围以服务端为准，用户刚应用、服务端还没回来的编辑值优先
   const selectedDatasets = scopeEdits[conversationId ?? ''] ?? activeConversation?.datasetIds ?? [];
@@ -303,6 +346,15 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
   const lastQuestion = [...visibleMessages].reverse().find((message) => message.role === 'user')?.content;
   // 会话消息还没到、且本地也没有缓存可显示时才上骨架；有缓存就直接出内容
   const loadingConversation = Boolean(conversationId) && !visibleMessages.length && !visibleDraft && (messages.isPending || messages.isPlaceholderData);
+  // 推荐问题取「最后一条助手消息」的产物，因此每轮回答后都会变；
+  // 没有产物（新会话 / 开关关闭 / 生成失败 / 条数不足）时回落到通用引导
+  const lastAssistant = [...bubbles].reverse().find((message) => message.role === 'assistant');
+  const promptChips = lastAssistant?.suggestions?.length ? lastAssistant.suggestions : fallbackPrompts;
+
+  function insertPrompt(prompt: string) {
+    setInput(prompt);
+    setFocusSignal((signal) => signal + 1);
+  }
 
   async function sendMessage(event?: FormEvent, content = input, mode: 'new' | 'retry' | 'continue' = 'new') {
     event?.preventDefault();
@@ -324,8 +376,7 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
       if (mode === 'continue') {
         dispatch({ type: 'resume' });
       } else if (mode === 'new' || !conversationId) {
-        const user: ChatMessage = { id: `local-${Date.now()}`, conversationId: id, role: 'user', content: question, citations: [], createdAt: new Date().toISOString() };
-        dispatch({ type: 'begin', conversationId: id, user });
+        dispatch({ type: 'begin', conversationId: id, user: localUserMessage(id, question) });
       }
       setInput('');
       // 固定成 const，闭包里的会话 id 才能保持「已创建」的窄化类型
@@ -408,9 +459,9 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
           {draftStatus === 'interrupted' ? <div className="chat-interrupted" role="status">回答已停止，已保留当前内容。<Button onClick={() => void sendMessage(undefined, lastPrompt, 'continue')} variant="ghost">继续生成</Button></div> : null}
         </div>
         <div className="chat-composer-wrap">
-          <div className="prompt-chips">{prompts.map((prompt) => <button key={prompt} onClick={() => setInput(prompt)} type="button">{prompt}</button>)}</div>
+          <div className="prompt-chips">{promptChips.map((prompt) => <button key={prompt} onClick={() => insertPrompt(prompt)} type="button">{prompt}</button>)}</div>
           <form className="chat-composer" onSubmit={(event) => void sendMessage(event)}>
-            <textarea aria-label="输入问题" onChange={(event) => setInput(event.target.value)} placeholder="询问你的资料…" rows={2} value={input} />
+            <textarea aria-label="输入问题" onChange={(event) => setInput(event.target.value)} placeholder="询问你的资料…" ref={composerRef} rows={2} value={input} />
             {busy ? <Button aria-label="停止生成" onClick={() => { sse.abort(); dispatch({ type: 'interrupted' }); }} type="button" variant="secondary"><Pause size={17} /></Button> : <Button aria-label="发送问题" disabled={!input.trim() || create.isPending} type="submit"><Send size={17} /></Button>}
           </form>
           <p className="chat-composer-hint">回答由资料范围生成，请核对引用原文。</p>

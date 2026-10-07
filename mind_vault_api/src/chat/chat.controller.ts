@@ -122,6 +122,10 @@ export class ChatController {
         if (!connected || response.writableEnded) return;
         writeEvent(response, 'citation', citation);
       }
+      // 追问推荐在 citation 之后、done 之前下发：前端按「最后一轮回答」渲染可点的问题
+      if (result.suggestions.length > 0) {
+        writeEvent(response, 'suggestions', { items: result.suggestions });
+      }
       writeEvent(response, 'done', { messageId: result.message.id });
     } catch (error) {
       if (connected && !response.writableEnded) {

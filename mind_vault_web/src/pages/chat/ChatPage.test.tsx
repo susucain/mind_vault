@@ -19,6 +19,20 @@ vi.mock('../../api/conversations', () => ({
 vi.mock('../../api/datasets', () => ({ listDatasets: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50 }) }));
 vi.mock('../../hooks/use-sse', () => ({ useSse: () => sseMock }));
 
+/** 用真实路由渲染问答页：新建会话后要能跳到 /app/chat/:id，才能验证路由变化不丢本轮会话 */
+function chatWorkspace(client: QueryClient) {
+  return (
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/app/chat/new']}>
+        <Routes>
+          <Route element={<ChatPage isNew />} path="/app/chat/new" />
+          <Route element={<ChatPage />} path="/app/chat/:conversationId" />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
+
 describe('ChatPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -75,16 +89,7 @@ describe('ChatPage', () => {
     });
     const user = userEvent.setup();
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={['/app/chat/new']}>
-          <Routes>
-            <Route element={<ChatPage isNew />} path="/app/chat/new" />
-            <Route element={<ChatPage />} path="/app/chat/:conversationId" />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
+    render(chatWorkspace(client));
     await user.type(await screen.findByRole('textbox', { name: '输入问题' }), '结果问题');
     await user.click(screen.getByRole('button', { name: '发送问题' }));
     // 建会话后路由换成 /app/chat/:id，答案与提问都还在（路由变化不能丢掉本轮会话）
@@ -118,5 +123,50 @@ describe('ChatPage', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('收藏服务不可用');
     await waitFor(() => expect(screen.getByRole('button', { name: '收藏会话' })).toBeInTheDocument());
+  });
+
+  it('replaces the generic prompts with the follow-up questions of the last answer', async () => {
+    vi.mocked(getConversation).mockResolvedValue({ id: 'created-1', title: 'Kafka', datasetIds: [], favorite: false, createdAt: 'now', updatedAt: 'now' });
+    sseMock.start.mockImplementation(async (_path: string, options: { onEvent: (event: unknown) => void }) => {
+      options.onEvent({ type: 'message_start', messageId: 'm1' });
+      options.onEvent({ type: 'token', content: '答案' });
+      options.onEvent({ type: 'suggestions', items: ['那它的缺点呢', '还有别的方案吗', '怎么落地'] });
+      options.onEvent({ type: 'done', messageId: 'm1' });
+    });
+    const user = userEvent.setup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(chatWorkspace(client));
+
+    // 新会话先给通用引导，回答结束后换成本轮产物
+    expect(await screen.findByRole('button', { name: '总结这组资料的关键结论' })).toBeInTheDocument();
+
+    await user.type(await screen.findByRole('textbox', { name: '输入问题' }), 'Kafka 用在什么场景？');
+    await user.click(screen.getByRole('button', { name: '发送问题' }));
+
+    expect(await screen.findByRole('button', { name: '那它的缺点呢' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '怎么落地' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '总结这组资料的关键结论' })).not.toBeInTheDocument();
+  });
+
+  it('fills the composer and puts the caret at the end when a follow-up is clicked', async () => {
+    vi.mocked(getConversation).mockResolvedValue({ id: 'created-1', title: 'Kafka', datasetIds: [], favorite: false, createdAt: 'now', updatedAt: 'now' });
+    sseMock.start.mockImplementation(async (_path: string, options: { onEvent: (event: unknown) => void }) => {
+      options.onEvent({ type: 'suggestions', items: ['那它的缺点呢', '还有别的方案吗', '怎么落地'] });
+      options.onEvent({ type: 'done', messageId: 'm1' });
+    });
+    const user = userEvent.setup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(chatWorkspace(client));
+
+    await user.type(await screen.findByRole('textbox', { name: '输入问题' }), 'Kafka 用在什么场景？');
+    await user.click(screen.getByRole('button', { name: '发送问题' }));
+    await user.click(await screen.findByRole('button', { name: '还有别的方案吗' }));
+
+    const composer = screen.getByRole('textbox', { name: '输入问题' }) as HTMLTextAreaElement;
+    expect(composer).toHaveValue('还有别的方案吗');
+    expect(composer).toHaveFocus();
+    expect(composer.selectionStart).toBe('还有别的方案吗'.length);
+    // 只填充不发送，避免误发
+    expect(sseMock.start).toHaveBeenCalledTimes(1);
   });
 });

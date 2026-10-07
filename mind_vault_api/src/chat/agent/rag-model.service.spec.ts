@@ -80,4 +80,33 @@ describe('RagModelService', () => {
       { content: '用户偏好简短回答', kind: 'preference' },
     ]);
   });
+
+  it('asks the fast model for follow-up questions with a trimmed answer', async () => {
+    const invokeJson = jest.fn().mockResolvedValue({
+      data: { items: [' 那它的缺点呢 ', '还有别的方案吗', '怎么落地'] },
+      usage: {},
+    });
+    const service = new RagModelService({ invokeJson } as never);
+
+    const items = await service.suggestFollowups({
+      question: 'Kafka 用在什么场景？',
+      answer: 'A'.repeat(2000),
+      documentNames: ['系统设计手册'],
+    });
+
+    expect(items).toEqual(['那它的缺点呢', '还有别的方案吗', '怎么落地']);
+    const [kind, messages] = (
+      invokeJson.mock.calls as Array<[string, Array<{ content: string }>]>
+    )[0];
+    expect(kind).toBe('fast');
+    const payload = JSON.parse(messages[1].content) as {
+      question: string;
+      answer: string;
+      documents: string[];
+    };
+    // 只给问题、回答与文档名，且回答截断，避免这次附加调用变贵
+    expect(payload.question).toBe('Kafka 用在什么场景？');
+    expect(payload.answer).toHaveLength(1200);
+    expect(payload.documents).toEqual(['系统设计手册']);
+  });
 });

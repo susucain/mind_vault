@@ -13,6 +13,7 @@ export type StreamEvent =
       backendStage: string;
     }
   | { type: 'result'; result: unknown }
+  | { type: 'suggestions'; items: string[] }
   | { type: 'done'; messageId: string }
   | { type: 'error'; code: string; message: string };
 
@@ -52,6 +53,13 @@ function normalize(eventName: string, payload: unknown): StreamEvent | undefined
     }
     case 'result':
       return { type: 'result', result: payload };
+    case 'suggestions':
+      return {
+        type: 'suggestions',
+        items: Array.isArray(data.items)
+          ? data.items.map((item) => String(item)).filter(Boolean)
+          : [],
+      };
     case 'done':
       return { type: 'done', messageId: String(data.messageId ?? '') };
     case 'error':

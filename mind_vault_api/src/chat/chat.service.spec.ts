@@ -77,10 +77,19 @@ function buildService(input: {
       answerMode: 'rag',
     }),
     summarize: jest.fn().mockResolvedValue(input.summarizeResult ?? '新摘要'),
+    // 默认「条数不足」：追问推荐回落静态引导，主流程不受影响
+    suggestFollowups: jest.fn().mockResolvedValue([]),
   };
   const memories = {
     extractFromTurns: jest.fn().mockResolvedValue(0),
     handleExplicit: jest.fn().mockResolvedValue({ action: 'none' }),
+  };
+  const config = {
+    get: jest.fn((key: string) => {
+      if (key === 'chat.followupSuggestionsEnabled') return true;
+      if (key === 'chat.followupTimeoutMs') return 3000;
+      return undefined;
+    }),
   };
   const service = new ChatService(
     conversations as never,
@@ -90,6 +99,7 @@ function buildService(input: {
     memories as never,
     datasets as never,
     documentMeta as never,
+    config as never,
   );
   return {
     service,
@@ -102,6 +112,7 @@ function buildService(input: {
     documentMeta,
     agent,
     memories,
+    config,
   };
 }
 
@@ -582,5 +593,84 @@ describe('ChatService', () => {
         usedTools: ['memory'],
       }),
     );
+  });
+
+  it('persists the follow-up suggestions generated after the answer', async () => {
+    const { service, agent, documentMeta, messages } = buildService({
+      messageCount: 0,
+    });
+    documentMeta.titlesOf.mockResolvedValue(
+      new Map([['doc_1', '系统设计手册']]),
+    );
+    agent.invoke.mockResolvedValue({
+      answer: '答案',
+      usedTools: ['keyword'],
+      thinking: false,
+      citedChunkIds: ['chunk_1'],
+      hits: [
+        {
+          chunkId: 'chunk_1',
+          documentId: 'doc_1',
+          text: '命中片段',
+          parentContext: '',
+          locator: { page: 1 },
+          titlePath: [],
+          datasetIds: ['dataset_1'],
+          score: 0.9,
+          sources: ['keyword'],
+        },
+      ],
+      answerMode: 'rag',
+    });
+    agent.suggestFollowups.mockResolvedValue(['那它的缺点呢', '还有别的方案吗', '怎么落地']);
+
+    const result = await service.ask('user_1', 'conversation_1', '问题');
+
+    // 只把问题、回答与命中文档名交给推荐器，不塞证据全文
+    expect(agent.suggestFollowups).toHaveBeenCalledWith(
+      { question: '问题', answer: '答案', documentNames: ['系统设计手册'] },
+      expect.objectContaining({ sessionId: 'conversation_1' }),
+    );
+    expect(result.suggestions).toEqual([
+      '那它的缺点呢',
+      '还有别的方案吗',
+      '怎么落地',
+    ]);
+    expect(messages.save).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        suggestions: ['那它的缺点呢', '还有别的方案吗', '怎么落地'],
+      }),
+    );
+  });
+
+  it('drops a half-filled follow-up set so the frontend can fall back', async () => {
+    const { service, agent } = buildService({ messageCount: 0 });
+    agent.suggestFollowups.mockResolvedValue(['只有一条']);
+
+    const result = await service.ask('user_1', 'conversation_1', '问题');
+
+    expect(result.suggestions).toEqual([]);
+  });
+
+  it('skips the follow-up call entirely when the switch is off', async () => {
+    const { service, agent, config } = buildService({ messageCount: 0 });
+    config.get.mockImplementation((key: string) =>
+      key === 'chat.followupSuggestionsEnabled' ? false : 3000,
+    );
+
+    const result = await service.ask('user_1', 'conversation_1', '问题');
+
+    expect(agent.suggestFollowups).not.toHaveBeenCalled();
+    expect(result.suggestions).toEqual([]);
+  });
+
+  it('keeps the answer when the follow-up call fails', async () => {
+    const { service, agent } = buildService({ messageCount: 0 });
+    agent.suggestFollowups.mockRejectedValue(new Error('模型不可用'));
+
+    const result = await service.ask('user_1', 'conversation_1', '问题');
+
+    expect(result.message.content).toBe('答案');
+    expect(result.suggestions).toEqual([]);
   });
 });

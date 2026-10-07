@@ -52,6 +52,17 @@ export function buildConfiguration(env: EnvironmentInput = process.env) {
       // 默认 0.75 约等于余弦 0.5：低于它视为资料中没有相关内容，需要按真实语料校准。
       vectorMinScore: parseNumber(env.RETRIEVAL_VECTOR_MIN_SCORE, 0.75),
     },
+    chat: {
+      // 每轮回答后追加一次「追问推荐」调用。关掉即完全不调模型，
+      // 前端回落到静态通用引导，其余功能不受影响。
+      followupSuggestionsEnabled: parseBoolean(
+        env.CHAT_FOLLOWUP_SUGGESTIONS_ENABLED,
+        true,
+      ),
+      // 追问推荐的等待上限（毫秒）：超时即放弃并回落，
+      // 不让用户为「回答之外的东西」多等。
+      followupTimeoutMs: parseNumber(env.CHAT_FOLLOWUP_TIMEOUT_MS, 3000),
+    },
     langfuse: {
       enabled: parseBoolean(env.LANGFUSE_ENABLED, false),
       publicKey: env.LANGFUSE_PUBLIC_KEY,
