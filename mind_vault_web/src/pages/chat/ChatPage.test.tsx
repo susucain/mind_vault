@@ -68,16 +68,28 @@ describe('ChatPage', () => {
   });
 
   it('displays an answer from a result-only stream frame', async () => {
+    vi.mocked(getConversation).mockResolvedValue({ id: 'created-1', title: '结果问题', datasetIds: [], favorite: false, createdAt: 'now', updatedAt: 'now' });
     sseMock.start.mockImplementation(async (_path: string, options: { onEvent: (event: unknown) => void }) => {
       options.onEvent({ type: 'result', result: { content: '结果答案' } });
       options.onEvent({ type: 'done', messageId: 'm1' });
     });
     const user = userEvent.setup();
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={client}><MemoryRouter><ChatPage isNew /></MemoryRouter></QueryClientProvider>);
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/app/chat/new']}>
+          <Routes>
+            <Route element={<ChatPage isNew />} path="/app/chat/new" />
+            <Route element={<ChatPage />} path="/app/chat/:conversationId" />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
     await user.type(await screen.findByRole('textbox', { name: '输入问题' }), '结果问题');
     await user.click(screen.getByRole('button', { name: '发送问题' }));
+    // 建会话后路由换成 /app/chat/:id，答案与提问都还在（路由变化不能丢掉本轮会话）
     expect(await screen.findByText('结果答案')).toBeInTheDocument();
+    expect(screen.getByText('结果问题')).toBeInTheDocument();
   });
 
   it('persists the session favorite and flips the star button', async () => {

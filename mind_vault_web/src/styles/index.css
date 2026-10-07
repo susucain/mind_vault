@@ -774,6 +774,20 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .chat-scroll { min-height: 0; flex: 1; overflow-y: auto; padding: 30px clamp(18px, 5vw, 72px); }
 .chat-scroll > .state-panel { max-width: 560px; margin: 15vh auto 0; text-align: center; }
 .message-list { max-width: 780px; margin: 0 auto; display: grid; gap: 26px; }
+/* 会话加载骨架：与真实气泡同宽同列，切换会话时列表只换内容不换尺寸 */
+.chat-skeleton { max-width: 780px; margin: 0 auto; display: grid; gap: 26px; }
+.chat-skeleton__row { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 11px; }
+.chat-skeleton__avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--mv-nav); animation: chat-skeleton-pulse 1.6s ease-in-out infinite; }
+.chat-skeleton__bars { display: grid; gap: 10px; align-content: start; }
+.chat-skeleton__bar { height: 12px; border-radius: 6px; background: var(--mv-nav); animation: chat-skeleton-pulse 1.6s ease-in-out infinite; }
+.chat-skeleton__row:nth-child(odd) .chat-skeleton__bar:nth-child(1) { width: 42%; }
+.chat-skeleton__row:nth-child(odd) .chat-skeleton__bar:nth-child(2) { width: 90%; }
+.chat-skeleton__row:nth-child(odd) .chat-skeleton__bar:nth-child(3) { width: 68%; }
+.chat-skeleton__row:nth-child(even) .chat-skeleton__bar:nth-child(1) { width: 30%; }
+.chat-skeleton__row:nth-child(even) .chat-skeleton__bar:nth-child(2) { width: 96%; }
+.chat-skeleton__row:nth-child(even) .chat-skeleton__bar:nth-child(3) { width: 74%; }
+@keyframes chat-skeleton-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .chat-skeleton__avatar, .chat-skeleton__bar { animation: none; } }
 .message-bubble { min-width: 0; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 11px; }
 .message-bubble--user { grid-template-columns: minmax(0, 1fr) 30px; }
 .message-bubble--user .message-bubble__avatar { grid-column: 2; grid-row: 1; }

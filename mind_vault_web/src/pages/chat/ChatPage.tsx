@@ -1,14 +1,15 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, ChevronsUpDown, Copy, FileText, Layers, Menu, MessageSquarePlus, Pause, RefreshCw, Search, Send, Star, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { createConversation, createMessageStreamRequest, getConversation, listConversations, listMessages, updateConversation } from '../../api/conversations';
 import { listDatasets } from '../../api/datasets';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/shadcn/ui/popover';
-import { Button, Drawer, EmptyState, ErrorState, LoadingState, StatusBadge } from '../../components/ui';
-import { CitationCard, MarkdownViewer, chatReducer, initialChatState } from '../../features/chat';
+import { Button, Drawer, EmptyState, ErrorState, StatusBadge } from '../../components/ui';
+import { CitationCard, MarkdownViewer, chatReducer, draftOf, initialChatState, messagesOf, type ChatDraft } from '../../features/chat';
 import { useSse, type StreamEvent } from '../../hooks/use-sse';
+import { useStickyScroll } from '../../hooks/use-sticky-scroll';
 import type { ChatMessage, Citation, Conversation, Dataset } from '../../types/domain';
 
 const PAGE_SIZE = 20;
@@ -145,36 +146,62 @@ function MessageCitations({ citations }: { citations: Citation[] }) {
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+/**
+ * 展示模型：正式消息与流式草稿共用一份形状。
+ * 草稿落定时只是去掉 `streaming/stage/error` 三个可选字段，id 与组件类型都不变，
+ * React 原地更新而不是卸载重建——这是「回答收尾不闪」的关键。
+ */
+type BubbleModel = ChatMessage & { streaming?: boolean; stage?: string; error?: string };
+
+function toBubble(draft: ChatDraft): BubbleModel {
+  return {
+    id: draft.id,
+    conversationId: draft.conversationId,
+    role: 'assistant',
+    content: draft.content,
+    citations: draft.citations,
+    createdAt: draft.createdAt,
+    streaming: draft.status === 'loading' || draft.status === 'streaming',
+    stage: draft.backendStage,
+    error: draft.error,
+  };
+}
+
+function MessageBubble({ message }: { message: BubbleModel }) {
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<'up' | 'down'>();
+  const isUser = message.role === 'user';
   return (
     <article className={`message-bubble message-bubble--${message.role}`}>
-      <div className="message-bubble__avatar">{message.role === 'user' ? '我' : <Bot size={17} />}</div>
+      <div className="message-bubble__avatar">{isUser ? '我' : <Bot size={17} />}</div>
       <div className="message-bubble__body">
-        {message.role === 'user' ? null : <span className="message-bubble__role">Mind Vault</span>}
-        {message.role === 'user' ? <p>{message.content}</p> : <><MarkdownViewer content={message.content} /><MessageCitations citations={message.citations} /></>}
+        {isUser ? null : <span className="message-bubble__role">Mind Vault {message.streaming ? <StatusBadge tone="warning">{message.stage || '生成中'}</StatusBadge> : null}</span>}
+        {isUser ? <p>{message.content}</p> : <><MarkdownViewer content={message.content} isAnimating={message.streaming} /><MessageCitations citations={message.citations} /></>}
+        {message.error ? <p className="form-error">{message.error}</p> : null}
         <div className="message-actions">
           <button aria-label="复制回答" onClick={() => { void navigator.clipboard?.writeText(message.content); setCopied(true); }} type="button"><Copy size={14} />{copied ? '已复制' : '复制'}</button>
-          {message.role === 'assistant' ? <><button aria-label="回答有帮助" className={feedback === 'up' ? 'is-selected' : ''} onClick={() => setFeedback('up')} type="button"><ThumbsUp size={14} /></button><button aria-label="回答没帮助" className={feedback === 'down' ? 'is-selected' : ''} onClick={() => setFeedback('down')} type="button"><ThumbsDown size={14} /></button></> : null}
+          {isUser ? null : <><button aria-label="回答有帮助" className={feedback === 'up' ? 'is-selected' : ''} onClick={() => setFeedback('up')} type="button"><ThumbsUp size={14} /></button><button aria-label="回答没帮助" className={feedback === 'down' ? 'is-selected' : ''} onClick={() => setFeedback('down')} type="button"><ThumbsDown size={14} /></button></>}
         </div>
       </div>
     </article>
   );
 }
 
-function AssistantMessage({ draft }: { draft: NonNullable<ReturnType<typeof initialChatState>['draft']> }) {
+/** 会话加载骨架：与真实气泡同宽同高，避免「占位 → 内容」时整个列表跳一下 */
+function MessageSkeleton() {
   return (
-    <article className="message-bubble message-bubble--assistant">
-      <div className="message-bubble__avatar"><Bot size={17} /></div>
-      <div className="message-bubble__body">
-        <span className="message-bubble__role">Mind Vault {draft.status === 'streaming' ? <StatusBadge tone="warning">{draft.backendStage || '生成中'}</StatusBadge> : null}</span>
-        <MarkdownViewer content={draft.content} isAnimating={draft.status === 'streaming'} />
-        <MessageCitations citations={draft.citations} />
-        {draft.error ? <p className="form-error">{draft.error}</p> : null}
-        <div className="message-actions"><button aria-label="复制回答" onClick={() => void navigator.clipboard?.writeText(draft.content)} type="button"><Copy size={14} />复制</button><button aria-label="回答有帮助" type="button"><ThumbsUp size={14} /></button><button aria-label="回答没帮助" type="button"><ThumbsDown size={14} /></button></div>
-      </div>
-    </article>
+    <div aria-busy="true" className="chat-skeleton">
+      {[0, 1].map((row) => (
+        <div className="chat-skeleton__row" key={row}>
+          <span className="chat-skeleton__avatar" />
+          <div className="chat-skeleton__bars">
+            <span className="chat-skeleton__bar" />
+            <span className="chat-skeleton__bar" />
+            <span className="chat-skeleton__bar" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -187,12 +214,14 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
   const [input, setInput] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [searchInput, setSearchInput] = useState('');
-  const [selectedDatasets, setSelectedDatasets] = useState<string[]>([]);
+  const [scopeEdits, setScopeEdits] = useState<Record<string, string[]>>({});
   const [favoriteError, setFavoriteError] = useState<string>();
   const [lastPrompt, setLastPrompt] = useState('');
   const sse = useSse();
 
   const conversationId = routeId ?? (isNew ? undefined : createdConversationId);
+  // 新建会话时路由还没跟上，用草稿归属的会话兜底，避免「已发出但一帧空白」
+  const activeId = conversationId ?? state.draft?.conversationId;
   const debouncedSearch = useDebouncedValue(searchInput.trim(), 300);
 
   const conversations = useInfiniteQuery({
@@ -204,13 +233,21 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
   const conversationItems = conversations.data?.pages.flatMap((page) => page.items) ?? [];
 
   const conversation = useQuery({ enabled: Boolean(conversationId), queryKey: ['chat', 'conversation', conversationId], queryFn: () => getConversation(conversationId!) });
-  const messages = useQuery({ enabled: Boolean(conversationId), queryKey: ['chat', 'messages', conversationId], queryFn: () => listMessages(conversationId!) });
+  // keepPreviousData：切换会话时沿用上一批消息而不是回到 pending，配合按会话缓存做到「骨架不卸载」
+  const messages = useQuery({ enabled: Boolean(conversationId), queryKey: ['chat', 'messages', conversationId], queryFn: () => listMessages(conversationId!), placeholderData: keepPreviousData });
   const datasets = useQuery({ queryKey: ['chat', 'datasets'], queryFn: () => listDatasets({ pageSize: 50 }) });
   const create = useMutation({ mutationFn: createConversation });
   const updateScope = useMutation({
     mutationFn: (ids: string[]) => updateConversation(conversationId!, { datasetIds: ids }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversation', conversationId] });
+    onSuccess: (updated) => {
+      // 服务端真值直接回填，避免「乐观值 → 失效重取」之间闪回旧范围
+      queryClient.setQueryData(['chat', 'conversation', conversationId], updated);
+      setScopeEdits((edits) => {
+        if (!conversationId) return edits;
+        const next = { ...edits };
+        delete next[conversationId];
+        return next;
+      });
       void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
     },
   });
@@ -236,34 +273,36 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
   });
 
   const activeConversation = conversation.data;
-  const statusRef = useRef(state.status);
-  // 通过 effect 同步 ref，供下方「切换会话」逻辑判断当前是否正在生成。
-  useEffect(() => {
-    statusRef.current = state.status;
-  }, [state.status]);
+  const visibleMessages = messagesOf(state, activeId);
+  const visibleDraft = draftOf(state, activeId);
+  const bubbles: BubbleModel[] = visibleDraft ? [...visibleMessages, toBubble(visibleDraft)] : visibleMessages;
 
-  // 切换会话时清空本地消息；流式过程中（新建会话会切换到具体 id）不清空，避免打断回答
+  // 服务端历史只在它确实属于当前会话时写入缓存：placeholder 是上一个会话的数据
   useEffect(() => {
-    if (statusRef.current === 'loading' || statusRef.current === 'streaming') return;
-    dispatch({ type: 'history', messages: [] });
-  }, [conversationId]);
+    if (!conversationId || !messages.data || messages.isPlaceholderData) return;
+    dispatch({ type: 'history', conversationId, messages: messages.data });
+  }, [conversationId, messages.data, messages.isPlaceholderData]);
 
-  useEffect(() => {
-    if (!messages.data || state.status === 'loading' || state.status === 'streaming' || state.status === 'interrupted') return;
-    if (createdConversationId && !messages.data.length) return;
-    dispatch({ type: 'history', messages: messages.data });
-  }, [createdConversationId, messages.data, state.status]);
+  // 粘底：内容变化时跟随，用户上滑阅读时不打断；流式增量用瞬时滚动，避免动画互相打断
+  const scrollRef = useStickyScroll(`${bubbles.length}:${visibleDraft?.content.length ?? 0}`, !visibleDraft);
 
-  // 用服务端返回的资料集范围初始化可编辑状态（会话切换/首次加载时）。
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelectedDatasets(activeConversation ? [...activeConversation.datasetIds] : []);
-  }, [activeConversation]);
-
-  const busy = state.status === 'loading' || state.status === 'streaming';
-  const lastQuestion = [...state.messages].reverse().find((message) => message.role === 'user')?.content;
   const datasetItems = datasets.data?.items ?? [];
+  // 范围以服务端为准，用户刚应用、服务端还没回来的编辑值优先
+  const selectedDatasets = scopeEdits[conversationId ?? ''] ?? activeConversation?.datasetIds ?? [];
+  // 标题优先取列表缓存里已有的名字，避免切会话时闪回「新对话」
+  const headerTitle = activeConversation?.title || conversationItems.find((item) => item.id === conversationId)?.title || '新对话';
   const isFavorite = activeConversation?.favorite ?? false;
+  const draftStatus = visibleDraft?.status;
+  const busy = draftStatus === 'loading' || draftStatus === 'streaming';
+  // 草稿错误按归属会话显示；连会话都没建成（无草稿）时回落到全局错误
+  const errorText = draftStatus === 'error'
+    ? visibleDraft?.error || '回答失败'
+    : !state.draft && state.status === 'error'
+      ? state.error || '回答失败'
+      : undefined;
+  const lastQuestion = [...visibleMessages].reverse().find((message) => message.role === 'user')?.content;
+  // 会话消息还没到、且本地也没有缓存可显示时才上骨架；有缓存就直接出内容
+  const loadingConversation = Boolean(conversationId) && !visibleMessages.length && !visibleDraft && (messages.isPending || messages.isPlaceholderData);
 
   async function sendMessage(event?: FormEvent, content = input, mode: 'new' | 'retry' | 'continue' = 'new') {
     event?.preventDefault();
@@ -276,8 +315,11 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
         const created = await create.mutateAsync({ datasetIds: selectedDatasets, title: question.slice(0, 28) });
         id = created.id;
         setCreatedConversationId(id);
-        navigate(`/app/chat/${id}`, { replace: true });
+        // 预热缓存：会话标题/范围/空消息立刻可用，新会话首屏不再闪过骨架
+        queryClient.setQueryData(['chat', 'conversation', id], created);
+        queryClient.setQueryData(['chat', 'messages', id], []);
         void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
+        navigate(`/app/chat/${id}`, { replace: true });
       }
       if (mode === 'continue') {
         dispatch({ type: 'resume' });
@@ -286,11 +328,14 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
         dispatch({ type: 'begin', conversationId: id, user });
       }
       setInput('');
-      const request = createMessageStreamRequest(id, question);
-      await sse.start(request.path, { init: request.init, onEvent: (streamEvent: StreamEvent) => dispatch({ type: 'event', event: streamEvent }) });
-      void queryClient.invalidateQueries({ queryKey: ['chat', 'messages', id] });
+      // 固定成 const，闭包里的会话 id 才能保持「已创建」的窄化类型
+      const streamId = id;
+      const request = createMessageStreamRequest(streamId, question);
+      await sse.start(request.path, { init: request.init, onEvent: (streamEvent: StreamEvent) => dispatch({ type: 'event', conversationId: streamId, event: streamEvent }) });
+      // 收尾就地落定草稿，不再整表重取——重取会让整列消息换 key 重新挂载，答案文字会重绘一次
+      dispatch({ type: 'settle' });
       void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
-      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversation', id] });
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversation', streamId] });
     } catch (error) {
       dispatch({ type: 'failed', message: error instanceof Error ? error.message : '回答失败' });
     }
@@ -304,20 +349,17 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
   function startNewConversation() {
     setHistoryOpen(false);
     setCreatedConversationId(undefined);
-    dispatch({ type: 'history', messages: [] });
+    dispatch({ type: 'discard' });
     setInput('');
     setLastPrompt('');
-    setSelectedDatasets([]);
+    setScopeEdits({});
     navigate('/app/chat/new');
   }
 
   function applyScope(ids: string[]) {
-    setSelectedDatasets(ids);
+    setScopeEdits((edits) => ({ ...edits, [conversationId ?? '']: ids }));
     if (conversationId) updateScope.mutate(ids);
   }
-
-  if (!isNew && messages.isPending) return <LoadingState label="加载会话" />;
-  if (!isNew && messages.isError) return <ErrorState onRetry={() => void messages.refetch()} title="会话加载失败" />;
 
   const historyPanel = (
     <ConversationHistory
@@ -343,7 +385,7 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
         <header className="chat-header">
           <div className="chat-header__title">
             <button aria-label="打开会话历史" className="icon-button chat-mobile-only" onClick={() => setHistoryOpen(true)} type="button"><Menu size={19} /></button>
-            <div><p className="eyebrow">Mind Vault / 问答</p><h1>{activeConversation?.title || '新对话'}</h1></div>
+            <div><p className="eyebrow">Mind Vault / 问答</p><h1>{headerTitle}</h1></div>
           </div>
           <div className="chat-header__actions">
             <button aria-label="开启新对话" className="icon-button chat-mobile-only" onClick={startNewConversation} type="button"><MessageSquarePlus size={18} /></button>
@@ -351,11 +393,19 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
             <button aria-label={isFavorite ? '取消收藏' : '收藏会话'} className={`icon-button${isFavorite ? ' is-selected' : ''}`} disabled={!activeConversation || updateFavorite.isPending} onClick={() => updateFavorite.mutate(!isFavorite)} type="button"><Star fill={isFavorite ? 'currentColor' : 'none'} size={17} /></button>
           </div>
         </header>
-        <div className="chat-scroll">
+        <div className="chat-scroll" ref={scrollRef}>
           {favoriteError ? <div className="chat-error" role="alert"><span>{favoriteError}</span></div> : null}
-          {!state.messages.length && !state.draft ? <EmptyState title="从资料中开始提问" description="选择资料范围，输入问题，答案会附带可定位的原文引用。" /> : <div className="message-list">{state.messages.map((message) => <MessageBubble key={message.id} message={message} />)}{state.draft ? <AssistantMessage draft={state.draft} /> : null}</div>}
-          {state.status === 'error' ? <div className="chat-error" role="alert"><span>{state.error || '回答失败'}</span><Button onClick={() => void sendMessage(undefined, lastPrompt || lastQuestion, 'retry')} variant="secondary"><RefreshCw size={14} />重试</Button></div> : null}
-          {state.status === 'interrupted' ? <div className="chat-interrupted" role="status">回答已停止，已保留当前内容。<Button onClick={() => void sendMessage(undefined, lastPrompt, 'continue')} variant="ghost">继续生成</Button></div> : null}
+          {conversationId && messages.isError && !messages.isPlaceholderData && !visibleMessages.length ? (
+            <ErrorState onRetry={() => void messages.refetch()} title="会话加载失败" />
+          ) : loadingConversation ? (
+            <MessageSkeleton />
+          ) : !bubbles.length ? (
+            <EmptyState title="从资料中开始提问" description="选择资料范围，输入问题，答案会附带可定位的原文引用。" />
+          ) : (
+            <div className="message-list">{bubbles.map((message) => <MessageBubble key={message.id} message={message} />)}</div>
+          )}
+          {errorText ? <div className="chat-error" role="alert"><span>{errorText}</span><Button onClick={() => void sendMessage(undefined, lastPrompt || lastQuestion, 'retry')} variant="secondary"><RefreshCw size={14} />重试</Button></div> : null}
+          {draftStatus === 'interrupted' ? <div className="chat-interrupted" role="status">回答已停止，已保留当前内容。<Button onClick={() => void sendMessage(undefined, lastPrompt, 'continue')} variant="ghost">继续生成</Button></div> : null}
         </div>
         <div className="chat-composer-wrap">
           <div className="prompt-chips">{prompts.map((prompt) => <button key={prompt} onClick={() => setInput(prompt)} type="button">{prompt}</button>)}</div>

@@ -18,7 +18,12 @@ export interface ChatDraft {
 }
 
 export interface ChatState {
-  messages: ChatMessage[];
+  /**
+   * 按会话缓存消息。切换会话时直接取缓存渲染，不再「先清空 → 再填充」——
+   * 这是「切换会话不闪烁」的关键：骨架常驻，内容原地替换。
+   */
+  byConversation: Record<string, ChatMessage[]>;
+  /** 正在生成的草稿；同一时刻只有一个会话在生成 */
   draft?: ChatDraft;
   status: ChatStatus;
   backendStage: string;
@@ -27,29 +32,63 @@ export interface ChatState {
 }
 
 export type ChatAction =
-  | { type: 'history'; messages: ChatMessage[] }
+  | { type: 'history'; conversationId: string; messages: ChatMessage[] }
   | { type: 'begin'; conversationId: string; user: ChatMessage }
   | { type: 'resume' }
-  | { type: 'event'; event: StreamEvent }
+  | { type: 'event'; conversationId: string; event: StreamEvent }
+  | { type: 'settle' }
   | { type: 'interrupted' }
-  | { type: 'failed'; message: string };
+  | { type: 'failed'; message: string }
+  | { type: 'discard' };
 
-export function initialChatState(messages: ChatMessage[] = []): ChatState {
-  return { messages, status: 'idle', backendStage: '' };
+export function initialChatState(): ChatState {
+  return { byConversation: {}, status: 'idle', backendStage: '' };
 }
 
-function ensureDraft(state: ChatState): ChatDraft {
-  return state.draft ?? {
+/** 某个会话已缓存的消息（未访问过则为空数组） */
+export function messagesOf(state: ChatState, conversationId?: string): ChatMessage[] {
+  return conversationId ? state.byConversation[conversationId] ?? [] : [];
+}
+
+/** 某个会话正在生成的草稿；其它会话的草稿不返回，避免串台 */
+export function draftOf(state: ChatState, conversationId?: string): ChatDraft | undefined {
+  return state.draft && state.draft.conversationId === conversationId ? state.draft : undefined;
+}
+
+function createDraft(conversationId: string): ChatDraft {
+  return {
     id: `draft-${Date.now()}`,
-    conversationId: state.messages[0]?.conversationId ?? '',
+    conversationId,
     role: 'assistant',
     content: '',
     citations: [],
     createdAt: new Date().toISOString(),
     tokens: 0,
-    status: 'streaming',
+    status: 'loading',
     backendStage: '',
   };
+}
+
+function ensureDraft(state: ChatState, conversationId: string): ChatDraft {
+  return state.draft ?? createDraft(conversationId);
+}
+
+/**
+ * 用服务端历史替换缓存时，按 `role + 内容` 找回本地 key：
+ * 乐观插入的用户消息、已落定的助手消息都保留原 id，
+ * 整列 React key 不变 → 不会整列卸载重建。
+ */
+function alignIds(previous: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
+  if (!previous.length) return incoming;
+  const pool = [...previous];
+  return incoming.map((message) => {
+    const index = pool.findIndex(
+      (candidate) => candidate.role === message.role && candidate.content === message.content,
+    );
+    if (index === -1) return message;
+    const [matched] = pool.splice(index, 1);
+    return matched.id === message.id ? message : { ...message, id: matched.id };
+  });
 }
 
 function resultAnswer(result: unknown): string | undefined {
@@ -78,14 +117,64 @@ function resultCitations(result: unknown): Citation[] {
 
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
-    case 'history':
-      return { ...initialChatState(action.messages), status: action.messages.length ? 'done' : 'idle' };
+    case 'history': {
+      // 该会话正在生成：服务端历史必然落后于本地乐观消息，等落定后再同步
+      if (state.draft?.conversationId === action.conversationId) return state;
+      const previous = state.byConversation[action.conversationId] ?? [];
+      // 请求是在落定前发出的、回来时已经更短的历史属于旧快照，不能反过来覆盖本地
+      if (action.messages.length < previous.length) return state;
+      const messages = alignIds(previous, action.messages);
+      return {
+        ...state,
+        byConversation: { ...state.byConversation, [action.conversationId]: messages },
+        status: messages.length ? 'done' : 'idle',
+        error: undefined,
+      };
+    }
     case 'begin':
-      return { ...state, messages: [...state.messages, action.user], draft: undefined, status: 'loading', error: undefined };
+      return {
+        ...state,
+        byConversation: {
+          ...state.byConversation,
+          [action.conversationId]: [
+            ...(state.byConversation[action.conversationId] ?? []),
+            action.user,
+          ],
+        },
+        draft: createDraft(action.conversationId),
+        status: 'loading',
+        error: undefined,
+      };
     case 'resume':
       return state.draft
         ? { ...state, status: 'loading', error: undefined, draft: { ...state.draft, status: 'streaming', error: undefined } }
         : { ...state, status: 'loading', error: undefined };
+    case 'settle': {
+      const draft = state.draft;
+      // 只有正常收尾才落定；中断 / 失败时保留草稿，交给「继续生成 / 重试」处理
+      if (!draft || draft.status !== 'done') return state;
+      const settled: ChatMessage = {
+        // 沿用草稿 id（`meta` 事件下发的就是服务端消息 id），同 key 同类型 → 原地替换
+        id: draft.id,
+        conversationId: draft.conversationId,
+        role: 'assistant',
+        content: draft.content,
+        citations: draft.citations,
+        createdAt: draft.createdAt,
+      };
+      return {
+        ...state,
+        byConversation: {
+          ...state.byConversation,
+          [draft.conversationId]: [...(state.byConversation[draft.conversationId] ?? []), settled],
+        },
+        draft: undefined,
+        status: 'done',
+        backendStage: 'done',
+      };
+    }
+    case 'discard':
+      return { ...state, draft: undefined, status: 'idle', backendStage: '', error: undefined };
     case 'interrupted':
       return state.draft ? { ...state, status: 'interrupted', draft: { ...state.draft, status: 'interrupted' } } : { ...state, status: 'interrupted' };
     case 'failed':
@@ -94,7 +183,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         : { ...state, status: 'error', error: action.message };
     case 'event': {
       const event = action.event;
-      const draft = ensureDraft(state);
+      const draft = ensureDraft(state, action.conversationId);
       if (event.type === 'message_start') return { ...state, status: 'streaming', draft: { ...draft, id: event.messageId || draft.id, meta: event.meta } };
       if (event.type === 'token') return { ...state, status: 'streaming', draft: { ...draft, content: draft.content + event.content, tokens: draft.tokens + event.content.length, status: 'streaming' } };
       if (event.type === 'citation') return { ...state, draft: { ...draft, citations: draft.citations.some((item) => item.id === event.citation.id) ? draft.citations : [...draft.citations, event.citation] } };
@@ -124,10 +213,4 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return state;
     }
   }
-}
-
-export function materializeDraft(state: ChatState): ChatMessage[] {
-  if (!state.draft?.content) return state.messages;
-  const { id, conversationId, role, content, citations, createdAt } = state.draft;
-  return [...state.messages, { id, conversationId, role, content, citations, createdAt }];
 }
