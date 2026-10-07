@@ -96,6 +96,16 @@ export interface GraphEntitySuggestionInput {
   limit?: number;
 }
 
+/**
+ * 回答相关图谱的入参：回答侧只有引用片段，没有实体名，
+ * 因此入口是这批 chunk 被提及的实体，而不是 neighborhood 的实体名。
+ */
+export interface GraphAnswerContextInput {
+  ownerId: string;
+  chunkIds: string[];
+  limit?: number;
+}
+
 export interface GraphEntitySuggestion {
   id: string;
   name: string;

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Driver } from 'neo4j-driver';
 import {
+  GraphAnswerContextInput,
   GraphEntitySuggestion,
   GraphEntitySuggestionInput,
   GraphExtraction,
@@ -358,6 +359,103 @@ export class KnowledgeGraphService {
     }
   }
 
+  /**
+   * 回答相关图谱：取这批 chunk 被提及的实体，以及它们之间、且由这批 chunk 产生的边。
+   * 与 neighborhood 的差别是入口为 chunkId——回答侧只有引用片段，没有实体名。
+   * 边仍按 `sourceChunkId` 收敛到这批 chunk，避免把其他文档产生的关系带进来。
+   * 没有天然的中心实体，因此 `focus` 留空，由前端画布自行布局。
+   */
+  async answerContext(input: GraphAnswerContextInput): Promise<GraphView> {
+    const limit = Math.trunc(Math.min(Math.max(input.limit ?? 30, 1), 60));
+    const chunkIds = [...new Set(input.chunkIds.filter(Boolean))];
+    const empty: GraphView = {
+      focus: '',
+      nodes: [],
+      edges: [],
+      truncated: false,
+    };
+    if (chunkIds.length === 0) return empty;
+    const session = this.driver.session();
+    try {
+      const entityResult = await session.run(
+        `
+        MATCH (entity:Entity {ownerId: $ownerId})-[:MENTIONED_IN {ownerId: $ownerId}]->(chunk:Chunk {ownerId: $ownerId})
+        WHERE chunk.id IN $chunkIds
+        RETURN DISTINCT entity.normalizedName AS id, entity.name AS name, entity.type AS type
+        LIMIT ${limit}
+        `,
+        { ownerId: input.ownerId, chunkIds },
+      );
+      const nodeMap = new Map<string, GraphViewNode>();
+      for (const row of entityResult.records) {
+        const id = asString(row.get('id'));
+        if (!id) continue;
+        nodeMap.set(id, {
+          id,
+          name: asString(row.get('name')) || id,
+          type: asString(row.get('type')),
+          degree: 0,
+        });
+      }
+      if (nodeMap.size === 0) return empty;
+
+      const names = [...nodeMap.keys()];
+      const edgeResult = await session.run(
+        `
+        MATCH (source:Entity {ownerId: $ownerId})-[relation:RELATED_TO|USES|USED_FOR|DEPENDS_ON|CAUSES|PART_OF|CREATED_BY|MENTIONED_WITH {ownerId: $ownerId}]->(target:Entity {ownerId: $ownerId})
+        WHERE source.normalizedName IN $names
+          AND target.normalizedName IN $names
+          AND relation.sourceChunkId IN $chunkIds
+        RETURN DISTINCT source.normalizedName AS sourceId, target.normalizedName AS targetId,
+               type(relation) AS type, relation.sourceChunkId AS sourceChunkId,
+               relation.confidence AS confidence
+        LIMIT ${limit}
+        `,
+        { ownerId: input.ownerId, names, chunkIds },
+      );
+
+      const edgeMap = new Map<string, GraphViewEdge>();
+      for (const row of edgeResult.records) {
+        const source = asString(row.get('sourceId'));
+        const target = asString(row.get('targetId'));
+        const type = asString(row.get('type'));
+        if (!source || !target || !type) continue;
+        const sourceChunkId = optionalString(row.get('sourceChunkId'));
+        const confidence = optionalNumber(row.get('confidence'));
+        const id = [source, type, target, sourceChunkId ?? ''].join('|');
+        edgeMap.set(id, {
+          id,
+          source,
+          target,
+          type,
+          sourceChunkId,
+          confidence,
+        });
+      }
+
+      const edges = [...edgeMap.values()];
+      const degree = new Map<string, number>();
+      for (const edge of edges) {
+        degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
+        degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
+      }
+
+      return {
+        focus: '',
+        nodes: [...nodeMap.values()].map((node) => ({
+          ...node,
+          degree: degree.get(node.id) ?? 0,
+        })),
+        edges,
+        truncated:
+          entityResult.records.length >= limit ||
+          edgeResult.records.length >= limit,
+      };
+    } finally {
+      await session.close();
+    }
+  }
+
   async deleteDocument(ownerId: string, documentId: string) {
     const session = this.driver.session();
     try {
@@ -488,9 +586,18 @@ function optionalStringProperty(
   return value || undefined;
 }
 
+/** 直接读记录字段（不是属性对象）时的可选值处理 */
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value ? value : undefined;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' ? value : undefined;
+}
+
 function optionalNumberProperty(
   properties: Record<string, unknown>,
   key: string,
 ): number | undefined {
-  return typeof properties[key] === 'number' ? properties[key] : undefined;
+  return optionalNumber(properties[key]);
 }

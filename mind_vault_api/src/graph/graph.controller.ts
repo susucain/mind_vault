@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { AnswerContextDto } from './dto/answer-context.dto';
 import { EntitySuggestDto } from './dto/entity-suggest.dto';
 import { GraphSearchDto } from './dto/graph-search.dto';
 import { NeighborhoodDto } from './dto/neighborhood.dto';
@@ -49,6 +50,19 @@ export class GraphController {
       entityTypes: body.entityTypes,
       relationTypes: body.relationTypes,
       datasetIds: body.datasetIds,
+      limit: body.limit,
+    });
+  }
+
+  /** 回答相关图谱：按本条回答引用的 chunk 取实体关系，ownerId 由登录态强制注入 */
+  @Post('answer-context')
+  answerContext(
+    @CurrentUser() user: { id: string },
+    @Body() body: AnswerContextDto,
+  ) {
+    return this.graph.answerContext({
+      ownerId: user.id,
+      chunkIds: body.chunkIds,
       limit: body.limit,
     });
   }
