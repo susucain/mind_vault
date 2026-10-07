@@ -262,6 +262,8 @@ export class RagAgentService {
         query: state.question,
         datasetIds: state.datasetIds,
         topK: 8,
+        // 引用片段要展示命中关键字，这里开启 ES 高亮
+        highlight: true,
       });
       return { hits, usedTools: ['keyword'] };
     }

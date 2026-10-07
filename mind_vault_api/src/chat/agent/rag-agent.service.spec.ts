@@ -96,7 +96,10 @@ describe('RagAgentService', () => {
       datasetIds: ['dataset_1'],
     });
 
-    expect(retrieval.keyword).toHaveBeenCalled();
+    // 引用片段要展示命中关键字，lookup 路径必须开启 ES 高亮
+    expect(retrieval.keyword).toHaveBeenCalledWith(
+      expect.objectContaining({ highlight: true }),
+    );
     expect(result.usedTools).toEqual(['keyword']);
     expect(result.citedChunkIds).toEqual(['chunk_1']);
   });

@@ -487,6 +487,73 @@ describe('ChatService', () => {
     ]);
   });
 
+  it('persists the highlight segments carried by a keyword hit', async () => {
+    const { service, agent, citations } = buildService({ messageCount: 0 });
+    const highlight = [
+      { text: 'Kafka', hit: true },
+      { text: ' 用于削峰', hit: false },
+    ];
+    agent.invoke.mockResolvedValue({
+      answer: '答案',
+      usedTools: ['keyword'],
+      thinking: false,
+      citedChunkIds: ['chunk_1'],
+      hits: [
+        {
+          chunkId: 'chunk_1',
+          documentId: 'doc_1',
+          text: 'Kafka 用于削峰',
+          parentContext: '',
+          locator: { page: 1 },
+          titlePath: [],
+          datasetIds: ['dataset_1'],
+          highlight,
+          score: 1,
+          sources: ['keyword'],
+        },
+      ],
+      answerMode: 'rag',
+    });
+
+    const result = await service.ask('user_1', 'conversation_1', '问题');
+
+    expect(citations.create).toHaveBeenCalledWith(
+      expect.objectContaining({ chunkId: 'chunk_1', highlight }),
+    );
+    expect(result.citations[0].highlight).toEqual(highlight);
+  });
+
+  it('stores a null highlight for a vector-only hit', async () => {
+    const { service, agent, citations } = buildService({ messageCount: 0 });
+    agent.invoke.mockResolvedValue({
+      answer: '答案',
+      usedTools: ['vector'],
+      thinking: false,
+      citedChunkIds: ['chunk_1'],
+      hits: [
+        {
+          chunkId: 'chunk_1',
+          documentId: 'doc_1',
+          text: '语义命中片段',
+          parentContext: '',
+          locator: { page: 1 },
+          titlePath: [],
+          datasetIds: ['dataset_1'],
+          score: 0.9,
+          sources: ['vector'],
+        },
+      ],
+      answerMode: 'rag',
+    });
+
+    const result = await service.ask('user_1', 'conversation_1', '问题');
+
+    expect(citations.create).toHaveBeenCalledWith(
+      expect.objectContaining({ chunkId: 'chunk_1', highlight: null }),
+    );
+    expect(result.citations[0].highlight).toBeNull();
+  });
+
   it('handles an explicit memory request without invoking the RAG agent', async () => {
     const { service, agent, memories, messages } = buildService({
       messageCount: 0,

@@ -18,6 +18,8 @@ interface RetrievalInput {
   query: string;
   datasetIds?: string[];
   topK?: number;
+  /** 关键字路径透传给 ES：开启后命中片段会切分成 HighlightSegment[] 返回 */
+  highlight?: boolean;
 }
 
 export type ScoreKind =
@@ -147,7 +149,8 @@ export class RetrievalService {
     },
   ) {
     const [keywordHits, vectorHits, graphHits] = await Promise.all([
-      this.keyword({ ...input, topK: 30 }),
+      // 问答链路复用 hybrid 时也要拿到命中高亮，供引用片段分段渲染
+      this.keyword({ ...input, topK: 30, highlight: true }),
       // 门控阶段已经算过向量时直接复用，省掉一次 embedding 调用
       input.vectorHits
         ? Promise.resolve(input.vectorHits)

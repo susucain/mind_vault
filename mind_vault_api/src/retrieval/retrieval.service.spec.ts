@@ -170,6 +170,44 @@ describe('RetrievalService', () => {
     expect(es.vectorSearch).not.toHaveBeenCalled();
   });
 
+  it('forwards the highlight flag to the keyword search', async () => {
+    const es = { keywordSearch: jest.fn().mockResolvedValue(page([])) };
+    const service = new RetrievalService(
+      es as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { get: jest.fn().mockReturnValue(0.75) } as never,
+    );
+
+    await service.keyword({ ownerId: 'user_1', query: 'Kafka', highlight: true });
+
+    expect(es.keywordSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ highlight: true }),
+    );
+  });
+
+  it('enables highlight on the keyword leg of hybrid retrieval', async () => {
+    const es = {
+      keywordSearch: jest.fn().mockResolvedValue(page([])),
+      vectorSearch: jest.fn().mockResolvedValue(page([])),
+      getByChunkIds: jest.fn().mockResolvedValue([]),
+    };
+    const service = new RetrievalService(
+      es as never,
+      { embedQuery: jest.fn().mockResolvedValue([0.1]) } as never,
+      {} as never,
+      {} as never,
+      { get: jest.fn().mockReturnValue(0.75) } as never,
+    );
+
+    await service.hybrid({ ownerId: 'user_1', query: 'Kafka', topK: 3 });
+
+    expect(es.keywordSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ highlight: true }),
+    );
+  });
+
   describe('search', () => {
     const meta = {
       enrich: jest.fn((_ownerId: string, hits: RetrievalHit[]) =>

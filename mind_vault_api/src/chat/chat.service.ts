@@ -315,6 +315,8 @@ export class ChatService {
           chunkId: hit.chunkId,
           quote: hit.text.slice(0, 500),
           locator: { ...hit.locator },
+          // 关键字路径带回的高亮分段原样落库，向量路径为 null（前端按无高亮渲染）
+          highlight: hit.highlight ?? null,
           rank,
         }),
       );

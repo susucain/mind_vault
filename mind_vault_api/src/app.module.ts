@@ -38,6 +38,7 @@ import { AddUserAccount1790812800000 } from './migrations/1790812800000-add-user
 import { AddSearchHistory1790899200000 } from './migrations/1790899200000-add-search-history';
 import { AddUserAvatar1790985600000 } from './migrations/1790985600000-add-user-avatar';
 import { AddConversationFavorite1791072000000 } from './migrations/1791072000000-add-conversation-favorite';
+import { AddCitationHighlight1791158400000 } from './migrations/1791158400000-add-citation-highlight';
 
 const standalone = buildConfiguration(process.env).runtime.standalone;
 
@@ -98,6 +99,7 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
                 AddSearchHistory1790899200000,
                 AddUserAvatar1790985600000,
                 AddConversationFavorite1791072000000,
+                AddCitationHighlight1791158400000,
               ],
               migrationsRun: true,
             }),
