@@ -19,6 +19,7 @@ function buildService(input: {
     id: 'conversation_1',
     ownerId: 'user_1',
     datasetIds: input.datasetIds ?? ['dataset_1'],
+    favorite: false,
     summary: input.summary ?? null,
     summarizedMessageCount: input.summarizedMessageCount ?? 0,
   };
@@ -322,10 +323,10 @@ describe('ChatService', () => {
       { id: 'dataset_2', ownerId: 'user_1', deleted: false },
     ]);
 
-    const result = await service.updateDatasetScope(
+    const result = await service.updateConversation(
       'user_1',
       'conversation_1',
-      ['dataset_2', 'dataset_2', 'dataset_1'],
+      { datasetIds: ['dataset_2', 'dataset_2', 'dataset_1'] },
     );
 
     expect(conversation.datasetIds).toEqual(['dataset_2', 'dataset_1']);
@@ -353,7 +354,9 @@ describe('ChatService', () => {
     datasets.find.mockResolvedValue([]);
 
     await expect(
-      service.updateDatasetScope('user_1', 'conversation_1', ['missing']),
+      service.updateConversation('user_1', 'conversation_1', {
+        datasetIds: ['missing'],
+      }),
     ).rejects.toThrow('资料集不存在或无权访问');
   });
 
@@ -363,17 +366,36 @@ describe('ChatService', () => {
       datasetIds: ['dataset_1'],
     });
 
-    await service.updateDatasetScope('user_1', 'conversation_1', []);
+    await service.updateConversation('user_1', 'conversation_1', {
+      datasetIds: [],
+    });
 
     expect(conversation.datasetIds).toEqual([]);
     expect(conversations.save).toHaveBeenCalledWith(conversation);
     await expect(
-      service.updateDatasetScope(
-        'user_1',
-        'conversation_1',
-        Array.from({ length: 21 }, (_, index) => `dataset_${index}`),
-      ),
+      service.updateConversation('user_1', 'conversation_1', {
+        datasetIds: Array.from({ length: 21 }, (_, index) => `dataset_${index}`),
+      }),
     ).rejects.toThrow('资料集范围最多包含 20 个资料集');
+  });
+
+  it('toggles the favorite flag without touching the dataset scope', async () => {
+    const { service, conversation, conversations, datasets } = buildService({
+      messageCount: 0,
+      datasetIds: ['dataset_1'],
+    });
+
+    const favorited = await service.updateConversation(
+      'user_1',
+      'conversation_1',
+      { favorite: true },
+    );
+
+    expect(datasets.find).not.toHaveBeenCalled();
+    expect(conversation.datasetIds).toEqual(['dataset_1']);
+    expect(conversation.favorite).toBe(true);
+    expect(conversations.save).toHaveBeenCalledWith(conversation);
+    expect(favorited.favorite).toBe(true);
   });
 
   it('resolves document names for stored citations when listing messages', async () => {

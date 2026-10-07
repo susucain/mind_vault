@@ -54,7 +54,7 @@ export class ChatController {
     @Param('id') id: string,
     @Body() dto: UpdateConversationDto,
   ) {
-    return this.chat.updateDatasetScope(user.id, id, dto.datasetIds);
+    return this.chat.updateConversation(user.id, id, dto);
   }
 
   @Get(':id/messages')

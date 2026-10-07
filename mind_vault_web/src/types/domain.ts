@@ -83,6 +83,7 @@ export interface Conversation {
   id: string;
   title: string;
   datasetIds: string[];
+  favorite: boolean;
   createdAt: string;
   updatedAt: string;
 }

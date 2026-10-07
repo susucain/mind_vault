@@ -37,6 +37,7 @@ import { RenameBehavioralTopicToJobFit1790553600000 } from './migrations/1790553
 import { AddUserAccount1790812800000 } from './migrations/1790812800000-add-user-account';
 import { AddSearchHistory1790899200000 } from './migrations/1790899200000-add-search-history';
 import { AddUserAvatar1790985600000 } from './migrations/1790985600000-add-user-avatar';
+import { AddConversationFavorite1791072000000 } from './migrations/1791072000000-add-conversation-favorite';
 
 const standalone = buildConfiguration(process.env).runtime.standalone;
 
@@ -96,6 +97,7 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
                 AddUserAccount1790812800000,
                 AddSearchHistory1790899200000,
                 AddUserAvatar1790985600000,
+                AddConversationFavorite1791072000000,
               ],
               migrationsRun: true,
             }),

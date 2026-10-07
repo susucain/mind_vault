@@ -126,3 +126,19 @@ describe('ChatController.stream', () => {
     expect(events[1]).toContain('"documentName":"系统设计手册"');
   });
 });
+
+describe('ChatController.update', () => {
+  it('forwards the partial conversation patch to the service', async () => {
+    const chat = {
+      updateConversation: jest.fn().mockResolvedValue({ id: 'c1', favorite: true }),
+    };
+    const controller = new ChatController(chat as never);
+
+    const result = await controller.update({ id: 'u1' }, 'c1', { favorite: true });
+
+    expect(chat.updateConversation).toHaveBeenCalledWith('u1', 'c1', {
+      favorite: true,
+    });
+    expect(result).toEqual({ id: 'c1', favorite: true });
+  });
+});

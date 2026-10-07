@@ -76,7 +76,10 @@ function ConversationHistory({ activeId, items, search, onSearchChange, onSelect
             {items.map((item) => (
               <button className={`chat-history-item${item.id === activeId ? ' is-active' : ''}`} key={item.id} onClick={() => onSelect(item.id)} type="button">
                 <span className="chat-history-item__title">{item.title || '新对话'}</span>
-                <time dateTime={item.updatedAt}>{formatHistoryDate(item.updatedAt)}</time>
+                <span className="chat-history-item__meta">
+                  {item.favorite ? <Star aria-label="已收藏" className="chat-history-item__star" fill="currentColor" role="img" size={12} /> : null}
+                  <time dateTime={item.updatedAt}>{formatHistoryDate(item.updatedAt)}</time>
+                </span>
               </button>
             ))}
             {hasNextPage ? <div className="chat-history-sentinel" ref={sentinel}>{isFetchingNextPage ? '正在加载更多…' : ''}</div> : items.length > PAGE_SIZE ? <p className="chat-history-hint chat-history-end">没有更多会话了</p> : null}
@@ -149,7 +152,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     <article className={`message-bubble message-bubble--${message.role}`}>
       <div className="message-bubble__avatar">{message.role === 'user' ? '我' : <Bot size={17} />}</div>
       <div className="message-bubble__body">
-        <span className="message-bubble__role">{message.role === 'user' ? '我' : 'Mind Vault'}</span>
+        {message.role === 'user' ? null : <span className="message-bubble__role">Mind Vault</span>}
         {message.role === 'user' ? <p>{message.content}</p> : <><MarkdownViewer content={message.content} /><MessageCitations citations={message.citations} /></>}
         <div className="message-actions">
           <button aria-label="复制回答" onClick={() => { void navigator.clipboard?.writeText(message.content); setCopied(true); }} type="button"><Copy size={14} />{copied ? '已复制' : '复制'}</button>
@@ -185,7 +188,7 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [selectedDatasets, setSelectedDatasets] = useState<string[]>([]);
-  const [favorite, setFavorite] = useState(false);
+  const [favoriteError, setFavoriteError] = useState<string>();
   const [lastPrompt, setLastPrompt] = useState('');
   const sse = useSse();
 
@@ -205,9 +208,29 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
   const datasets = useQuery({ queryKey: ['chat', 'datasets'], queryFn: () => listDatasets({ pageSize: 50 }) });
   const create = useMutation({ mutationFn: createConversation });
   const updateScope = useMutation({
-    mutationFn: (ids: string[]) => updateConversation(conversationId!, ids),
+    mutationFn: (ids: string[]) => updateConversation(conversationId!, { datasetIds: ids }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['chat', 'conversation', conversationId] });
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
+    },
+  });
+  // 收藏：先就地乐观回填，失败回滚并给出可读提示；成功后回填服务端真值并刷新侧栏
+  const updateFavorite = useMutation({
+    mutationFn: (next: boolean) => updateConversation(conversationId!, { favorite: next }),
+    onMutate: async (next) => {
+      const key = ['chat', 'conversation', conversationId];
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Conversation>(key);
+      setFavoriteError(undefined);
+      if (previous) queryClient.setQueryData<Conversation>(key, { ...previous, favorite: next });
+      return { previous };
+    },
+    onError: (error, _next, context) => {
+      if (context?.previous) queryClient.setQueryData<Conversation>(['chat', 'conversation', conversationId], context.previous);
+      setFavoriteError(error instanceof Error ? error.message : '收藏失败，请重试');
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Conversation>(['chat', 'conversation', conversationId], updated);
       void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
     },
   });
@@ -240,6 +263,7 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
   const busy = state.status === 'loading' || state.status === 'streaming';
   const lastQuestion = [...state.messages].reverse().find((message) => message.role === 'user')?.content;
   const datasetItems = datasets.data?.items ?? [];
+  const isFavorite = activeConversation?.favorite ?? false;
 
   async function sendMessage(event?: FormEvent, content = input, mode: 'new' | 'retry' | 'continue' = 'new') {
     event?.preventDefault();
@@ -324,10 +348,11 @@ export function ChatPage({ isNew = false }: { isNew?: boolean }) {
           <div className="chat-header__actions">
             <button aria-label="开启新对话" className="icon-button chat-mobile-only" onClick={startNewConversation} type="button"><MessageSquarePlus size={18} /></button>
             <ScopePicker applying={updateScope.isPending} datasets={datasetItems} onChange={applyScope} value={selectedDatasets} />
-            <button aria-label={favorite ? '取消收藏' : '收藏会话'} className={`icon-button${favorite ? ' is-selected' : ''}`} onClick={() => setFavorite((value) => !value)} type="button"><Star fill={favorite ? 'currentColor' : 'none'} size={17} /></button>
+            <button aria-label={isFavorite ? '取消收藏' : '收藏会话'} className={`icon-button${isFavorite ? ' is-selected' : ''}`} disabled={!activeConversation || updateFavorite.isPending} onClick={() => updateFavorite.mutate(!isFavorite)} type="button"><Star fill={isFavorite ? 'currentColor' : 'none'} size={17} /></button>
           </div>
         </header>
         <div className="chat-scroll">
+          {favoriteError ? <div className="chat-error" role="alert"><span>{favoriteError}</span></div> : null}
           {!state.messages.length && !state.draft ? <EmptyState title="从资料中开始提问" description="选择资料范围，输入问题，答案会附带可定位的原文引用。" /> : <div className="message-list">{state.messages.map((message) => <MessageBubble key={message.id} message={message} />)}{state.draft ? <AssistantMessage draft={state.draft} /> : null}</div>}
           {state.status === 'error' ? <div className="chat-error" role="alert"><span>{state.error || '回答失败'}</span><Button onClick={() => void sendMessage(undefined, lastPrompt || lastQuestion, 'retry')} variant="secondary"><RefreshCw size={14} />重试</Button></div> : null}
           {state.status === 'interrupted' ? <div className="chat-interrupted" role="status">回答已停止，已保留当前内容。<Button onClick={() => void sendMessage(undefined, lastPrompt, 'continue')} variant="ghost">继续生成</Button></div> : null}

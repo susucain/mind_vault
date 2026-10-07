@@ -29,6 +29,10 @@ export class ConversationEntity {
   @Column({ name: 'summarized_message_count', type: 'int', default: 0 })
   summarizedMessageCount: number;
 
+  /** 会话级收藏，默认未收藏 */
+  @Column({ type: 'boolean', default: false })
+  favorite: boolean;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 

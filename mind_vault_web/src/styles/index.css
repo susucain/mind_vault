@@ -735,6 +735,8 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .chat-history-item { min-width: 0; border: 1px solid transparent; border-radius: 7px; padding: 10px 11px; display: grid; gap: 4px; text-align: left; color: var(--mv-muted-strong); background: transparent; transition: background-color 150ms ease, border-color 150ms ease; }
 .chat-history-item__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .84rem; font-weight: 600; }
 .chat-history-item time { color: var(--mv-muted); font-size: .68rem; }
+.chat-history-item__meta { display: flex; align-items: center; gap: 6px; }
+.chat-history-item__star { flex: 0 0 auto; color: var(--mv-accent); }
 .chat-history-item:hover { background: var(--mv-surface); border-color: var(--mv-line); color: var(--mv-ink); }
 .chat-history-item.is-active { background: var(--mv-primary-soft); border-color: transparent; color: var(--mv-primary); }
 .chat-history-item.is-active time { color: var(--mv-primary); }
@@ -801,7 +803,7 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .chat-composer textarea:focus { border: 0; box-shadow: none; }
 .chat-composer .button { width: 38px; min-height: 38px; padding: 0; }
 .chat-composer-hint { margin: 7px 0 0; color: var(--mv-muted); text-align: center; font-size: .68rem; }
-.prompt-chips { margin: 0 0 8px; }
+.prompt-chips { padding: 8px 0; }
 .citation-card { border: 1px solid var(--mv-line); border-radius: 6px; padding: 11px; background: var(--mv-canvas); }
 .citation-card__heading { min-width: 0; display: flex; align-items: center; gap: 7px; color: var(--mv-primary); font-size: .78rem; }
 .citation-card__heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

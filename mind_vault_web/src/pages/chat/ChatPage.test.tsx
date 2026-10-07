@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createConversation } from '../../api/conversations';
+import { createConversation, getConversation, updateConversation } from '../../api/conversations';
 import { ChatPage } from './ChatPage';
 
 const sseMock = vi.hoisted(() => ({ start: vi.fn(), abort: vi.fn() }));
@@ -22,7 +22,7 @@ vi.mock('../../hooks/use-sse', () => ({ useSse: () => sseMock }));
 describe('ChatPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(createConversation).mockResolvedValue({ id: 'created-1', title: '问题', datasetIds: [], createdAt: 'now', updatedAt: 'now' });
+    vi.mocked(createConversation).mockResolvedValue({ id: 'created-1', title: '问题', datasetIds: [], favorite: false, createdAt: 'now', updatedAt: 'now' });
     sseMock.start.mockResolvedValue(undefined);
   });
 
@@ -78,5 +78,33 @@ describe('ChatPage', () => {
     await user.type(await screen.findByRole('textbox', { name: '输入问题' }), '结果问题');
     await user.click(screen.getByRole('button', { name: '发送问题' }));
     expect(await screen.findByText('结果答案')).toBeInTheDocument();
+  });
+
+  it('persists the session favorite and flips the star button', async () => {
+    vi.mocked(getConversation).mockResolvedValue({ id: 'c1', title: '缓存策略', datasetIds: [], favorite: false, createdAt: 'now', updatedAt: 'now' });
+    vi.mocked(updateConversation).mockResolvedValue({ id: 'c1', title: '缓存策略', datasetIds: [], favorite: true, createdAt: 'now', updatedAt: 'now' });
+    const user = userEvent.setup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/app/chat/c1']}><Routes><Route element={<ChatPage />} path="/app/chat/:conversationId" /></Routes></MemoryRouter></QueryClientProvider>);
+
+    await screen.findByRole('heading', { name: '缓存策略' });
+    await user.click(screen.getByRole('button', { name: '收藏会话' }));
+
+    await waitFor(() => expect(updateConversation).toHaveBeenCalledWith('c1', { favorite: true }));
+    expect(await screen.findByRole('button', { name: '取消收藏' })).toBeInTheDocument();
+  });
+
+  it('rolls the favorite back and surfaces a readable error when persisting fails', async () => {
+    vi.mocked(getConversation).mockResolvedValue({ id: 'c1', title: '缓存策略', datasetIds: [], favorite: false, createdAt: 'now', updatedAt: 'now' });
+    vi.mocked(updateConversation).mockRejectedValueOnce(new Error('收藏服务不可用'));
+    const user = userEvent.setup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/app/chat/c1']}><Routes><Route element={<ChatPage />} path="/app/chat/:conversationId" /></Routes></MemoryRouter></QueryClientProvider>);
+
+    await screen.findByRole('heading', { name: '缓存策略' });
+    await user.click(screen.getByRole('button', { name: '收藏会话' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('收藏服务不可用');
+    await waitFor(() => expect(screen.getByRole('button', { name: '收藏会话' })).toBeInTheDocument());
   });
 });

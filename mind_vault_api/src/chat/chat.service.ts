@@ -44,26 +44,31 @@ export class ChatService {
     private readonly documentMeta: DocumentMetaService,
   ) {}
 
-  async updateDatasetScope(
+  async updateConversation(
     ownerId: string,
     conversationId: string,
-    datasetIds: string[],
+    patch: { datasetIds?: string[]; favorite?: boolean },
   ) {
     const conversation = await this.findConversation(ownerId, conversationId);
-    const uniqueIds = [...new Set(datasetIds)];
-    if (uniqueIds.length > 20) {
-      throw new BadRequestException('资料集范围最多包含 20 个资料集');
-    }
-    // 空数组表示「全部资料集」，检索层对空范围不做资料集过滤
-    if (uniqueIds.length) {
-      const datasets = await this.datasets.find({
-        where: uniqueIds.map((id) => ({ id, ownerId, deleted: false })),
-      });
-      if (datasets.length !== uniqueIds.length) {
-        throw new BadRequestException('资料集不存在或无权访问');
+    if (patch.datasetIds !== undefined) {
+      const uniqueIds = [...new Set(patch.datasetIds)];
+      if (uniqueIds.length > 20) {
+        throw new BadRequestException('资料集范围最多包含 20 个资料集');
       }
+      // 空数组表示「全部资料集」，检索层对空范围不做资料集过滤
+      if (uniqueIds.length) {
+        const datasets = await this.datasets.find({
+          where: uniqueIds.map((id) => ({ id, ownerId, deleted: false })),
+        });
+        if (datasets.length !== uniqueIds.length) {
+          throw new BadRequestException('资料集不存在或无权访问');
+        }
+      }
+      conversation.datasetIds = uniqueIds;
     }
-    conversation.datasetIds = uniqueIds;
+    if (patch.favorite !== undefined) {
+      conversation.favorite = patch.favorite;
+    }
     return this.conversations.save(conversation);
   }
 

@@ -11,8 +11,8 @@ export interface ConversationQuery {
 }
 
 const mockConversations: Conversation[] = [
-  { id: 'mock-c1', title: '系统设计资料问答', datasetIds: ['mock-d1'], createdAt: '2026-09-29', updatedAt: '2026-09-30' },
-  { id: 'mock-c2', title: 'React 性能复盘', datasetIds: ['mock-d2'], createdAt: '2026-09-28', updatedAt: '2026-09-29' },
+  { id: 'mock-c1', title: '系统设计资料问答', datasetIds: ['mock-d1'], favorite: false, createdAt: '2026-09-29', updatedAt: '2026-09-30' },
+  { id: 'mock-c2', title: 'React 性能复盘', datasetIds: ['mock-d2'], favorite: false, createdAt: '2026-09-28', updatedAt: '2026-09-29' },
 ];
 
 function mockListConversations(query: ConversationQuery): PageResult<Conversation> {
@@ -40,9 +40,9 @@ export async function listConversations(query: ConversationQuery = {}): Promise<
 export const getConversation = (id: string) => request<Conversation>(`/conversations/${id}`);
 export const createConversation = (input: { datasetIds: string[]; title?: string }) =>
   jsonRequest<Conversation>('/conversations', 'POST', input);
-/** 空数组表示「全部资料集」 */
-export const updateConversation = (id: string, datasetIds: string[]) =>
-  jsonRequest<Conversation>(`/conversations/${id}`, 'PATCH', { datasetIds });
+/** 局部更新会话：只发送显式给出的字段；`datasetIds` 空数组表示「全部资料集」 */
+export const updateConversation = (id: string, patch: { datasetIds?: string[]; favorite?: boolean }) =>
+  jsonRequest<Conversation>(`/conversations/${id}`, 'PATCH', patch);
 type BackendCitation = ChatMessage['citations'][number] & { quote?: string };
 type BackendMessage = Omit<ChatMessage, 'citations'> & { citations?: BackendCitation[] };
 
