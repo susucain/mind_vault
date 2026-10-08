@@ -134,6 +134,7 @@ services:
   worker:
     image: ${ACR_REGISTRY}/${ACR_NAMESPACE}/${API_REPOSITORY}:${IMAGE_TAG}
     restart: unless-stopped
+    command: ["node", "dist/src/worker.js"]
     env_file:
       - .env
     environment:
