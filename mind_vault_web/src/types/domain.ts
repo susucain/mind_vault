@@ -7,6 +7,14 @@ export type DocumentStatus =
   | 'archived'
   | 'deleted';
 
+export interface DocumentGraphProgress {
+  status: 'NOT_STARTED' | 'PROCESSING' | 'READY' | 'FAILED';
+  completed: number;
+  total: number;
+  failed: number;
+  estimatedRemainingSeconds?: number | null;
+}
+
 export interface Document {
   id: string;
   title: string;
@@ -28,6 +36,10 @@ export interface Document {
     percent: number;
     estimatedRemainingSeconds?: number | null;
   } | null;
+  /** 是否已开启图谱构建（默认关闭）；未返回时视为不可判定 */
+  graphEnabled?: boolean;
+  /** 图谱构建进度，未开启时为 null */
+  graph?: DocumentGraphProgress | null;
   datasetId?: string | null;
   datasetName?: string | null;
   content?: string;

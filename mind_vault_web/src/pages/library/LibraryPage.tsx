@@ -3,9 +3,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { FolderPlus, Grid2X2, List, Plus, Search, Upload, FolderOpen, Inbox } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { createDataset } from '../../api/datasets';
+import { buildDocumentGraph } from '../../api/documents';
 import { Button, Dialog, EmptyState, Input, LoadingState, Tooltip } from '../../components/ui';
 import { useDatasets, useDocuments } from '../../features/documents/queries';
 import { documentStatus, fileType, formatDate, formatFileSize } from '../../features/documents/document-utils';
+import { DocumentGraphBadge } from '../../features/documents/DocumentGraphBadge';
 import { DocumentStatusIndicator } from '../../features/documents/DocumentStatusIndicator';
 import { UploadPanel } from '../../features/documents/UploadPanel';
 import { DatasetDialog } from '../../features/datasets/DatasetDialog';
@@ -73,7 +75,17 @@ function queuedUploadToDocument(item: QueuedUpload, datasetName?: string): Docum
   };
 }
 
-function DocumentRows({ documents, view }: { documents: Document[]; view: ViewMode }) {
+function DocumentRows({
+  buildingId,
+  documents,
+  onBuildGraph,
+  view,
+}: {
+  buildingId: string | null;
+  documents: Document[];
+  onBuildGraph: (documentId: string) => void;
+  view: ViewMode;
+}) {
   return (
     <div className={`document-results document-results--${view}`}>
       <div className="document-table-head" aria-hidden="true">
@@ -105,7 +117,14 @@ function DocumentRows({ documents, view }: { documents: Document[]; view: ViewMo
               <span className="dataset-tag dataset-tag--muted">未归类</span>
             )}
           </span>
-          <DocumentStatusIndicator status={documentStatus(document)} />
+          <div className="document-status-cell">
+            <DocumentStatusIndicator status={documentStatus(document)} />
+            <DocumentGraphBadge
+              building={buildingId === document.id}
+              document={document}
+              onBuild={onBuildGraph}
+            />
+          </div>
           <span>{formatFileSize(document.sourceFileSize)}</span>
           <time>{formatDate(document.updatedAt || document.createdAt)}</time>
         </article>
@@ -148,6 +167,13 @@ export function LibraryPage() {
     onSuccess: () => {
       void datasets.refetch();
       setDatasetDialogOpen(false);
+    },
+  });
+  // 补建图谱：只对已有分块的文档入队，成功后刷新列表拿回最新图谱进度
+  const buildGraphMutation = useMutation({
+    mutationFn: (documentId: string) => buildDocumentGraph(documentId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['documents'] });
     },
   });
 
@@ -227,7 +253,19 @@ export function LibraryPage() {
             <Button onClick={() => void documents.refetch()} variant="secondary">重试</Button>
           </section>
         ) : hasDocuments ? (
-          <DocumentRows documents={filtered} view={view} />
+          <>
+            {buildGraphMutation.isError ? (
+              <p className="library-notice" role="alert">
+                补建图谱失败：{buildGraphMutation.error instanceof Error ? buildGraphMutation.error.message : '请稍后重试'}
+              </p>
+            ) : null}
+            <DocumentRows
+              buildingId={buildGraphMutation.isPending ? buildGraphMutation.variables ?? null : null}
+              documents={filtered}
+              onBuildGraph={(documentId) => buildGraphMutation.mutate(documentId)}
+              view={view}
+            />
+          </>
         ) : isEmpty && !hasDatasets ? (
           <div className="onboarding-card">
             <div className="onboarding-card__icon"><Inbox size={28} /></div>

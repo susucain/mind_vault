@@ -13,15 +13,27 @@ interface GraphPanelProps {
   exploration: GraphExplorationResult;
   /** chunkId → 原文预览深链，用于关系证据跳转 */
   evidencePaths: Map<string, string>;
+  /** 当前范围是否已有可探索的图谱数据；false 时按「还没建图谱」解释空态 */
+  hasGraphData?: boolean;
+  /** 「去构建图谱」指引：跳转到知识库为文档补建 */
+  onBuildGraph?: () => void;
   /** 桌面端收起整个图谱区 / 移动端关闭抽屉 */
   onCollapse?: () => void;
   collapseLabel?: string;
 }
 
 /** 图谱容器：负责布局触发、画布与节点详情的装配（见设计方案 4.6.1）。 */
-export function GraphPanel({ exploration, evidencePaths, onCollapse, collapseLabel = '收起' }: GraphPanelProps) {
+export function GraphPanel({
+  exploration,
+  evidencePaths,
+  hasGraphData,
+  onBuildGraph,
+  onCollapse,
+  collapseLabel = '收起',
+}: GraphPanelProps) {
   const {
     view,
+    focus,
     isLoading,
     isError,
     refetch,
@@ -73,10 +85,27 @@ export function GraphPanel({ exploration, evidencePaths, onCollapse, collapseLab
         ) : isError ? (
           <ErrorState onRetry={refetch} title="图谱检索失败，请稍后重试" />
         ) : view.nodes.length === 0 ? (
-          <EmptyState
-            description="输入实体名称后按回车，或点击热门实体开始探索。"
-            title="还没有可展示的图谱"
-          />
+          focus ? (
+            hasGraphData === false ? (
+              <EmptyState
+                action={
+                  onBuildGraph ? <Button onClick={onBuildGraph}>去构建图谱</Button> : undefined
+                }
+                description="知识图谱默认不在上传时构建。可在「知识库」中为文档补建图谱后再来检索。"
+                title="该资料集还没有图谱数据"
+              />
+            ) : (
+              <EmptyState
+                description="换个实体名称，或扩大资料集范围后再试。"
+                title="没有匹配的图谱"
+              />
+            )
+          ) : (
+            <EmptyState
+              description="输入实体名称后按回车，或点击热门实体开始探索。"
+              title="还没有可展示的图谱"
+            />
+          )
         ) : (
           <>
             <GraphCanvas

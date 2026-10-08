@@ -2,7 +2,7 @@ import { buildRequest, jsonRequest, request, responseError } from './client';
 import { appConfig } from '../lib/config';
 import { ApiRequestError } from '../lib/errors';
 import type { PageResult } from '../types/api';
-import type { Document, DocumentOutline, DocumentSection, DocumentSectionPage } from '../types/domain';
+import type { Document, DocumentGraphProgress, DocumentOutline, DocumentSection, DocumentSectionPage } from '../types/domain';
 
 export interface DocumentQuery {
   title?: string;
@@ -37,6 +37,9 @@ export interface DocumentProcessingStatus {
   retryCount?: number;
   errorCode?: string | null;
   errorMessage?: string | null;
+  /** 是否已开启图谱构建；未开启时 `graph` 为 null（用于区分「未启用」与「已启用未开始」） */
+  graphEnabled?: boolean;
+  graph?: DocumentGraphProgress | null;
   stageProgress: {
     completed: number;
     total: number;
@@ -44,6 +47,13 @@ export interface DocumentProcessingStatus {
     estimatedRemainingSeconds?: number | null;
     stageStartedAt?: string | null;
   };
+}
+
+export interface BuildDocumentGraphResult {
+  documentId: string;
+  graphEnabled: boolean;
+  totalChunks: number;
+  graph?: DocumentGraphProgress | null;
 }
 
 export interface RetryDocumentResult {
@@ -134,6 +144,9 @@ export const getDocumentStatus = (id: string) =>
 export const retryDocument = (id: string) =>
   jsonRequest<RetryDocumentResult>(`/documents/${id}/retry`, 'POST');
 export const reindexDocument = (id: string) => jsonRequest<Document>(`/documents/${id}/reindex`, 'POST');
+/** 事后补建知识图谱：仅对已处理完成、已有分块的文档有效（幂等） */
+export const buildDocumentGraph = (id: string) =>
+  jsonRequest<BuildDocumentGraphResult>(`/documents/${id}/graph`, 'POST');
 export const deleteDocument = (id: string) => request<void>(`/documents/${id}`, { method: 'DELETE' });
 
 export async function uploadDocument(

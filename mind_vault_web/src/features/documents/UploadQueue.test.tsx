@@ -49,4 +49,32 @@ describe('UploadQueue', () => {
     expect(screen.getByText('已可问答')).toBeInTheDocument();
     expect(screen.getByText('已可问答（未构建图谱）')).toBeInTheDocument();
   });
+
+  it('keeps tracking a ready document while its graph is still building', async () => {
+    const stopTracking = vi.fn();
+    render(
+      <UploadQueue
+        cancel={vi.fn()}
+        items={[
+          {
+            localId: '1',
+            file: new File(['a'], 'graph.md'),
+            datasetId: 'd',
+            documentId: 'doc-1',
+            graphEnabled: true,
+            status: 'ready',
+            progress: 100,
+            graphProgress: { status: 'PROCESSING', completed: 3, total: 10, failed: 0 },
+          },
+        ]}
+        retry={vi.fn()}
+        stopTracking={stopTracking}
+      />,
+    );
+
+    expect(screen.getByText('已可问答 · 正在构建知识图谱 3/10')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'graph.md 图谱构建进度' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: '停止跟踪 graph.md' }));
+    expect(stopTracking).toHaveBeenCalledWith('1');
+  });
 });

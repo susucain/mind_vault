@@ -66,13 +66,18 @@ describe('MessageGraph', () => {
     );
   });
 
-  it('shows the empty state instead of a blank canvas when nothing was extracted', async () => {
+  it('explains the opt-in graph building instead of a blank canvas', async () => {
     vi.mocked(fetchAnswerContext).mockResolvedValue({ focus: '', nodes: [], edges: [], truncated: false });
     renderGraph([citation()]);
 
     await userEvent.click(screen.getByRole('button', { name: /相关知识图谱/ }));
 
-    expect(await screen.findByText('暂无相关图谱')).toBeInTheDocument();
+    expect(await screen.findByText('本次引用的文档尚未构建图谱')).toBeInTheDocument();
+    // 空态要能解释「为什么没有图谱」，否则看起来像功能坏了
+    await userEvent.click(screen.getByText('为什么没有图谱？'));
+    expect(
+      screen.getByText(/知识图谱默认不在上传时构建/),
+    ).toBeInTheDocument();
     expect(screen.queryByTestId('graph-canvas')).not.toBeInTheDocument();
   });
 

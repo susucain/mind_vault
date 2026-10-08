@@ -50,6 +50,8 @@ function writeSession(key: string, state: SessionState): void {
 
 export interface GraphExplorationResult {
   view: GraphView;
+  /** 当前焦点实体（空串表示尚未发起探索），用于区分「初始引导」与「检索无结果」 */
+  focus: string;
   isLoading: boolean;
   isError: boolean;
   refetch: () => void;
@@ -171,6 +173,7 @@ export function useGraphExploration(input: {
 
   return {
     view,
+    focus,
     isLoading: base.isLoading,
     isError: base.isError,
     refetch: () => void base.refetch(),

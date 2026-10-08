@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { DocumentGraphProgress } from '../types/domain';
 
 export type UploadQueueStatus =
   | 'queued'
@@ -26,6 +27,8 @@ export interface QueuedUpload {
   };
   failedStage?: string;
   errorMessage?: string;
+  /** 图谱构建进度：job 进入 READY 后图谱仍在后台构建，队列据此继续展示 */
+  graphProgress?: DocumentGraphProgress | null;
 }
 
 interface UploadState {

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Network } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { SearchHistoryEntry } from '@/types/domain';
+import { APP_PATHS } from '@/app/navigation';
 import { Button, Drawer, EmptyState, ErrorState } from '@/components/ui';
 import { documentPreviewPath } from '@/features/documents/document-utils';
 import { useDatasets } from '@/features/documents/queries';
@@ -18,6 +19,7 @@ import { SearchBar } from '@/features/retrieval/components/SearchBar';
 import {
   useClearSearchHistory,
   useDeleteSearchHistory,
+  useEntitySuggestions,
   useSearchHistory,
   useSearchResults,
 } from '@/features/retrieval/queries';
@@ -46,6 +48,7 @@ function ResultSkeleton() {
 
 export function RetrievalPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const state = useMemo(() => parseRetrievalParams(searchParams), [searchParams]);
   const [draft, setDraft] = useState(state.query);
   const [graphHidden, setGraphHidden] = useState(false);
@@ -84,6 +87,11 @@ export function RetrievalPage() {
     maxHops: state.maxHops,
     datasetIds: state.datasetIds,
   });
+
+  // 语料级信号：一条实体都查不到，说明文档还没建图谱；用于把空态从「没匹配」换成「去构建图谱」。
+  // 查询失败时保持 undefined（不解释），避免把网络问题误报成「没建图谱」。
+  const graphCorpus = useEntitySuggestions({ enabled: isGraphMode, q: '', allowEmpty: true, limit: 1 });
+  const hasGraphData = graphCorpus.isSuccess ? (graphCorpus.data?.items.length ?? 0) > 0 : undefined;
 
   // 关系证据指向命中的 chunk：由检索结果反查原文深链，供节点详情跳转。
   const evidencePaths = useMemo(
@@ -192,6 +200,8 @@ export function RetrievalPage() {
               <GraphPanel
                 evidencePaths={evidencePaths}
                 exploration={exploration}
+                hasGraphData={hasGraphData}
+                onBuildGraph={() => navigate(APP_PATHS.library)}
                 onCollapse={() => setGraphHidden(true)}
               />
             </aside>
@@ -208,6 +218,8 @@ export function RetrievalPage() {
               collapseLabel="关闭"
               evidencePaths={evidencePaths}
               exploration={exploration}
+              hasGraphData={hasGraphData}
+              onBuildGraph={() => navigate(APP_PATHS.library)}
               onCollapse={() => setGraphDrawerOpen(false)}
             />
           </div>

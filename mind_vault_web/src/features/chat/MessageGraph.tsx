@@ -101,7 +101,16 @@ export function MessageGraph({ citations }: { citations: Citation[] }) {
           ) : query.isError ? (
             <ErrorState onRetry={() => void query.refetch()} title="图谱加载失败，可稍后重试" />
           ) : view.nodes.length === 0 ? (
-            <EmptyState description="本轮引用尚未抽取到实体关系。" title="暂无相关图谱" />
+            <EmptyState
+              action={
+                <details className="message-graph__explain">
+                  <summary>为什么没有图谱？</summary>
+                  <p>知识图谱默认不在上传时构建。可在「知识库」中为这份文档补建图谱后再回来查看。</p>
+                </details>
+              }
+              description="本轮回答引用的文档还没有抽取实体关系，因此没有可展示的图谱。"
+              title="本次引用的文档尚未构建图谱"
+            />
           ) : (
             <>
               {view.truncated ? (

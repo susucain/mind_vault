@@ -54,19 +54,24 @@ export function useUploadQueue() {
     };
     const check = async () => {
       const current = useUploadStore.getState().items.find(({ localId }) => localId === item.localId);
-      if (!current || current.status !== 'processing' || !current.documentId) {
+      if (!current || !current.documentId || (current.status !== 'processing' && current.status !== 'ready')) {
         stop();
         return;
       }
       try {
         const status = await getDocumentStatus(current.documentId);
         const nextStatus = normalizeStatus(status.status);
-        if (nextStatus === 'ready' || nextStatus === 'failed' || nextStatus === 'cancelled') {
+        // 图谱在 job 进入 READY 之后仍在后台构建，此时 `status.graph` 仍为 PROCESSING；
+        // 需要继续轮询，否则队列会在图谱还没建完时就停止跟踪。
+        const graph = status.graph ?? null;
+        const graphPending = graph?.status === 'PROCESSING';
+        if (nextStatus === 'failed' || nextStatus === 'cancelled' || (nextStatus === 'ready' && !graphPending)) {
           update(current.localId, {
             status: nextStatus,
             progress: nextStatus === 'ready' ? 100 : current.progress,
             currentStage: status.currentStage ?? undefined,
             stageProgress: status.stageProgress,
+            graphProgress: graph,
             failedStage: nextStatus === 'failed' ? status.currentStage ?? undefined : undefined,
             errorMessage: status.errorMessage ?? undefined,
           });
@@ -74,10 +79,11 @@ export function useUploadQueue() {
           return;
         }
         update(current.localId, {
-          status: 'processing',
+          status: nextStatus === 'ready' ? 'ready' : 'processing',
           currentStage: status.currentStage ?? undefined,
-          progress: status.stageProgress.percent,
+          progress: nextStatus === 'ready' ? 100 : status.stageProgress.percent,
           stageProgress: status.stageProgress,
+          graphProgress: graph,
         });
       } catch (error) {
         const details = errorDetails(error);

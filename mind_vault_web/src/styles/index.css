@@ -221,6 +221,18 @@ a:focus-visible {
 .document-status--danger { color: var(--mv-danger); }
 .document-status--archived { color: var(--mv-muted); }
 .document-status--processing svg, .document-status--uploading svg { animation: spin 1.2s linear infinite; }
+/* 图谱状态徽标：默认不构建图谱需要在列表里一眼可见，未开启/失败时本身即补建入口 */
+.document-status-cell { min-width: 0; display: grid; gap: 5px; justify-items: start; }
+.graph-badge { max-width: 100%; display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border: 1px solid transparent; border-radius: 999px; color: var(--mv-muted); background: transparent; font-size: 0.7rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.graph-badge--idle { border-color: var(--mv-line-strong); color: var(--mv-muted-strong); background: var(--mv-surface); cursor: pointer; }
+.graph-badge--idle:hover { border-color: var(--mv-primary); color: var(--mv-primary); }
+.graph-badge--idle:disabled { color: var(--mv-muted); cursor: default; }
+.graph-badge--building { color: #9a671c; }
+.graph-badge--ready { color: var(--mv-success); }
+.graph-badge--failed { border-color: #e9b9b9; color: var(--mv-danger); cursor: pointer; }
+.graph-badge__spin { animation: spin 1.2s linear infinite; }
+/* 列表级操作反馈：补建图谱失败等一次性提示 */
+.library-notice { margin: 0 0 12px; border: 1px solid #e9b9b9; border-radius: 7px; padding: 9px 12px; color: var(--mv-danger); background: var(--mv-surface); font-size: 0.8rem; line-height: 1.5; }
 .state-panel { max-width: 680px; border: 1px solid var(--mv-line); border-radius: 8px; padding: 20px; background: var(--mv-surface); }
 .state-panel p { margin: 8px 0 16px; color: var(--mv-muted); font-size: 0.9rem; line-height: 1.5; }
 .state-panel--error { border-color: #e9b9b9; }
@@ -833,6 +845,10 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .message-graph__body { padding: 0 11px 11px; display: grid; gap: 10px; }
 .message-graph__body .state-panel { border: 0; background: transparent; }
 .message-graph__notice { margin: 0; display: flex; align-items: center; gap: 6px; border-left: 3px solid var(--mv-orange); padding: 6px 10px; color: var(--mv-notice-ink); background: var(--mv-notice-soft); font-size: .72rem; }
+/* 图谱空态的可展开说明：讲清「默认不建图谱」而不是让用户以为功能坏了 */
+.message-graph__explain { color: var(--mv-muted); font-size: .74rem; }
+.message-graph__explain summary { cursor: pointer; color: var(--mv-blue); font-weight: 600; }
+.message-graph__explain p { margin: 6px 0 0; line-height: 1.55; }
 .message-graph__canvas { position: relative; height: 340px; border: 1px solid var(--mv-line); border-radius: 6px; overflow: hidden; background: var(--mv-surface); }
 .message-graph__canvas .loading-state { min-height: 100%; }
 @media (max-width: 768px) {
