@@ -1,4 +1,4 @@
-import { buildRequest, jsonRequest, request, responseError } from './client';
+import { buildRequest, jsonRequest, request, responseError, xhrUpload } from './client';
 import { appConfig } from '../lib/config';
 import { ApiRequestError } from '../lib/errors';
 import type { PageResult } from '../types/api';
@@ -66,6 +66,12 @@ export interface RetryDocumentResult {
   jobId: string;
   status: string;
   retryCount: number;
+}
+
+export interface CancelDocumentResult {
+  documentId: string;
+  jobId: string;
+  status: string;
 }
 
 function queryString(query: object): string {
@@ -151,6 +157,9 @@ export const getSupportedFormats = () =>
   request<SupportedFormats>('/documents/supported-formats');
 export const retryDocument = (id: string) =>
   jsonRequest<RetryDocumentResult>(`/documents/${id}/retry`, 'POST');
+/** 取消上传（U8 档 1）：仅对尚未被 worker 接手的任务生效，进入处理后后端会返回 400 */
+export const cancelDocument = (id: string) =>
+  jsonRequest<CancelDocumentResult>(`/documents/${id}/cancel`, 'POST');
 export const reindexDocument = (id: string) => jsonRequest<Document>(`/documents/${id}/reindex`, 'POST');
 /** 事后补建知识图谱：仅对已处理完成、已有分块的文档有效（幂等） */
 export const buildDocumentGraph = (id: string) =>
@@ -160,7 +169,12 @@ export const deleteDocument = (id: string) => request<void>(`/documents/${id}`, 
 export async function uploadDocument(
   file: File,
   input: UploadDocumentInput,
-  options: { signal?: AbortSignal; idempotencyKey?: string } = {},
+  options: {
+    signal?: AbortSignal;
+    idempotencyKey?: string;
+    /** 上传字节进度（0–100），处理阶段的百分比由 SSE/轮询接管 */
+    onProgress?: (percent: number) => void;
+  } = {},
 ): Promise<UploadDocumentResult> {
   const body = new FormData();
   body.append('file', file);
@@ -169,10 +183,9 @@ export async function uploadDocument(
   if (input.remark) body.append('remark', input.remark);
   body.append('sourceFileName', file.name);
   body.append('graphEnabled', String(input.graphEnabled ?? false));
-  return request<UploadDocumentResult>('/documents/upload', {
-    method: 'POST',
-    body,
+  return xhrUpload<UploadDocumentResult>('/documents/upload', body, {
     signal: options.signal,
+    onProgress: options.onProgress,
     headers: options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : undefined,
   });
 }

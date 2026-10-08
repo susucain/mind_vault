@@ -9,7 +9,10 @@ import {
 } from './documents';
 
 describe('document API contracts', () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
 
   it('normalizes ParsedSection.text from the document detail response', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
@@ -62,20 +65,52 @@ describe('document API contracts', () => {
     });
   });
 
-  it('forwards AbortSignal during upload without inventing progress events', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
-      documentId: 'doc-1',
-      jobId: 'job-1',
-      status: 'UPLOADED',
-    }), { headers: { 'Content-Type': 'application/json' } }));
+  it('uploads over XHR and aborts the in-flight request with the caller signal', async () => {
+    class FakeXhr {
+      static instances: FakeXhr[] = [];
+      method = '';
+      url = '';
+      status = 0;
+      responseText = '';
+      aborted = false;
+      upload = { onprogress: null as ((event: ProgressEvent) => void) | null };
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      ontimeout: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+      constructor() {
+        FakeXhr.instances.push(this);
+      }
+      open(method: string, url: string): void {
+        this.method = method;
+        this.url = url;
+      }
+      setRequestHeader(): void {}
+      getResponseHeader(): string | null {
+        return null;
+      }
+      send(): void {}
+      abort(): void {
+        this.aborted = true;
+        this.onabort?.();
+      }
+    }
+    vi.stubGlobal('XMLHttpRequest', FakeXhr);
     const controller = new AbortController();
 
-    await uploadDocument(new File(['content'], 'notes.md'), { datasetId: 'dataset-1' }, {
-      signal: controller.signal,
-    });
+    const promise = uploadDocument(
+      new File(['content'], 'notes.md'),
+      { datasetId: 'dataset-1' },
+      { signal: controller.signal },
+    );
+    const xhr = FakeXhr.instances[0]!;
+    expect(xhr.method).toBe('POST');
+    expect(xhr.url).toBe('/v1/documents/upload');
 
-    const [, init] = fetchMock.mock.calls[0]!;
-    expect(init?.signal).toBe(controller.signal);
+    controller.abort();
+
+    expect(xhr.aborted).toBe(true);
+    await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
   });
 
   it('sends only supported server filters and pagination to the document list', async () => {

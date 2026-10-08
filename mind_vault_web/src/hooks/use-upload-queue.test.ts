@@ -2,16 +2,24 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiRequestError } from '../lib/errors';
 import type { UploadDocumentResult } from '../api/documents';
+import type { DocumentProgressHandlers } from '../features/documents/document-progress-stream';
 import { useUploadQueue } from './use-upload-queue';
 import { useUploadStore } from '../stores/upload.store';
 
-const { uploadDocument, getDocumentStatus, retryDocument } = vi.hoisted(() => ({
+const { uploadDocument, getDocumentStatus, retryDocument, cancelDocument, connectDocumentProgress } = vi.hoisted(() => ({
   uploadDocument: vi.fn(),
   getDocumentStatus: vi.fn(),
   retryDocument: vi.fn(),
+  cancelDocument: vi.fn(),
+  connectDocumentProgress: vi.fn(),
 }));
 
-vi.mock('../api/documents', () => ({ uploadDocument, getDocumentStatus, retryDocument }));
+vi.mock('../api/documents', () => ({ uploadDocument, getDocumentStatus, retryDocument, cancelDocument }));
+vi.mock('../features/documents/document-progress-stream', () => ({ connectDocumentProgress }));
+
+/** 捕获进度流订阅方注册的处理器，用于在测试里手工推送 SSE 帧 */
+let streamHandlers: DocumentProgressHandlers | undefined;
+let streamClosed = false;
 
 function createFile(name: string, size = 7): File {
   const file = new File(['content'], name, { type: 'text/plain' });
@@ -34,6 +42,17 @@ describe('useUploadQueue', () => {
     uploadDocument.mockReset();
     getDocumentStatus.mockReset();
     retryDocument.mockReset();
+    cancelDocument.mockReset();
+    connectDocumentProgress.mockReset();
+    streamHandlers = undefined;
+    streamClosed = false;
+    // 默认不建立连接也不触发 onClose：既有用例继续走轮询兜底路径
+    connectDocumentProgress.mockImplementation((handlers: DocumentProgressHandlers) => {
+      streamHandlers = handlers;
+      return () => {
+        streamClosed = true;
+      };
+    });
     useUploadStore.getState().reset();
   });
 
@@ -311,5 +330,157 @@ describe('useUploadQueue', () => {
 
     expect(options.signal.aborted).toBe(true);
     expect(result.current.items[0].status).toBe('cancelled');
+  });
+
+  it('drives the queue progress from the upload byte progress', async () => {
+    const pending = deferred<UploadDocumentResult>();
+    uploadDocument.mockImplementation((...args: unknown[]) => {
+      const options = args[2] as { onProgress?: (percent: number) => void };
+      options.onProgress?.(42);
+      return pending.promise;
+    });
+    const { result } = renderHook(() => useUploadQueue());
+
+    act(() => result.current.enqueue([createFile('a.txt')], 'dataset-1'));
+
+    await vi.waitFor(() =>
+      expect(result.current.items[0]).toMatchObject({ status: 'uploading', progress: 42 }),
+    );
+  });
+
+  it('applies progress pushed over SSE and skips polling while the stream is open', async () => {
+    uploadDocument.mockResolvedValue({ documentId: 'doc-1', jobId: 'job-1', status: 'UPLOADED' });
+    const { result } = renderHook(() => useUploadQueue());
+
+    act(() => result.current.enqueue([createFile('a.txt')], 'dataset-1'));
+    await vi.waitFor(() => expect(result.current.items[0]).toMatchObject({ status: 'processing' }));
+    await vi.waitFor(() => expect(streamHandlers).toBeDefined());
+
+    act(() => {
+      streamHandlers?.onOpen?.();
+      streamHandlers?.onEvent({
+        ownerId: 'user-1',
+        documentId: 'doc-1',
+        stage: 'chunking',
+        status: 'CHUNKING',
+        completed: 3,
+        total: 10,
+        percent: 30,
+      });
+    });
+    expect(result.current.items[0]).toMatchObject({
+      status: 'processing',
+      currentStage: 'chunking',
+      progress: 30,
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6_000);
+    });
+    expect(getDocumentStatus).not.toHaveBeenCalled();
+
+    act(() => {
+      streamHandlers?.onEvent({
+        ownerId: 'user-1',
+        documentId: 'doc-1',
+        stage: 'ready',
+        status: 'READY',
+        completed: 1,
+        total: 1,
+        percent: 100,
+      });
+    });
+    expect(result.current.items[0]).toMatchObject({ status: 'ready', progress: 100 });
+  });
+
+  it('falls back to polling after the progress stream drops', async () => {
+    uploadDocument.mockResolvedValue({ documentId: 'doc-1', jobId: 'job-1', status: 'UPLOADED' });
+    getDocumentStatus.mockResolvedValue({
+      status: 'CHUNKING',
+      currentStage: 'chunking',
+      errorMessage: null,
+      stageProgress: { completed: 3, total: 10, percent: 30 },
+    });
+    const { result } = renderHook(() => useUploadQueue());
+
+    act(() => result.current.enqueue([createFile('a.txt')], 'dataset-1'));
+    await vi.waitFor(() => expect(streamHandlers).toBeDefined());
+    act(() => streamHandlers?.onOpen?.());
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(getDocumentStatus).not.toHaveBeenCalled();
+
+    // 断线：重新降级到 2s 轮询兜底
+    act(() => streamHandlers?.onClose?.(new Error('connection lost')));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    await vi.waitFor(() => expect(getDocumentStatus).toHaveBeenCalledTimes(1));
+    expect(result.current.items[0]).toMatchObject({ currentStage: 'chunking', progress: 30 });
+  });
+
+  it('notifies the backend when cancelling a job that has not started processing', async () => {
+    cancelDocument.mockResolvedValue({ documentId: 'doc-1', jobId: 'job-1', status: 'CANCELLED' });
+    useUploadStore.setState({
+      items: [{
+        localId: 'local-1',
+        file: createFile('a.txt'),
+        datasetId: 'dataset-1',
+        documentId: 'doc-1',
+        status: 'processing',
+        progress: 0,
+        currentStage: 'uploaded',
+      }],
+    });
+    const { result } = renderHook(() => useUploadQueue());
+
+    act(() => result.current.cancel('local-1'));
+
+    expect(cancelDocument).toHaveBeenCalledWith('doc-1');
+    expect(result.current.items[0]).toMatchObject({ status: 'cancelled' });
+  });
+
+  it('refuses to cancel once the worker has picked the job up', async () => {
+    useUploadStore.setState({
+      items: [{
+        localId: 'local-1',
+        file: createFile('a.txt'),
+        datasetId: 'dataset-1',
+        documentId: 'doc-1',
+        status: 'processing',
+        progress: 30,
+        currentStage: 'chunking',
+      }],
+    });
+    const { result } = renderHook(() => useUploadQueue());
+
+    act(() => result.current.cancel('local-1'));
+
+    expect(cancelDocument).not.toHaveBeenCalled();
+    expect(result.current.items[0]).toMatchObject({ status: 'processing' });
+  });
+
+  it('unsubscribes from the progress stream once every item settles', async () => {
+    uploadDocument.mockResolvedValue({ documentId: 'doc-1', jobId: 'job-1', status: 'UPLOADED' });
+    const { result } = renderHook(() => useUploadQueue());
+
+    act(() => result.current.enqueue([createFile('a.txt')], 'dataset-1'));
+    await vi.waitFor(() => expect(streamHandlers).toBeDefined());
+
+    act(() => {
+      streamHandlers?.onEvent({
+        ownerId: 'user-1',
+        documentId: 'doc-1',
+        stage: 'ready',
+        status: 'READY',
+        completed: 1,
+        total: 1,
+        percent: 100,
+      });
+    });
+
+    await vi.waitFor(() => expect(streamClosed).toBe(true));
   });
 });

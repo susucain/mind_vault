@@ -21,10 +21,11 @@ describe('UploadQueue', () => {
 
     render(<UploadQueue cancel={cancel} items={useUploadStore.getState().items} retry={retry} stopTracking={stopTracking} />);
 
-    expect(screen.getByText('正在上传（服务端未提供进度）')).toBeInTheDocument();
+    expect(screen.getByText('正在上传 0%')).toBeInTheDocument();
     expect(screen.getByText('正在处理：chunking · 3/10')).toBeInTheDocument();
     expect(screen.getByText('失败于 validation：解析失败')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '取消 index.md' })).not.toBeInTheDocument();
+    // U8 档 1：worker 已接手，取消按钮置灰并说明原因
+    expect(screen.getByRole('button', { name: '取消 index.md' })).toBeDisabled();
     await userEvent.click(screen.getByRole('button', { name: '停止跟踪 index.md' }));
     await userEvent.click(screen.getByRole('button', { name: '重试 broken.docx' }));
     await userEvent.click(screen.getByRole('button', { name: '取消 upload.pdf' }));

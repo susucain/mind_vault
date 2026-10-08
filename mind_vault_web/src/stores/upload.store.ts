@@ -48,6 +48,24 @@ interface UploadState {
   reset: () => void;
 }
 
+/** 服务端 job 还没被 worker 接手的阶段：U8 档 1 只允许在这一窗口取消 */
+const PENDING_STAGES = new Set(['uploaded', 'retry_pending']);
+
+/** job 是否已真正进入处理；进入后 worker 没有阶段间检查点，无法安全取消 */
+export function hasEnteredProcessing(item: QueuedUpload): boolean {
+  return (
+    item.status === 'processing' &&
+    Boolean(item.currentStage) &&
+    !PENDING_STAGES.has(item.currentStage as string)
+  );
+}
+
+/** 是否可取消：尚未提交给 worker 的任务（含客户端还没发完的请求）都可取消 */
+export function canCancelUpload(item: QueuedUpload): boolean {
+  if (item.status === 'queued' || item.status === 'uploading') return true;
+  return item.status === 'processing' && !hasEnteredProcessing(item);
+}
+
 export const useUploadStore = create<UploadState>((set) => ({
   items: [],
   add: (items) => set((state) => ({ items: [...state.items, ...items] })),

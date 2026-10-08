@@ -130,3 +130,107 @@ export function jsonRequest<T>(
     body: body as RequestOptions['body'],
   });
 }
+
+export interface XhrUploadOptions {
+  method?: string;
+  headers?: HeadersInit;
+  signal?: AbortSignal;
+  /** 已发送字节的比例（0–100）；仅在浏览器能给出总量时触发 */
+  onProgress?: (percent: number) => void;
+}
+
+/**
+ * XHR 表单上传（U9）：`fetch` 没有上传进度事件，只有 `XMLHttpRequest.upload.onprogress`
+ * 能给出「已发送 / 总字节」，大文件才不至于一直卡在 0%。
+ * 鉴权头、Request-Id、错误体解析与 401 全局处理都沿用 `buildRequest` / `responseError`，
+ * 与 `request()` 保持同一套口径。
+ */
+export function xhrUpload<T>(
+  path: string,
+  body: FormData,
+  options: XhrUploadOptions = {},
+): Promise<T> {
+  const built = buildRequest(path, {
+    method: options.method ?? 'POST',
+    body,
+    headers: options.headers,
+  });
+  const signal = options.signal;
+  return new Promise<T>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError());
+      return;
+    }
+    const xhr = new XMLHttpRequest();
+    const onAbort = () => xhr.abort();
+    const detach = () => signal?.removeEventListener('abort', onAbort);
+
+    xhr.open(built.init.method ?? 'POST', built.url, true);
+    new Headers(built.init.headers).forEach((value, key) =>
+      xhr.setRequestHeader(key, value),
+    );
+    if (xhr.upload) {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && event.total > 0) {
+          options.onProgress?.(
+            Math.min(100, Math.round((event.loaded / event.total) * 100)),
+          );
+        }
+      };
+    }
+    xhr.onload = () => {
+      detach();
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(parseXhrBody<T>(xhr));
+        } catch (error) {
+          reject(error);
+        }
+        return;
+      }
+      void responseError(xhrResponse(xhr)).then(reject);
+    };
+    xhr.onerror = () => {
+      detach();
+      reject(networkError('Network request failed'));
+    };
+    xhr.ontimeout = () => {
+      detach();
+      reject(networkError('Upload timed out'));
+    };
+    xhr.onabort = () => {
+      detach();
+      reject(abortError());
+    };
+    signal?.addEventListener('abort', onAbort);
+
+    xhr.send(body);
+  });
+}
+
+function abortError(): DOMException {
+  return new DOMException('The operation was aborted.', 'AbortError');
+}
+
+function networkError(message: string): ApiRequestError {
+  return new ApiRequestError({ status: 0, code: 'NETWORK_ERROR', message });
+}
+
+/** 把 XHR 的响应体还原成 `Response`，复用 `responseError` 的解析与 401 处理 */
+function xhrResponse(xhr: XMLHttpRequest): Response {
+  return new Response(xhr.responseText, {
+    status: xhr.status,
+    statusText: xhr.statusText,
+    headers: {
+      'Content-Type': xhr.getResponseHeader('Content-Type') ?? 'application/json',
+      ...(xhr.getResponseHeader('X-Request-Id')
+        ? { 'X-Request-Id': xhr.getResponseHeader('X-Request-Id') as string }
+        : {}),
+    },
+  });
+}
+
+function parseXhrBody<T>(xhr: XMLHttpRequest): T {
+  if (!xhr.responseText) return undefined as T;
+  return JSON.parse(xhr.responseText) as T;
+}

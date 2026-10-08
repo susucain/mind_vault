@@ -1,5 +1,5 @@
 import { Ban, CircleCheck, EyeOff, LoaderCircle, RotateCcw, X } from 'lucide-react';
-import type { QueuedUpload } from '../../stores/upload.store';
+import { canCancelUpload, type QueuedUpload } from '../../stores/upload.store';
 
 export function UploadQueue({
   cancel,
@@ -23,6 +23,9 @@ export function UploadQueue({
           const graphBuilding = graph?.status === 'PROCESSING';
           // 图谱在文档已可问答之后仍在后台构建，此时仍需要「停止跟踪」入口
           const tracking = item.status === 'processing' || (item.status === 'ready' && graphBuilding);
+          // U8 档 1：只有尚未被 worker 接手的任务可取消，进入处理后按钮置灰并说明原因
+          const cancelable = canCancelUpload(item);
+          const cancelLocked = item.status === 'processing' && !cancelable;
           const readyLabel =
             item.status !== 'ready'
               ? null
@@ -40,7 +43,7 @@ export function UploadQueue({
               <div className="upload-copy">
                 <strong>{item.file.name}</strong>
                 <span>
-                  {item.status === 'uploading' && '正在上传（服务端未提供进度）'}
+                  {item.status === 'uploading' && `正在上传 ${item.progress}%`}
                   {item.status === 'queued' && '排队中'}
                   {item.status === 'processing' && `正在处理${item.currentStage ? `：${item.currentStage}` : ''}${item.stageProgress?.total ? ` · ${item.stageProgress.completed}/${item.stageProgress.total}` : ''}`}
                   {readyLabel}
@@ -50,7 +53,9 @@ export function UploadQueue({
                       ? `该文件已存在：${item.duplicateOf.name}`
                       : `失败${item.failedStage ? `于 ${item.failedStage}` : ''}${item.errorMessage ? `：${item.errorMessage}` : ''}`)}
                 </span>
-                {item.status === 'uploading' ? <progress aria-label={`${item.file.name} 上传中`} /> : null}
+                {item.status === 'uploading' ? (
+                  <progress aria-label={`${item.file.name} 上传中`} max="100" value={item.progress} />
+                ) : null}
                 {item.status === 'processing' ? (
                   item.stageProgress?.total
                     ? <progress aria-label={`${item.file.name} 处理进度`} max="100" value={item.stageProgress.percent} />
@@ -66,19 +71,34 @@ export function UploadQueue({
               </div>
               {item.status === 'failed' ? (
                 <button aria-label={`重试 ${item.file.name}`} className="icon-button" onClick={() => retry(item.localId)} type="button"><RotateCcw size={17} /></button>
-              ) : tracking ? (
-                <button
-                  aria-label={`停止跟踪 ${item.file.name}`}
-                  className="icon-button"
-                  onClick={() => stopTracking(item.localId)}
-                  title="仅从本地队列隐藏，不会取消服务端处理"
-                  type="button"
-                >
-                  <EyeOff size={17} />
-                </button>
-              ) : ['queued', 'uploading'].includes(item.status) ? (
-                <button aria-label={`取消 ${item.file.name}`} className="icon-button" onClick={() => cancel(item.localId)} type="button"><X size={17} /></button>
-              ) : null}
+              ) : (
+                <>
+                  {cancelable ? (
+                    <button aria-label={`取消 ${item.file.name}`} className="icon-button" onClick={() => cancel(item.localId)} type="button"><X size={17} /></button>
+                  ) : cancelLocked ? (
+                    <button
+                      aria-label={`取消 ${item.file.name}`}
+                      className="icon-button"
+                      disabled
+                      title="已进入处理，无法取消"
+                      type="button"
+                    >
+                      <X size={17} />
+                    </button>
+                  ) : null}
+                  {tracking ? (
+                    <button
+                      aria-label={`停止跟踪 ${item.file.name}`}
+                      className="icon-button"
+                      onClick={() => stopTracking(item.localId)}
+                      title="仅从本地队列隐藏，不会取消服务端处理"
+                      type="button"
+                    >
+                      <EyeOff size={17} />
+                    </button>
+                  ) : null}
+                </>
+              )}
             </li>
           );
         })}
