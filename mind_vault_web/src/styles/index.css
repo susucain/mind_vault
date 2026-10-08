@@ -875,6 +875,9 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .citation-card__heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .citation-card p { margin: 8px 0; color: var(--mv-muted-strong); font-size: .75rem; line-height: 1.55; }
 .citation-card__link { display: inline-flex; align-items: center; gap: 4px; color: var(--mv-blue); font-size: .72rem; text-decoration: none; }
+.citation-card--stale { border-style: dashed; background: var(--mv-nav); }
+.citation-card__badge { flex: 0 0 auto; border-radius: 999px; padding: 1px 7px; color: var(--mv-warning); background: var(--mv-warning-soft); font-size: .65rem; font-weight: 650; white-space: nowrap; }
+.citation-card__stale { color: var(--mv-muted); font-style: italic; }
 .chat-muted { color: var(--mv-muted); font-size: .8rem; }
 .chat-error, .chat-interrupted { max-width: 780px; margin: 14px auto 0; padding: 10px 12px; display: flex; align-items: center; gap: 10px; color: #8e3d3d; background: #fff5f5; font-size: .8rem; }
 .chat-error .button, .chat-interrupted .button { margin-left: auto; }

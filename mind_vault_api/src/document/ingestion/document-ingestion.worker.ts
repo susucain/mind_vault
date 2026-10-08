@@ -437,6 +437,14 @@ export class DocumentIngestionWorker {
         );
       }
       await this.index.indexChunks(chunks);
+      // I2：写入用 refresh:false 收敛 flush 次数，整份文档写完后显式刷新一次即可
+      await this.index.refresh();
+      // K5：分块变更后旧 chunkId 的 Chunk 节点失去对应 ES 文档，按新集合清理孤儿（保留 Document/Entity）
+      await this.graph.cleanupOrphanChunks(
+        message.ownerId,
+        document.id,
+        chunks.map((chunk) => chunk.chunkId),
+      );
       await this.updateJob(
         job,
         IngestionJobStatus.Indexing,

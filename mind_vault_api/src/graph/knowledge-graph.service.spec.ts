@@ -409,4 +409,30 @@ describe('KnowledgeGraphService', () => {
     ).resolves.toEqual({ focus: '', nodes: [], edges: [], truncated: false });
     expect(driver.session).not.toHaveBeenCalled();
   });
+
+  it('deletes only the chunk nodes outside the kept set when cleaning orphans', async () => {
+    const tx = {
+      run: jest.fn().mockResolvedValue({ records: [] }),
+      close: jest.fn(),
+    };
+    const driver = { session: jest.fn().mockReturnValue(tx) };
+    const service = new KnowledgeGraphService(driver as never);
+
+    await service.cleanupOrphanChunks('user_1', 'doc_1', ['chunk_new']);
+
+    expect(tx.run).toHaveBeenCalledTimes(1);
+    const calls = tx.run.mock.calls as unknown as [
+      string,
+      Record<string, unknown>,
+    ][];
+    // 只删孤儿 Chunk；Document 与 Entity 一律保留
+    expect(calls[0][0]).toContain('DETACH DELETE chunk');
+    expect(calls[0][0]).not.toContain('DELETE entity');
+    expect(calls[0][1]).toEqual({
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      keepChunkIds: ['chunk_new'],
+    });
+    expect(tx.close).toHaveBeenCalled();
+  });
 });

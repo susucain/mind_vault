@@ -13,6 +13,11 @@ export interface DocumentLocator {
 export interface ParsedSection {
   sectionId: string;
   heading?: string;
+  /**
+   * 标题层级路径（A7）：从顶层标题到当前标题的完整链路。
+   * 单层标题时是 `[heading]`，无标题时为空数组；分块侧据此生成多级 `titlePath`。
+   */
+  titlePath: string[];
   text: string;
   order: number;
   locator: DocumentLocator;

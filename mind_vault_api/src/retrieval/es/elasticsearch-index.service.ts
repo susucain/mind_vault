@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentChunk } from '../../document/chunking/document-chunk';
 import {
@@ -6,6 +6,14 @@ import {
   RetrievalHit,
   RetrievalPage,
 } from '../retrieval-hit';
+import {
+  CHUNK_INDEX_ALIAS,
+  CHUNK_INDEX_VERSION,
+  chunkIndexMapping,
+  chunkIndexName,
+  chunkMappingVersion,
+  readMappingVersion,
+} from './chunk-index-mapping';
 
 export const ELASTICSEARCH_CLIENT = Symbol('ELASTICSEARCH_CLIENT');
 
@@ -16,15 +24,35 @@ const HIGHLIGHT_POST = '\u0003';
 /** kNN 的 k 上限：k 即返回上限，超过后无法继续深翻页 */
 export const VECTOR_K_CAP = 100;
 
+/** bulk 中失败条目的明细（I2）：便于定位是 mapping 冲突还是单条超长 */
+export interface BulkIndexFailure {
+  chunkId: string;
+  reason: string;
+}
+
+/** bulk 部分失败时抛出，携带逐条失败原因，而不是笼统的「索引失败」 */
+export class BulkIndexError extends Error {
+  constructor(readonly failures: BulkIndexFailure[]) {
+    super(`Elasticsearch bulk 索引失败: ${failures.length} 条`);
+    this.name = 'BulkIndexError';
+  }
+}
+
 interface ElasticsearchLike {
   indices: {
     exists(input: { index: string }): Promise<boolean>;
     create(input: unknown): Promise<unknown>;
+    delete(input: { index: string }): Promise<unknown>;
+    getMapping(input: { index: string }): Promise<Record<string, unknown>>;
+    updateAliases(input: { actions: unknown[] }): Promise<unknown>;
+    refresh(input: { index: string }): Promise<unknown>;
   };
-  bulk(input: {
-    refresh: string;
-    operations: unknown[];
-  }): Promise<{ errors: boolean }>;
+  bulk(input: { refresh: string | boolean; operations: unknown[] }): Promise<{
+    errors: boolean;
+    items?: Array<
+      Record<string, { _id?: string; error?: { reason?: string } }>
+    >;
+  }>;
   search(input: unknown): Promise<{
     hits: {
       total?: { value: number; relation?: string };
@@ -42,7 +70,9 @@ interface ElasticsearchLike {
 
 @Injectable()
 export class ElasticsearchIndexService {
-  private readonly indexName = 'mind_vault_chunks_v1';
+  private readonly logger = new Logger(ElasticsearchIndexService.name);
+  /** 读写统一走别名（I1）；物理索引按版本号后缀，切换由 `npm run es:migrate` 负责 */
+  private readonly indexName = CHUNK_INDEX_ALIAS;
 
   constructor(
     @Inject(ELASTICSEARCH_CLIENT)
@@ -50,48 +80,82 @@ export class ElasticsearchIndexService {
     private readonly config: ConfigService,
   ) {}
 
+  /**
+   * 索引自检（I1）：别名缺失时引导建当前版本索引；别名已存在时读取其后端索引的
+   * `_meta.mappingVersion` 与代码期望指纹比对，不一致只告警——**不在启动时自动建/切**，
+   * 避免多副本竞争，切换交给显式脚本。
+   */
   async ensureIndex() {
-    const exists = await this.client.indices.exists({
-      index: this.indexName,
-    });
-    if (exists) return;
-    await this.client.indices.create({
-      index: this.indexName,
-      mappings: {
-        properties: {
-          chunkId: { type: 'keyword' },
-          parentId: { type: 'keyword' },
-          ownerId: { type: 'keyword' },
-          documentId: { type: 'keyword' },
-          datasetIds: { type: 'keyword' },
-          documentVersion: { type: 'integer' },
-          sectionId: { type: 'keyword' },
-          chunkOrder: { type: 'integer' },
-          // 索引端用 ik_max_word 提高召回，检索端用 ik_smart 提高精度
-          titlePath: {
-            type: 'text',
-            analyzer: 'ik_max_word',
-            search_analyzer: 'ik_smart',
-          },
-          titleKeyword: { type: 'keyword' },
-          text: {
-            type: 'text',
-            analyzer: 'ik_max_word',
-            search_analyzer: 'ik_smart',
-          },
-          parentContext: { type: 'text', index: false },
-          locator: { type: 'object', enabled: true },
-          embedding: {
-            type: 'dense_vector',
-            dims: this.embeddingDimensions(),
-            index: true,
-            similarity: 'cosine',
-          },
-          deleted: { type: 'boolean' },
-          updatedAt: { type: 'date' },
+    const dimensions = this.embeddingDimensions();
+    const exists = await this.client.indices.exists({ index: this.indexName });
+    if (!exists) {
+      await this.createVersionIndex(CHUNK_INDEX_VERSION, dimensions);
+      await this.pointAliasTo(CHUNK_INDEX_VERSION);
+      return;
+    }
+    try {
+      const mapping = await this.client.indices.getMapping({
+        index: this.indexName,
+      });
+      const actual = readMappingVersion(mapping);
+      const expected = chunkMappingVersion(dimensions);
+      if (actual !== expected) {
+        this.logger.warn(
+          `ES mapping 版本不一致（实际=${actual ?? '未知'} 期望=${expected}），如需演进请运行 npm run es:migrate`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `ES mapping 版本比对失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /** 建（或复用）某版本的物理索引（不含别名）；仅引导与 es:migrate 使用 */
+  async createVersionIndex(
+    version: number,
+    dimensions = this.embeddingDimensions(),
+  ): Promise<string> {
+    const index = chunkIndexName(version);
+    const exists = await this.client.indices.exists({ index });
+    if (!exists) {
+      await this.client.indices.create({
+        index,
+        mappings: {
+          _meta: { mappingVersion: chunkMappingVersion(dimensions) },
+          ...chunkIndexMapping(dimensions),
         },
-      },
+      });
+    }
+    return index;
+  }
+
+  /** 把读写别名整体指向目标版本（先摘后挂，避免写入别名同时指向多个索引） */
+  async pointAliasTo(version: number): Promise<void> {
+    await this.client.indices.updateAliases({
+      actions: [
+        { remove: { index: '*', alias: this.indexName } },
+        { add: { index: chunkIndexName(version), alias: this.indexName } },
+      ],
     });
+  }
+
+  /** 删除某个物理版本索引（保留/回收旧版本时使用） */
+  async deleteVersionIndex(version: number): Promise<void> {
+    await this.client.indices.delete({ index: chunkIndexName(version) });
+  }
+
+  /** 解析并发量索引名，供运维脚本读取当前指向 */
+  get aliasName(): string {
+    return this.indexName;
+  }
+
+  /**
+   * 显式刷新（I2）：写入收敛为 `refresh: false` 后，由 worker 在整份文档写完后调用一次，
+   * 检索侧只关心「文档级可见」。
+   */
+  async refresh(): Promise<void> {
+    await this.client.indices.refresh({ index: this.indexName });
   }
 
   async indexChunks(chunks: DocumentChunk[]) {
@@ -124,10 +188,13 @@ export class ElasticsearchIndexService {
       },
     ]);
     const result = await this.client.bulk({
-      refresh: 'wait_for',
+      // 刷新由调用方在整份文档写完后显式触发，避免每批都等一次 flush
+      refresh: false,
       operations,
     });
-    if (result.errors) throw new Error('Elasticsearch bulk 索引失败');
+    if (result.errors) {
+      throw new BulkIndexError(extractBulkFailures(result.items));
+    }
   }
 
   async keywordSearch(input: {
@@ -246,6 +313,26 @@ export class ElasticsearchIndexService {
       },
     });
     return this.toHits(result, 'graph');
+  }
+
+  /**
+   * 批量判断 chunkId 是否仍存在于索引（K6 引用降级用）。
+   * `getByChunkIds` 单次最多返回 100 条，超出分批查询，避免未被返回的 chunkId 被误判为失效。
+   */
+  async existingChunkIds(
+    ownerId: string,
+    chunkIds: string[],
+  ): Promise<Set<string>> {
+    const unique = [...new Set(chunkIds.filter(Boolean))];
+    const found = new Set<string>();
+    for (let index = 0; index < unique.length; index += 100) {
+      const hits = await this.getByChunkIds({
+        ownerId,
+        chunkIds: unique.slice(index, index + 100),
+      });
+      hits.forEach((hit) => found.add(hit.chunkId));
+    }
+    return found;
   }
 
   async deleteByDocument(ownerId: string, documentId: string) {
@@ -411,4 +498,23 @@ function objectValue(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null
     ? (value as Record<string, unknown>)
     : {};
+}
+
+/** 从 bulk 返回的 items 中提取失败条目（I2）：单条错误不再被泛化错误吞掉 */
+function extractBulkFailures(
+  items: Array<
+    Record<string, { _id?: string; error?: { reason?: string } }>
+  > = [],
+): BulkIndexFailure[] {
+  const failures: BulkIndexFailure[] = [];
+  for (const item of items) {
+    for (const value of Object.values(item)) {
+      if (!value?.error) continue;
+      failures.push({
+        chunkId: value._id ?? '',
+        reason: value.error.reason ?? 'unknown',
+      });
+    }
+  }
+  return failures;
 }

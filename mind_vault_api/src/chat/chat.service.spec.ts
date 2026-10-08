@@ -91,6 +91,12 @@ function buildService(input: {
       return undefined;
     }),
   };
+  // 引用失效判定：默认所有 chunkId 都还在索引里（未失效）
+  const index = {
+    existingChunkIds: jest.fn(
+      async (_ownerId: string, chunkIds: string[]) => new Set(chunkIds),
+    ),
+  };
   const service = new ChatService(
     conversations as never,
     messages as never,
@@ -99,6 +105,7 @@ function buildService(input: {
     memories as never,
     datasets as never,
     documentMeta as never,
+    index as never,
     config as never,
   );
   return {
@@ -113,6 +120,7 @@ function buildService(input: {
     agent,
     memories,
     config,
+    index,
   };
 }
 
@@ -385,7 +393,10 @@ describe('ChatService', () => {
     expect(conversations.save).toHaveBeenCalledWith(conversation);
     await expect(
       service.updateConversation('user_1', 'conversation_1', {
-        datasetIds: Array.from({ length: 21 }, (_, index) => `dataset_${index}`),
+        datasetIds: Array.from(
+          { length: 21 },
+          (_, index) => `dataset_${index}`,
+        ),
       }),
     ).rejects.toThrow('资料集范围最多包含 20 个资料集');
   });
@@ -460,6 +471,62 @@ describe('ChatService', () => {
     expect(items[1].citations).toEqual([
       expect.objectContaining({ documentId: 'doc_deleted', documentName: '' }),
     ]);
+  });
+
+  it('marks a citation as stale when its chunk no longer exists in the index', async () => {
+    const { service, citations, documentMeta, index } = buildService({
+      messageCount: 2,
+    });
+    citations.find.mockResolvedValue([
+      {
+        id: 'citation_1',
+        messageId: 'message_1',
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        chunkId: 'chunk_gone',
+        quote: '旧片段',
+        locator: { page: 3 },
+        rank: 0,
+      },
+    ]);
+    documentMeta.titlesOf.mockResolvedValue(
+      new Map([['doc_1', '系统设计手册']]),
+    );
+    // 重建后旧 chunkId 查不到：前端据此降级显示文档名 + locator
+    index.existingChunkIds.mockResolvedValue(new Set<string>());
+
+    const { items } = await service.listMessages('user_1', 'conversation_1');
+
+    expect(index.existingChunkIds).toHaveBeenCalledWith('user_1', [
+      'chunk_gone',
+    ]);
+    expect(items[1].citations[0]).toMatchObject({
+      chunkId: 'chunk_gone',
+      documentName: '系统设计手册',
+      stale: true,
+    });
+  });
+
+  it('treats citations as fresh when the index check itself fails', async () => {
+    const { service, citations, index } = buildService({ messageCount: 2 });
+    citations.find.mockResolvedValue([
+      {
+        id: 'citation_1',
+        messageId: 'message_1',
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        chunkId: 'chunk_1',
+        quote: '片段',
+        locator: { page: 1 },
+        rank: 0,
+      },
+    ]);
+    index.existingChunkIds.mockRejectedValue(new Error('ES 不可用'));
+
+    const { items } = await service.listMessages('user_1', 'conversation_1');
+
+    // 索引抖动不能导致历史会话打不开，一律按未失效处理
+    expect(items[1].citations[0]).toMatchObject({ stale: false });
   });
 
   it('attaches document names to the citations returned by ask', async () => {
@@ -622,7 +689,11 @@ describe('ChatService', () => {
       ],
       answerMode: 'rag',
     });
-    agent.suggestFollowups.mockResolvedValue(['那它的缺点呢', '还有别的方案吗', '怎么落地']);
+    agent.suggestFollowups.mockResolvedValue([
+      '那它的缺点呢',
+      '还有别的方案吗',
+      '怎么落地',
+    ]);
 
     const result = await service.ask('user_1', 'conversation_1', '问题');
 

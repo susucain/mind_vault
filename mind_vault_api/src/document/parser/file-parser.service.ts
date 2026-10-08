@@ -328,6 +328,7 @@ export class FileParserService implements OnModuleInit {
       sections.push({
         sectionId: `section_${String(sections.length + 1).padStart(4, '0')}`,
         heading,
+        titlePath: [heading],
         text,
         order: sections.length,
         locator: { slide: note.slide, note: true },

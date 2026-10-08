@@ -478,6 +478,32 @@ export class KnowledgeGraphService {
     }
   }
 
+  /**
+   * 孤儿 Chunk 清理（K5）：分块策略变化会改变 `chunkId`，重建后旧 `Chunk` 节点
+   * 失去对应 ES 文档。这里只删掉不在新 chunkId 集合里的 Chunk 节点及其边，
+   * **保留 Document 与 Entity**（实体归一化留待 M 阶段，避免误删仍被其他文档提及的实体）。
+   */
+  async cleanupOrphanChunks(
+    ownerId: string,
+    documentId: string,
+    keepChunkIds: string[],
+  ): Promise<void> {
+    const session = this.driver.session();
+    try {
+      await session.run(
+        `
+        MATCH (document:Document {ownerId: $ownerId, id: $documentId})
+        MATCH (document)<-[:PART_OF {ownerId: $ownerId}]-(chunk:Chunk)
+        WHERE NOT chunk.id IN $keepChunkIds
+        DETACH DELETE chunk
+        `,
+        { ownerId, documentId, keepChunkIds },
+      );
+    } finally {
+      await session.close();
+    }
+  }
+
   async deleteDocument(ownerId: string, documentId: string) {
     const session = this.driver.session();
     try {

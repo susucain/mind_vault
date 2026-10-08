@@ -59,8 +59,11 @@ describe('FileParserService', () => {
     expect(result.sections).toHaveLength(2);
     expect(result.sections[0]).toMatchObject({
       heading: '第一章',
+      titlePath: ['第一章'],
       locator: { lineStart: 1 },
     });
+    // A7：二级标题的 titlePath 含祖先链，供分块侧生成多级路径
+    expect(result.sections[1].titlePath).toEqual(['第一章', '小节']);
     expect(result.rawText).toContain('重试策略');
   });
 
@@ -96,6 +99,7 @@ describe('FileParserService', () => {
       sections: [
         {
           sectionId: 'section_0001',
+          titlePath: ['第 1 页'],
           text: 'PDF content',
           order: 0,
           locator: { page: 1 },

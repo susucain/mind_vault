@@ -12,17 +12,16 @@ const config = () =>
   }) as never;
 
 describe('ElasticsearchIndexService', () => {
-  it('creates the versioned chunk index and bulk indexes chunks', async () => {
+  it('creates the versioned chunk index, points the alias and bulk indexes chunks', async () => {
     const client = {
       indices: {
         exists: jest.fn().mockResolvedValue(false),
         create: jest.fn().mockResolvedValue({}),
+        updateAliases: jest.fn().mockResolvedValue({}),
       },
       bulk: jest.fn().mockResolvedValue({ errors: false }),
-      updateByQuery: jest.fn().mockResolvedValue({}),
     };
     const service = new ElasticsearchIndexService(client as never, config());
-    await service.ensureIndex();
     await service.indexChunks([
       {
         chunkId: 'chunk_1',
@@ -40,17 +39,100 @@ describe('ElasticsearchIndexService', () => {
       },
     ]);
 
-    expect(client.indices.create).toHaveBeenCalled();
+    expect(client.indices.create).toHaveBeenCalledWith(
+      expect.objectContaining({ index: 'mind_vault_chunks_v1' }),
+    );
+    // 读写走别名：别名先摘后挂，指向新版本物理索引
+    expect(client.indices.updateAliases).toHaveBeenCalledWith({
+      actions: [
+        { remove: { index: '*', alias: 'mind_vault_chunks' } },
+        { add: { index: 'mind_vault_chunks_v1', alias: 'mind_vault_chunks' } },
+      ],
+    });
     expect(client.bulk).toHaveBeenCalledWith(
       expect.objectContaining({
-        refresh: 'wait_for',
+        refresh: false,
         operations: expect.arrayContaining([
           expect.objectContaining({
-            index: expect.objectContaining({ _index: 'mind_vault_chunks_v1' }),
+            index: expect.objectContaining({ _index: 'mind_vault_chunks' }),
           }),
         ]),
       }),
     );
+  });
+
+  it('throws BulkIndexError with per-item reasons when a bulk partially fails', async () => {
+    const client = {
+      indices: {
+        exists: jest.fn().mockResolvedValue(true),
+        getMapping: jest.fn().mockResolvedValue({}),
+      },
+      bulk: jest.fn().mockResolvedValue({
+        errors: true,
+        items: [
+          { index: { _id: 'chunk_bad', error: { reason: 'too long' } } },
+          { index: { _id: 'chunk_ok' } },
+        ],
+      }),
+    };
+    const service = new ElasticsearchIndexService(client as never, config());
+
+    await expect(
+      service.indexChunks([
+        {
+          chunkId: 'chunk_bad',
+          parentId: 'section_1',
+          ownerId: 'user_1',
+          documentId: 'doc_1',
+          documentVersion: 1,
+          sectionId: 'section_1',
+          chunkOrder: 0,
+          titlePath: [],
+          text: '超长块',
+          parentContext: '',
+          locator: {},
+          embedding: [0.1],
+        },
+      ]),
+    ).rejects.toMatchObject({
+      name: 'BulkIndexError',
+      failures: [{ chunkId: 'chunk_bad', reason: 'too long' }],
+    });
+  });
+
+  it('warns instead of switching when the live mapping version differs', async () => {
+    const client = {
+      indices: {
+        exists: jest.fn().mockResolvedValue(true),
+        getMapping: jest.fn().mockResolvedValue({
+          mind_vault_chunks_v1: {
+            mappings: { _meta: { mappingVersion: 'stale-version' } },
+          },
+        }),
+        create: jest.fn(),
+        updateAliases: jest.fn(),
+      },
+    };
+    const service = new ElasticsearchIndexService(client as never, config());
+    await service.ensureIndex();
+
+    // 启动时不自动建/切索引，只告警，切换交给 npm run es:migrate
+    expect(client.indices.create).not.toHaveBeenCalled();
+    expect(client.indices.updateAliases).not.toHaveBeenCalled();
+  });
+
+  it('checks chunk existence in batches of 100 to avoid false negatives', async () => {
+    const search = jest.fn().mockResolvedValue({
+      hits: { hits: [{ _id: 'chunk_0', _source: { chunkId: 'chunk_0' } }] },
+    });
+    const client = { search };
+    const service = new ElasticsearchIndexService(client as never, config());
+    const ids = Array.from({ length: 130 }, (_, index) => `chunk_${index}`);
+
+    const found = await service.existingChunkIds('user_1', ids);
+
+    expect(search).toHaveBeenCalledTimes(2);
+    expect(found.has('chunk_0')).toBe(true);
   });
 
   it('为标题与正文配置 IK 索引分词与检索分词', async () => {
@@ -58,6 +140,7 @@ describe('ElasticsearchIndexService', () => {
       indices: {
         exists: jest.fn().mockResolvedValue(false),
         create: jest.fn().mockResolvedValue({}),
+        updateAliases: jest.fn().mockResolvedValue({}),
       },
     };
     const service = new ElasticsearchIndexService(client as never, config());
@@ -88,7 +171,7 @@ describe('ElasticsearchIndexService', () => {
     });
 
     expect(client.search).toHaveBeenCalledWith({
-      index: 'mind_vault_chunks_v1',
+      index: 'mind_vault_chunks',
       size: 5,
       query: {
         bool: {

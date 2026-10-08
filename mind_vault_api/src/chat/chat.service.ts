@@ -12,20 +12,28 @@ import { MemoryService } from '../memory/memory.service';
 import type { ExplicitMemoryResult } from '../memory/memory.types';
 import { DatasetEntity } from '../dataset/entities/dataset.entity';
 import { DocumentMetaService } from '../retrieval/document-meta.service';
+import { ElasticsearchIndexService } from '../retrieval/es/elasticsearch-index.service';
 import { RetrievalHit } from '../retrieval/retrieval-hit';
 import { RagAgentService } from './agent/rag-agent.service';
-import { HistoryTurn, historyWindow, RagState, suggestionCount } from './agent/rag-types';
+import {
+  HistoryTurn,
+  historyWindow,
+  RagState,
+  suggestionCount,
+} from './agent/rag-types';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ChatCitationEntity } from './entities/citation.entity';
 import { ConversationEntity } from './entities/conversation.entity';
 import { ChatMessageEntity } from './entities/chat-message.entity';
 
 /**
- * 引用项视图：实体字段原样透传，另带展示用的文档名。
+ * 引用项视图：实体字段原样透传，另带展示用的文档名与失效标记。
  * 文档名在读取时按 documentId 解析（不落库），因此文档改名或历史存量数据都能显示正确名称。
+ * `stale` 表示该引用的 chunkId 已随重建失效（§11.3）：前端据此降级显示文档名 + locator。
  */
 export interface ChatCitationView extends ChatCitationEntity {
   documentName: string;
+  stale: boolean;
 }
 
 @Injectable()
@@ -44,6 +52,7 @@ export class ChatService {
     @InjectRepository(DatasetEntity)
     private readonly datasets: Repository<DatasetEntity>,
     private readonly documentMeta: DocumentMetaService,
+    private readonly index: ElasticsearchIndexService,
     private readonly config: ConfigService,
   ) {}
 
@@ -139,7 +148,10 @@ export class ChatService {
         })
       : [];
     // 存量 citation 未存文档名，这里统一按 documentId 批量解析，历史会话也能显示名称
-    const citationViews = await this.withDocumentNames(ownerId, citations);
+    const citationViews = await this.withDocumentNames(ownerId, citations, {
+      // 历史引用需判断 chunkId 是否随重建失效（§11.3），据此降级显示
+      checkStale: true,
+    });
     return {
       items: messages.map((message) => ({
         ...message,
@@ -150,19 +162,39 @@ export class ChatService {
     };
   }
 
-  /** 批量补上展示用文档名；文档已删除时留空串，由前端显示中性占位 */
+  /**
+   * 批量补上展示用文档名；文档已删除时留空串，由前端显示中性占位。
+   * `checkStale` 打开时额外比对 chunkId 是否仍在索引里：不在即标记失效，
+   * 由前端降级为「文档名 + locator + 片段已更新」。ES 异常时一律按未失效处理，
+   * 避免索引抖动导致历史会话打不开。
+   */
   private async withDocumentNames(
     ownerId: string,
     citations: ChatCitationEntity[],
+    options: { checkStale?: boolean } = {},
   ): Promise<ChatCitationView[]> {
     if (citations.length === 0) return [];
     const titles = await this.documentMeta.titlesOf(
       ownerId,
       citations.map((citation) => citation.documentId),
     );
+    let existing: Set<string> | undefined;
+    if (options.checkStale) {
+      try {
+        existing = await this.index.existingChunkIds(
+          ownerId,
+          citations.map((citation) => citation.chunkId),
+        );
+      } catch (error) {
+        this.logger.warn(
+          `引用失效判定失败，按未失效处理: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
     return citations.map((citation) => ({
       ...citation,
       documentName: titles.get(citation.documentId) ?? '',
+      stale: existing ? !existing.has(citation.chunkId) : false,
     }));
   }
 

@@ -93,6 +93,11 @@ export interface Citation {
   locator: DocumentLocator;
   /** 命中关键字分段；语义路径与存量数据为 null，此时按 excerpt 原样渲染 */
   highlight?: HighlightSegment[] | null;
+  /**
+   * 该引用的 chunkId 已随文档重建失效（§11.3）。
+   * 为真时不再展示片段正文，降级为「文档名 + locator + 片段已更新」。
+   */
+  stale?: boolean;
 }
 
 export interface Conversation {

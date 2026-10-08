@@ -27,4 +27,12 @@ describe('CitationCard', () => {
     render(<MemoryRouter><CitationCard citation={{ id: 'c1', documentId: 'd1', documentName: '设计文档', chunkId: 'chunk-1', excerpt: '没有高亮的原文', locator: {} }} /></MemoryRouter>);
     expect(screen.getByText('没有高亮的原文')).toBeInTheDocument();
   });
+
+  it('degrades to document name and locator when the cited chunk is stale', () => {
+    // 重建后旧 chunkId 失效：正文不回填，改为文档名 + locator + 「片段已更新」
+    render(<MemoryRouter><CitationCard citation={{ id: 'c1', documentId: 'd1', documentName: '设计文档', chunkId: 'chunk-gone', excerpt: '旧片段', locator: { page: 4 }, stale: true }} /></MemoryRouter>);
+    expect(screen.getByText('片段已更新')).toBeInTheDocument();
+    expect(screen.getByText('原文位置：第 4 页')).toBeInTheDocument();
+    expect(screen.queryByText('旧片段')).not.toBeInTheDocument();
+  });
 });

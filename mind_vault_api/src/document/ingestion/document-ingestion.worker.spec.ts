@@ -303,11 +303,17 @@ describe('DocumentIngestionWorker', () => {
       { get: jest.fn().mockReturnValue(false) } as never,
       { chunk: jest.fn().mockReturnValue([]) } as never,
       { embedDocuments: jest.fn().mockResolvedValue([]) } as never,
-      { indexChunks: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        indexChunks: jest.fn().mockResolvedValue(undefined),
+        refresh: jest.fn().mockResolvedValue(undefined),
+      } as never,
       {
         extract: jest.fn().mockResolvedValue({ entities: [], relations: [] }),
       } as never,
-      { indexChunk: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        indexChunk: jest.fn().mockResolvedValue(undefined),
+        cleanupOrphanChunks: jest.fn().mockResolvedValue(undefined),
+      } as never,
       { find: jest.fn().mockResolvedValue([]) } as never,
     );
 
@@ -392,11 +398,17 @@ describe('DocumentIngestionWorker', () => {
       { get: jest.fn().mockReturnValue(true) } as never,
       { chunk: jest.fn().mockReturnValue([]) } as never,
       { embedDocuments: jest.fn().mockResolvedValue([]) } as never,
-      { indexChunks: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        indexChunks: jest.fn().mockResolvedValue(undefined),
+        refresh: jest.fn().mockResolvedValue(undefined),
+      } as never,
       {
         extract: jest.fn().mockResolvedValue({ entities: [], relations: [] }),
       } as never,
-      { indexChunk: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        indexChunk: jest.fn().mockResolvedValue(undefined),
+        cleanupOrphanChunks: jest.fn().mockResolvedValue(undefined),
+      } as never,
       { find: jest.fn().mockResolvedValue([]) } as never,
     );
 
@@ -715,10 +727,12 @@ describe('DocumentIngestionWorker', () => {
     const index = {
       deleteByDocument: jest.fn().mockResolvedValue(undefined),
       indexChunks: jest.fn().mockResolvedValue(undefined),
+      refresh: jest.fn().mockResolvedValue(undefined),
     };
     const graph = {
       deleteDocument: jest.fn().mockResolvedValue(undefined),
       indexChunk: jest.fn().mockResolvedValue(undefined),
+      cleanupOrphanChunks: jest.fn().mockResolvedValue(undefined),
     };
     const graphTasks = {
       cancelActiveTasks: jest.fn().mockResolvedValue(undefined),
@@ -864,9 +878,15 @@ describe('DocumentIngestionWorker', () => {
           ]),
       } as never,
       { embedDocuments: jest.fn().mockResolvedValue([[0.1, 0.2]]) } as never,
-      { indexChunks: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        indexChunks: jest.fn().mockResolvedValue(undefined),
+        refresh: jest.fn().mockResolvedValue(undefined),
+      } as never,
       { extract: jest.fn() } as never,
-      { indexChunk: jest.fn() } as never,
+      {
+        indexChunk: jest.fn(),
+        cleanupOrphanChunks: jest.fn().mockResolvedValue(undefined),
+      } as never,
       { find: jest.fn().mockResolvedValue([]) } as never,
       graphTasks as never,
       publisher as never,
@@ -907,6 +927,7 @@ describe('DocumentIngestionWorker', () => {
     const index = {
       indexChunks: jest.fn().mockResolvedValue(undefined),
       deleteByDocument: jest.fn(),
+      refresh: jest.fn().mockResolvedValue(undefined),
     };
     const checkpoints = {
       loadComplete: jest.fn().mockResolvedValue([
@@ -946,7 +967,10 @@ describe('DocumentIngestionWorker', () => {
       embedding as never,
       index as never,
       { extract: jest.fn() } as never,
-      { indexChunk: jest.fn() } as never,
+      {
+        indexChunk: jest.fn(),
+        cleanupOrphanChunks: jest.fn().mockResolvedValue(undefined),
+      } as never,
       {
         find: jest.fn().mockResolvedValue([{ datasetId: 'dataset_1' }]),
       } as never,

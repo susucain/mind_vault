@@ -192,6 +192,7 @@ export async function parsePdfDocument(
         ? pageBlocks.map((block, index) => ({
             sectionId: `section_${String(index + 1).padStart(4, '0')}`,
             heading: `第 ${block.pageNumber} 页`,
+            titlePath: [`第 ${block.pageNumber} 页`],
             text: block.text,
             order: index,
             locator: { page: block.pageNumber },
@@ -200,6 +201,7 @@ export async function parsePdfDocument(
           ? [
               {
                 sectionId: 'section_0001',
+                titlePath: [],
                 text: markdown,
                 order: 0,
                 locator: { page: 1 },

@@ -22,6 +22,7 @@ export function parseJson(buffer: Buffer, title: string): ParsedDocument {
     sections: [
       {
         sectionId: 'section_0001',
+        titlePath: [],
         text: rawText,
         order: 0,
         locator: { jsonPath: '$' },
