@@ -1,5 +1,6 @@
 import {
   buildUploadDisplayState,
+  ingestionErrorLabel,
   ingestionStatusLabel,
   isRetryableIngestionStatus,
   isTerminalIngestionStatus,
@@ -51,6 +52,20 @@ test('hides failed main progress while retaining the graph not-started state', (
     }),
     true
   );
+});
+
+test('prefers the keyed degradation copy over the raw server message', () => {
+  expectEqual(
+    ingestionErrorLabel('PARSE_SUSPECTED_SCANNED', '解析结果为空'),
+    '疑似扫描件，暂不支持文字提取'
+  );
+  expectEqual(ingestionErrorLabel('PARSE_EMPTY', null), '文件解析结果为空，请确认包含可提取的文本');
+});
+
+test('falls back to the server message and empty string', () => {
+  expectEqual(ingestionErrorLabel(undefined, '服务端原文'), '服务端原文');
+  expectEqual(ingestionErrorLabel('UNKNOWN_CODE', '服务端原文'), '服务端原文');
+  expectEqual(ingestionErrorLabel(null, null), '');
 });
 
 test('builds failed upload display state with graph zero progress', () => {

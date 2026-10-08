@@ -25,6 +25,7 @@ import {
   buildUploadDisplayState,
   formatRemainingSeconds,
   graphStatusLabel,
+  ingestionErrorLabel,
   ingestionStatusLabel,
   isTerminalIngestionStatus,
   isRetryableIngestionStatus,
@@ -469,7 +470,10 @@ Page({
     this.setData({
       uploadStatus: process.status,
       uploadCancelState: uploadCancelState(process.status),
-      uploadError: process.errorMessage ?? '',
+      uploadError: ingestionErrorLabel(
+        process.errorCode,
+        process.errorMessage
+      ),
       uploadStageProgress: process.stageProgress,
       uploadGraph: graph,
       uploadEta: formatRemainingSeconds(
@@ -488,7 +492,9 @@ Page({
     this.setData({
       uploadStatus: status,
       uploadCancelState: uploadCancelState(status),
-      uploadError: event.errorMessage ?? this.data.uploadError,
+      uploadError:
+        ingestionErrorLabel(event.errorCode, event.errorMessage) ||
+        this.data.uploadError,
       uploadStageProgress:
         event.stage === 'graph'
           ? this.data.uploadStageProgress
