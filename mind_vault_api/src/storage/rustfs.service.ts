@@ -97,6 +97,9 @@ export class RustfsService {
       endpoint: storage.endpoint,
       region: storage.region,
       forcePathStyle: storage.forcePathStyle,
+      // Aliyun OSS does not support AWS's streaming checksum trailer.
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
       credentials: {
         accessKeyId: storage.accessKeyId,
         secretAccessKey: storage.secretAccessKey,
