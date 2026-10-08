@@ -1,6 +1,27 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await */
 import { DocumentUploadService } from './document-upload.service';
 
+/** 上传可用格式清单桩；pdf 魔数匹配由各用例自行构造文件头 */
+const parser = {
+  availableExtensions: () => [
+    'pdf',
+    'docx',
+    'doc',
+    'xlsx',
+    'xls',
+    'pptx',
+    'ppt',
+    'txt',
+    'md',
+    'csv',
+    'json',
+  ],
+  supportedList: () =>
+    'pdf, docx, doc, xlsx, xls, pptx, ppt, txt, md, csv, json',
+} as never;
+
+const pdfBytes = Buffer.from('%PDF-1.4\nmind vault');
+
 describe('DocumentUploadService', () => {
   it('stores file metadata and queues an indexing job without parsing synchronously', async () => {
     const contentModel = {
@@ -33,6 +54,7 @@ describe('DocumentUploadService', () => {
       storage as never,
       publisher as never,
       datasets as never,
+      parser,
     );
 
     await expect(
@@ -42,7 +64,7 @@ describe('DocumentUploadService', () => {
           originalname: 'a.pdf',
           mimetype: 'application/pdf',
           size: 1024,
-          buffer: Buffer.from('pdf'),
+          buffer: pdfBytes,
         },
         'dataset_1',
       ),
@@ -54,7 +76,7 @@ describe('DocumentUploadService', () => {
     });
 
     expect(contentModel.create).toHaveBeenCalledWith(
-      expect.objectContaining({ sourceBytes: Buffer.from('pdf') }),
+      expect.objectContaining({ sourceBytes: pdfBytes }),
     );
     expect(publisher.publishIndex).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -83,6 +105,7 @@ describe('DocumentUploadService', () => {
       { isEnabled: jest.fn().mockReturnValue(false) } as never,
       { publishIndex: jest.fn().mockResolvedValue(undefined) } as never,
       { findOne: jest.fn().mockResolvedValue({ id: 'dataset_1' }) } as never,
+      parser,
     );
 
     await expect(
@@ -92,7 +115,7 @@ describe('DocumentUploadService', () => {
           originalname: 'nVoiZShG09cGa2be9d37b42111390.pdf',
           mimetype: 'application/pdf',
           size: 1024,
-          buffer: Buffer.from('pdf'),
+          buffer: pdfBytes,
         },
         'dataset_1',
         { sourceFileName: '中文资料.pdf' },
@@ -135,6 +158,7 @@ describe('DocumentUploadService', () => {
       } as never,
       { publishIndex: jest.fn().mockResolvedValue(undefined) } as never,
       { findOne: jest.fn().mockResolvedValue({ id: 'dataset_1' }) } as never,
+      parser,
     );
 
     try {
@@ -144,7 +168,10 @@ describe('DocumentUploadService', () => {
           originalname: 'large.pdf',
           mimetype: 'application/pdf',
           size: 16 * 1024 * 1024,
-          buffer: Buffer.alloc(16 * 1024 * 1024),
+          buffer: Buffer.concat([
+            Buffer.from('%PDF-'),
+            Buffer.alloc(16 * 1024 * 1024),
+          ]),
         },
         'dataset_1',
       );
@@ -181,6 +208,7 @@ describe('DocumentUploadService', () => {
       {} as never,
       publisher as never,
       {} as never,
+      parser,
     );
 
     await expect(service.retry('user_1', 'doc_1')).resolves.toMatchObject({
@@ -220,6 +248,7 @@ describe('DocumentUploadService', () => {
       {} as never,
       publisher as never,
       {} as never,
+      parser,
     );
 
     await expect(service.retry('user_1', 'doc_1')).resolves.toMatchObject({
@@ -259,6 +288,7 @@ describe('DocumentUploadService', () => {
       {} as never,
       publisher as never,
       {} as never,
+      parser,
     );
 
     await expect(service.retry('user_1', 'doc_1')).resolves.toMatchObject({
@@ -306,6 +336,7 @@ describe('DocumentUploadService', () => {
       {} as never,
       {} as never,
       {} as never,
+      parser,
       graphTasks as never,
     );
 
@@ -362,6 +393,7 @@ describe('DocumentUploadService', () => {
       {} as never,
       {} as never,
       {} as never,
+      parser,
       graphTasks as never,
     );
 
@@ -370,5 +402,90 @@ describe('DocumentUploadService', () => {
       graph: null,
     });
     expect(graphTasks.getProgress).not.toHaveBeenCalled();
+  });
+
+  it('returns the existing document when the same idempotency key is uploaded again', async () => {
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'doc_existing',
+        ownerId: 'user_1',
+        title: '资料',
+        sourceFileName: '资料.pdf',
+        sourceFileExtension: 'pdf',
+        sourceFileSize: '1024',
+        sourceFileKey: null,
+        graphEnabled: false,
+      }),
+      create: jest.fn(),
+      save: jest.fn(),
+    };
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'job_existing',
+        status: 'READY',
+      }),
+      create: jest.fn(),
+      save: jest.fn(),
+    };
+    const contentModel = { create: jest.fn() };
+    const publisher = { publishIndex: jest.fn() };
+    const service = new DocumentUploadService(
+      manager as never,
+      contentModel as never,
+      jobs as never,
+      { isEnabled: () => false } as never,
+      publisher as never,
+      { findOne: jest.fn() } as never,
+      parser,
+    );
+
+    await expect(
+      service.upload(
+        'user_1',
+        {
+          originalname: '资料.pdf',
+          mimetype: 'application/pdf',
+          size: 1024,
+          buffer: pdfBytes,
+        },
+        'dataset_1',
+        { idempotencyKey: 'local-1' },
+      ),
+    ).resolves.toMatchObject({
+      documentId: 'doc_existing',
+      jobId: 'job_existing',
+      status: 'READY',
+    });
+
+    expect(contentModel.create).not.toHaveBeenCalled();
+    expect(manager.create).not.toHaveBeenCalled();
+    expect(publisher.publishIndex).not.toHaveBeenCalled();
+  });
+
+  it('rejects a file whose magic bytes do not match the extension', async () => {
+    const service = new DocumentUploadService(
+      { findOne: jest.fn(), create: jest.fn(), save: jest.fn() } as never,
+      { create: jest.fn() } as never,
+      { create: jest.fn(), save: jest.fn() } as never,
+      { isEnabled: () => false } as never,
+      { publishIndex: jest.fn() } as never,
+      { findOne: jest.fn() } as never,
+      parser,
+    );
+
+    await expect(
+      service.upload(
+        'user_1',
+        {
+          originalname: 'fake.pdf',
+          mimetype: 'application/pdf',
+          size: 12,
+          buffer: Buffer.from('PK\x03\x04 not a pdf'),
+        },
+        'dataset_1',
+      ),
+    ).rejects.toMatchObject({
+      response: { error: 'FILE_TYPE_MISMATCH' },
+    });
   });
 });

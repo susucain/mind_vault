@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Controller,
   Get,
+  Headers,
   Param,
   Post,
   Sse,
@@ -41,6 +42,7 @@ export class DocumentUploadController {
     @CurrentUser() user: { id: string },
     @UploadedFile() file: Express.Multer.File,
     @Body() dto: UploadDocumentDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ) {
     if (!file) throw new BadRequestException('请上传文件');
     return this.service.upload(user.id, file, dto.datasetId, {
@@ -48,7 +50,14 @@ export class DocumentUploadController {
       remark: dto.remark,
       sourceFileName: dto.sourceFileName,
       graphEnabled: dto.graphEnabled,
+      idempotencyKey,
     });
+  }
+
+  /** 当前可上传的格式清单（老格式取决于服务端 soffice 是否可用），供 Web 与小程序共用 */
+  @Get('supported-formats')
+  supportedFormats() {
+    return this.service.supportedFormats();
   }
 
   @Get(':id/status')

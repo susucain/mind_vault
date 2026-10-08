@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { RustfsService } from '../../storage/rustfs.service';
 import { parseDocx } from './parsers/docx.parser';
 import { ParsePdfOptions, parsePdfDocument } from './parsers/pdf.parser';
@@ -18,20 +23,22 @@ import { basename, join } from 'node:path';
 
 const execFileAsync = promisify(execFile);
 
-/** 支持解析的文件扩展名 */
-const SUPPORTED_EXTENSIONS = new Set([
+/** 不依赖本机外部程序的格式 */
+const MODERN_EXTENSIONS = [
   'pdf',
   'docx',
-  'doc',
   'xlsx',
-  'xls',
   'pptx',
-  'ppt',
   'txt',
   'md',
   'csv',
   'json',
-]);
+];
+/** 老版 Office 格式，需本机 `soffice`（LibreOffice）转换后才能解析 */
+const LEGACY_EXTENSIONS = ['doc', 'xls', 'ppt'];
+/** 已知的全部扩展名（用于解析分发，不等同于「当前可用」） */
+const KNOWN_EXTENSIONS = new Set([...MODERN_EXTENSIONS, ...LEGACY_EXTENSIONS]);
+const SOFFICE_PROBE_TIMEOUT_MS = 5_000;
 
 export interface ParseInput {
   originalname: string;
@@ -46,19 +53,43 @@ export interface ParseInput {
  * 解析结果为空或格式不支持时抛 BadRequestException。
  */
 @Injectable()
-export class FileParserService {
+export class FileParserService implements OnModuleInit {
   private readonly logger = new Logger(FileParserService.name);
+  /** 本机是否存在可用的 soffice；不能在启动时确认则视为不可用（宁可早拒，不可排队后失败） */
+  private sofficeAvailable = false;
 
   constructor(private readonly rustfs: RustfsService) {}
 
-  /** 是否为已支持的扩展名（大小写不敏感） */
-  isSupported(extension: string): boolean {
-    return SUPPORTED_EXTENSIONS.has(extension?.toLowerCase());
+  async onModuleInit(): Promise<void> {
+    const bin = process.env.SOFFICE_BIN ?? 'soffice';
+    try {
+      await execFileAsync(bin, ['--version'], {
+        timeout: SOFFICE_PROBE_TIMEOUT_MS,
+      });
+      this.sofficeAvailable = true;
+    } catch {
+      this.sofficeAvailable = false;
+      this.logger.warn(
+        `未检测到 LibreOffice（${bin}），.doc/.xls/.ppt 将不可用`,
+      );
+    }
   }
 
-  /** 逗号分隔的支持格式列表，用于错误提示 */
+  /** 当前实际可解析的扩展名（老格式取决于 soffice 是否可用），三端格式清单的唯一来源 */
+  availableExtensions(): string[] {
+    return this.sofficeAvailable
+      ? [...MODERN_EXTENSIONS, ...LEGACY_EXTENSIONS]
+      : [...MODERN_EXTENSIONS];
+  }
+
+  /** 是否为已支持的扩展名（大小写不敏感） */
+  isSupported(extension: string): boolean {
+    return KNOWN_EXTENSIONS.has(extension?.toLowerCase());
+  }
+
+  /** 逗号分隔的可用格式列表，用于错误提示 */
   supportedList(): string {
-    return [...SUPPORTED_EXTENSIONS].join(', ');
+    return this.availableExtensions().join(', ');
   }
 
   /**

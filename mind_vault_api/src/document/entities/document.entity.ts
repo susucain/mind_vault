@@ -117,6 +117,10 @@ export class DocumentEntity {
   @Column({ name: 'graph_enabled', type: 'boolean', default: false })
   graphEnabled: boolean;
 
+  /** 上传幂等键（U2）：客户端超时重传沿用同一 Idempotency-Key，命中则短路返回既有文档 */
+  @Column({ name: 'upload_key', type: 'varchar', nullable: true })
+  uploadKey?: string | null;
+
   /** 创建时间 */
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

@@ -23,23 +23,12 @@ import {
   getExtension,
   titleFromFilename,
 } from './parser/utils/markdown.util';
+import { matchesFileSignature } from './parser/utils/file-signature';
+import { FileParserService } from './parser/file-parser.service';
 import { nextSnowflakeId } from '../common/snowflake-id';
 import { DocumentGraphTaskService } from './graph/document-graph-task.service';
 import { DocumentStatus } from './document-status';
 
-const SUPPORTED_EXTENSIONS = new Set([
-  'pdf',
-  'docx',
-  'doc',
-  'xlsx',
-  'xls',
-  'pptx',
-  'ppt',
-  'txt',
-  'md',
-  'csv',
-  'json',
-]);
 const MAX_SOURCE_BYTES_MIRROR = 8 * 1024 * 1024;
 
 @Injectable()
@@ -56,8 +45,14 @@ export class DocumentUploadService {
     private readonly storage: RustfsService,
     private readonly publisher: DocumentPipelinePublisher,
     private readonly datasets: DatasetService,
+    private readonly parser: FileParserService,
     private readonly graphTasks?: DocumentGraphTaskService,
   ) {}
+
+  /** 当前可上传的扩展名清单（soffice 不可用时不含老格式），供三端共用 */
+  supportedFormats(): { extensions: string[] } {
+    return { extensions: this.parser.availableExtensions() };
+  }
 
   async upload(
     ownerId: string,
@@ -73,19 +68,38 @@ export class DocumentUploadService {
       remark?: string;
       sourceFileName?: string;
       graphEnabled?: boolean;
+      /** 幂等键：客户端超时重传时沿用同一值，命中则返回既有文档 */
+      idempotencyKey?: string;
     } = {},
   ) {
     if (!file?.buffer?.length) {
       throw new BadRequestException('文件不能为空');
     }
+    const idempotencyKey = metadata.idempotencyKey?.trim() || undefined;
+    if (idempotencyKey) {
+      const existing = await this.findByUploadKey(ownerId, idempotencyKey);
+      if (existing) {
+        this.logger.log(
+          `命中上传幂等键，返回既有文档：ownerId=${ownerId}, documentId=${existing.documentId}`,
+        );
+        return existing;
+      }
+    }
+
     const originalname =
       metadata.sourceFileName?.trim() ||
       decodeUploadFilename(file.originalname);
     const extension = getExtension(originalname);
-    if (!SUPPORTED_EXTENSIONS.has(extension)) {
+    if (!this.parser.availableExtensions().includes(extension)) {
       throw new BadRequestException(
-        `不支持的文件格式: ${extension || '(无扩展名)'}`,
+        `不支持的文件格式: ${extension || '(无扩展名)'}，当前支持 ${this.parser.supportedList()}`,
       );
+    }
+    if (!matchesFileSignature(extension, file.buffer)) {
+      throw new BadRequestException({
+        message: `文件内容与扩展名 .${extension} 不匹配，请确认文件未被改名`,
+        error: 'FILE_TYPE_MISMATCH',
+      });
     }
     await this.datasets.findOne(ownerId, datasetId);
 
@@ -129,9 +143,20 @@ export class DocumentUploadService {
       wordCount: 0,
       isPublic: false,
       graphEnabled: metadata.graphEnabled ?? false,
+      uploadKey: idempotencyKey ?? null,
       deleted: false,
     });
-    const savedDocument = await this.em.save(document);
+    let savedDocument: DocumentEntity;
+    try {
+      savedDocument = await this.em.save(document);
+    } catch (error) {
+      // 并发重传：两个请求都通过了前置查询，唯一索引 (owner_id, upload_key) 兜底
+      if (idempotencyKey && isUniqueViolation(error)) {
+        const existing = await this.findByUploadKey(ownerId, idempotencyKey);
+        if (existing) return existing;
+      }
+      throw error;
+    }
 
     const relation = this.em.create(DatasetDocumentEntity, {
       datasetId,
@@ -151,13 +176,20 @@ export class DocumentUploadService {
       retryCount: 0,
     });
     const savedJob = await this.jobRepository.save(job);
-    await this.publisher.publishIndex({
-      jobId: savedJob.id,
-      ownerId,
-      documentId,
-      documentVersion: 1,
-      operation: 'index',
-    });
+    try {
+      await this.publisher.publishIndex({
+        jobId: savedJob.id,
+        ownerId,
+        documentId,
+        documentVersion: 1,
+        operation: 'index',
+      });
+    } catch (error) {
+      // 投递失败不阻断请求：文档与 job 已落库，交由 stale 扫描重投或用户手动重试
+      this.logger.error(
+        `文档索引投递失败，保留任务等待重投：documentId=${documentId}, jobId=${savedJob.id}, error=${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
 
     this.logger.log(
       `文档上传成功，等待索引：ownerId=${ownerId}, documentId=${documentId}, jobId=${savedJob.id}`,
@@ -253,6 +285,39 @@ export class DocumentUploadService {
       retryCount: job.retryCount,
     };
   }
+
+  /** 按幂等键返回既有文档与其最新 job；未命中返回 null */
+  private async findByUploadKey(ownerId: string, uploadKey: string) {
+    const document = await this.em.findOne(DocumentEntity, {
+      where: { ownerId, uploadKey, deleted: false },
+    });
+    if (!document) return null;
+    const job = await this.jobRepository.findOne({
+      where: { ownerId, documentId: document.id },
+      order: { createdAt: 'DESC' },
+    });
+    return {
+      documentId: document.id,
+      jobId: job?.id ?? '',
+      title: document.title,
+      fileName: document.sourceFileName ?? undefined,
+      fileExtension: document.sourceFileExtension ?? undefined,
+      fileSize: document.sourceFileSize
+        ? Number(document.sourceFileSize)
+        : undefined,
+      fileKey: document.sourceFileKey ?? null,
+      graphEnabled: document.graphEnabled,
+      status: job?.status ?? IngestionJobStatus.Uploaded,
+    };
+  }
+}
+
+/** Postgres 唯一约束冲突（23505） */
+function isUniqueViolation(error: unknown): boolean {
+  const code =
+    (error as { code?: string })?.code ??
+    (error as { driverError?: { code?: string } })?.driverError?.code;
+  return code === '23505';
 }
 
 function progressOf(job: {

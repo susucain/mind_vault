@@ -40,6 +40,8 @@ const STALE_JOB_SCAN_INTERVAL_MS = 60_000;
 // Must stay below RabbitMQ's two-hour consumer timeout, while allowing a
 // legitimate large-file parse or embedding call to run longer than 10 minutes.
 const DEFAULT_STALE_JOB_TIMEOUT_MS = 40 * 60_000;
+// U7：从未被消费过的任务最多自动重投次数（用 retryCount 记录），用尽后仍无心跳才判失败
+const MAX_PUBLISH_RETRIES = 1;
 
 @Injectable()
 export class DocumentIngestionWorker {
@@ -116,6 +118,34 @@ export class DocumentIngestionWorker {
       ],
     });
     for (const job of jobs) {
+      // U7：Uploaded 且从未有过心跳，说明大概率「消息根本没被消费」（投递失败或消息丢失）。
+      // 这类任务先有界重投一次，而不是直接判失败；重投次数用 retryCount 记录。
+      if (
+        this.publisher &&
+        job.status === IngestionJobStatus.Uploaded &&
+        !job.lastHeartbeatAt &&
+        job.retryCount < MAX_PUBLISH_RETRIES
+      ) {
+        job.retryCount += 1;
+        await this.jobs.save(job);
+        try {
+          await this.publisher.publishIndex({
+            jobId: job.id,
+            ownerId: job.ownerId,
+            documentId: job.documentId,
+            documentVersion: job.documentVersion,
+            operation: job.operation,
+          });
+          this.logger.warn(
+            `检测到未投递成功的文档任务，已重投: jobId=${job.id} documentId=${job.documentId}`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `文档任务重投失败: jobId=${job.id} error=${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+        continue;
+      }
       job.status = IngestionJobStatus.Failed;
       job.errorCode = 'WORKER_TIMEOUT';
       job.errorMessage = '任务超时或 worker 中断，请重试';

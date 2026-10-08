@@ -60,6 +60,112 @@ describe('DocumentIngestionWorker', () => {
     );
   });
 
+  it('republishes an uploaded job that was never consumed instead of failing it', async () => {
+    const staleJob = {
+      id: 'job_pending',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      operation: 'index',
+      status: IngestionJobStatus.Uploaded,
+      currentStage: 'uploaded',
+      retryCount: 0,
+      updatedAt: new Date(Date.now() - 41 * 60_000),
+      lastHeartbeatAt: null,
+    };
+    const jobs = {
+      find: jest.fn().mockResolvedValue([staleJob]),
+      save: jest.fn().mockResolvedValue(staleJob),
+    };
+    const documents = { update: jest.fn().mockResolvedValue({ affected: 1 }) };
+    const publisher = { publishIndex: jest.fn().mockResolvedValue(undefined) };
+    const worker = new DocumentIngestionWorker(
+      jobs as never,
+      documents as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { get: jest.fn().mockReturnValue(undefined) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      publisher as never,
+    );
+
+    const internals = worker as unknown as {
+      failStaleJobs: () => Promise<void>;
+    };
+    await internals.failStaleJobs();
+
+    expect(publisher.publishIndex).toHaveBeenCalledWith({
+      jobId: 'job_pending',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      operation: 'index',
+    });
+    expect(staleJob).toMatchObject({
+      status: IngestionJobStatus.Uploaded,
+      retryCount: 1,
+    });
+    expect(documents.update).not.toHaveBeenCalled();
+  });
+
+  it('fails an uploaded job after its republish budget is exhausted', async () => {
+    const staleJob = {
+      id: 'job_pending',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      operation: 'index',
+      status: IngestionJobStatus.Uploaded,
+      currentStage: 'uploaded',
+      retryCount: 1,
+      updatedAt: new Date(Date.now() - 41 * 60_000),
+      lastHeartbeatAt: null,
+    };
+    const jobs = {
+      find: jest.fn().mockResolvedValue([staleJob]),
+      save: jest.fn().mockResolvedValue(staleJob),
+    };
+    const documents = { update: jest.fn().mockResolvedValue({ affected: 1 }) };
+    const publisher = {
+      publishIndex: jest.fn().mockResolvedValue(undefined),
+      publishProgress: jest.fn().mockResolvedValue(undefined),
+    };
+    const worker = new DocumentIngestionWorker(
+      jobs as never,
+      documents as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { get: jest.fn().mockReturnValue(undefined) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      publisher as never,
+    );
+
+    const internals = worker as unknown as {
+      failStaleJobs: () => Promise<void>;
+    };
+    await internals.failStaleJobs();
+
+    expect(publisher.publishIndex).not.toHaveBeenCalled();
+    expect(staleJob).toMatchObject({
+      status: IngestionJobStatus.Failed,
+      errorCode: 'WORKER_TIMEOUT',
+    });
+  });
+
   it('reconnects and resumes consumption after its channel closes', async () => {
     jest.useFakeTimers();
     const firstConnectionHandlers = new Map<string, () => void>();
