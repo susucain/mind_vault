@@ -98,4 +98,4 @@ jobs:
         run: |
           ssh -p "${{ secrets.ECS_PORT || 22 }}" \
             "${{ secrets.ECS_DEPLOY_USER }}@${{ secrets.ECS_HOST }}" \
-            "/opt/mind-vault/deploy.sh '${{ env.API_TAG }}' '${{ env.ES_TAG }}'"
+            "/opt/mind-vault/deploy.sh '${{ env.API_TAG }}' '${{ env.ES_TAG }}' '${{ secrets.ACR_REGISTRY }}' '${{ secrets.ACR_NAMESPACE }}' '${{ secrets.ACR_API_REPOSITORY }}' '${{ secrets.ACR_ES_REPOSITORY }}'"

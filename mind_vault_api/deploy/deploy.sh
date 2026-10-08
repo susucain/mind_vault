@@ -3,6 +3,10 @@ set -Eeuo pipefail
 
 API_TAG="${1:?API image tag is required}"
 ES_TAG="${2:?Elasticsearch image tag is required}"
+ACR_REGISTRY="${3:?ACR registry is required}"
+ACR_NAMESPACE="${4:?ACR namespace is required}"
+API_REPOSITORY="${5:?API repository is required}"
+ES_REPOSITORY="${6:?Elasticsearch repository is required}"
 cd "$(dirname "$0")"
 
 if [[ "$(sysctl -n vm.max_map_count)" -lt 262144 ]]; then
@@ -10,6 +14,26 @@ if [[ "$(sysctl -n vm.max_map_count)" -lt 262144 ]]; then
   exit 1
 fi
 
+if [[ "$ACR_REGISTRY" == *replace-me* ]]; then
+  echo "ACR_REGISTRY is still a placeholder: ${ACR_REGISTRY}" >&2
+  exit 1
+fi
+
+set_env_value() {
+  local key="$1"
+  local value="$2"
+
+  if grep -q "^${key}=" .env; then
+    sed -i "s|^${key}=.*|${key}=${value}|" .env
+  else
+    printf '%s=%s\n' "$key" "$value" >> .env
+  fi
+}
+
+set_env_value ACR_REGISTRY "$ACR_REGISTRY"
+set_env_value ACR_NAMESPACE "$ACR_NAMESPACE"
+set_env_value API_REPOSITORY "$API_REPOSITORY"
+set_env_value ES_REPOSITORY "$ES_REPOSITORY"
 sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${API_TAG}/" .env
 sed -i "s/^ES_IMAGE_TAG=.*/ES_IMAGE_TAG=${ES_TAG}/" .env
 
