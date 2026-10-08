@@ -162,4 +162,186 @@ describe('DocumentLifecycleService', () => {
       NotFoundException,
     );
   });
+
+  it('enables the graph flag and enqueues the checkpoint chunks', async () => {
+    const document = {
+      id: 'doc_1',
+      ownerId: 'user_1',
+      deleted: false,
+      graphEnabled: false,
+    };
+    const documents = {
+      findOne: jest.fn().mockResolvedValue(document),
+      save: jest.fn(async (input) => input),
+    };
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'job_1',
+        documentVersion: 2,
+        status: 'READY',
+      }),
+    };
+    const chunk = {
+      chunkId: 'chunk_1',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 2,
+      text: '正文',
+    };
+    const checkpoints = {
+      loadComplete: jest.fn().mockResolvedValue([chunk]),
+    };
+    const graphTasks = {
+      enqueue: jest.fn().mockResolvedValue(undefined),
+      getProgress: jest.fn().mockResolvedValue({
+        status: 'PROCESSING',
+        completed: 0,
+        total: 1,
+        failed: 0,
+        estimatedRemainingSeconds: null,
+      }),
+    };
+    const datasetDocuments = {
+      find: jest.fn().mockResolvedValue([{ datasetId: 'dataset_1' }]),
+    };
+    const service = new DocumentLifecycleService(
+      documents as never,
+      {} as never,
+      jobs as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      graphTasks as never,
+      checkpoints as never,
+      datasetDocuments as never,
+    );
+
+    await expect(service.buildGraph('user_1', 'doc_1')).resolves.toMatchObject({
+      documentId: 'doc_1',
+      graphEnabled: true,
+      totalChunks: 1,
+      graph: { status: 'PROCESSING', total: 1 },
+    });
+    expect(documents.save).toHaveBeenCalledWith(
+      expect.objectContaining({ graphEnabled: true }),
+    );
+    expect(checkpoints.loadComplete).toHaveBeenCalledWith('user_1', 'doc_1', 2);
+    expect(graphTasks.enqueue).toHaveBeenCalledWith([
+      expect.objectContaining({
+        chunkId: 'chunk_1',
+        datasetIds: ['dataset_1'],
+      }),
+    ]);
+    expect(graphTasks.getProgress).toHaveBeenCalledWith('user_1', 'doc_1', 2);
+  });
+
+  it('does not rewrite the flag when the graph is already enabled', async () => {
+    const documents = {
+      findOne: jest
+        .fn()
+        .mockResolvedValue({ id: 'doc_1', deleted: false, graphEnabled: true }),
+      save: jest.fn(),
+    };
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'job_1',
+        documentVersion: 1,
+        status: 'READY',
+      }),
+    };
+    const graphTasks = {
+      enqueue: jest.fn().mockResolvedValue(undefined),
+      getProgress: jest.fn().mockResolvedValue(null),
+    };
+    const service = new DocumentLifecycleService(
+      documents as never,
+      {} as never,
+      jobs as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      graphTasks as never,
+      {
+        loadComplete: jest.fn().mockResolvedValue([{ chunkId: 'chunk_1' }]),
+      } as never,
+      { find: jest.fn().mockResolvedValue([]) } as never,
+    );
+
+    await expect(service.buildGraph('user_1', 'doc_1')).resolves.toMatchObject({
+      graphEnabled: true,
+      totalChunks: 1,
+    });
+    expect(documents.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects building a graph while the document is still processing', async () => {
+    const service = new DocumentLifecycleService(
+      {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'doc_1',
+          deleted: false,
+          graphEnabled: false,
+        }),
+      } as never,
+      {} as never,
+      {
+        findOne: jest
+          .fn()
+          .mockResolvedValue({ id: 'job_1', status: 'CHUNKING' }),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(service.buildGraph('user_1', 'doc_1')).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('rejects building a graph when the chunk checkpoint is missing', async () => {
+    const graphTasks = { enqueue: jest.fn() };
+    const service = new DocumentLifecycleService(
+      {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'doc_1',
+          deleted: false,
+          graphEnabled: false,
+        }),
+      } as never,
+      {} as never,
+      {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'job_1',
+          documentVersion: 1,
+          status: 'READY',
+        }),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      graphTasks as never,
+      { loadComplete: jest.fn().mockResolvedValue(null) } as never,
+    );
+
+    await expect(service.buildGraph('user_1', 'doc_1')).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(graphTasks.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('rejects building a graph for a missing document', async () => {
+    const service = new DocumentLifecycleService(
+      { findOne: jest.fn().mockResolvedValue(null) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(service.buildGraph('user_1', 'doc_1')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
 });

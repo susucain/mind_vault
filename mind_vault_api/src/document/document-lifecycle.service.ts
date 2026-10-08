@@ -22,6 +22,8 @@ import {
 import { RustfsService } from '../storage/rustfs.service';
 import { ElasticsearchIndexService } from '../retrieval/es/elasticsearch-index.service';
 import { DocumentGraphTaskService } from './graph/document-graph-task.service';
+import { DocumentChunkCheckpointService } from './chunking/document-chunk-checkpoint.service';
+import { DatasetDocumentEntity } from '../dataset/entities/dataset-document.entity';
 import { DocumentStatus } from './document-status';
 
 @Injectable()
@@ -37,6 +39,9 @@ export class DocumentLifecycleService {
     private readonly storage: RustfsService,
     private readonly index: ElasticsearchIndexService,
     private readonly graphTasks?: DocumentGraphTaskService,
+    private readonly checkpoints?: DocumentChunkCheckpointService,
+    @InjectRepository(DatasetDocumentEntity)
+    private readonly datasetDocuments?: Repository<DatasetDocumentEntity>,
   ) {}
 
   async remove(ownerId: string, documentId: string) {
@@ -124,5 +129,67 @@ export class DocumentLifecycleService {
       operation: 'reindex',
     });
     return { documentId, jobId: job.id, status: job.status };
+  }
+
+  /**
+   * 事后补建图谱（§5.1）：只对已处理完成且能读到分块检查点的文档入队，
+   * 不需要重新上传或重新 embedding。
+   *
+   * 幂等：`enqueue` 会跳过已完成/在途的块，重复调用不会产生重复任务行；
+   * 同时对失败/取消的块复用原行重投，因此重复点击也能修复未完成的图谱。
+   */
+  async buildGraph(ownerId: string, documentId: string) {
+    const document = await this.documents.findOne({
+      where: { id: documentId, ownerId, deleted: false },
+    });
+    if (!document) {
+      throw new NotFoundException(`Document ${documentId} not found`);
+    }
+    const job = await this.jobs.findOne({
+      where: { ownerId, documentId },
+      order: { createdAt: 'DESC' },
+    });
+    if (!job || job.status !== IngestionJobStatus.Ready) {
+      throw new BadRequestException('文档尚未处理完成，暂不能构建图谱');
+    }
+
+    const chunks =
+      (await this.checkpoints?.loadComplete(
+        ownerId,
+        documentId,
+        job.documentVersion,
+      )) ?? [];
+    if (chunks.length === 0) {
+      // 早于检查点方案入库的文档没有 kh_document_chunk 行，需要先整体重建
+      throw new BadRequestException('缺少分块检查点，请先重建索引后再构建图谱');
+    }
+
+    if (!document.graphEnabled) {
+      document.graphEnabled = true;
+      await this.documents.save(document);
+    }
+
+    const datasetRows =
+      (await this.datasetDocuments?.find({
+        where: { ownerId, documentId },
+      })) ?? [];
+    const datasetIds = datasetRows.map((row) => row.datasetId);
+    chunks.forEach((chunk) => {
+      chunk.datasetIds = datasetIds;
+    });
+    await this.graphTasks?.enqueue(chunks);
+
+    const graph =
+      (await this.graphTasks?.getProgress(
+        ownerId,
+        documentId,
+        job.documentVersion,
+      )) ?? null;
+    return {
+      documentId,
+      graphEnabled: true,
+      totalChunks: chunks.length,
+      graph,
+    };
   }
 }

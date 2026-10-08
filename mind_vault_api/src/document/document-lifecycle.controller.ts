@@ -17,4 +17,9 @@ export class DocumentLifecycleController {
   reindex(@CurrentUser() user: { id: string }, @Param('id') id: string) {
     return this.service.reindex(user.id, id);
   }
+
+  @Post(':id/graph')
+  buildGraph(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.service.buildGraph(user.id, id);
+  }
 }
