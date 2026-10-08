@@ -239,9 +239,81 @@ describe('ElasticsearchIndexService', () => {
         highlight: expect.objectContaining({
           pre_tags: ['\u0002'],
           post_tags: ['\u0003'],
+          // I4：多片段，命中不在首片时也能展示
+          fields: { text: { fragment_size: 240, number_of_fragments: 3 } },
         }),
       }),
     );
+  });
+
+  it('picks the highlight fragment containing the match, not just the first（I4）', async () => {
+    const client = {
+      search: jest.fn().mockResolvedValue({
+        hits: {
+          total: { value: 1 },
+          hits: [
+            {
+              _id: 'chunk_1',
+              _score: 2,
+              _source: {
+                chunkId: 'chunk_1',
+                documentId: 'doc_1',
+                text: '长文',
+                parentContext: '',
+                locator: {},
+                titlePath: [],
+                datasetIds: [],
+              },
+              // 命中落在第二片，第一片没有标记
+              highlight: { text: ['开头没有命中', '这里\u0002命中\u0003了'] },
+            },
+          ],
+        },
+      }),
+    };
+    const service = new ElasticsearchIndexService(client as never, config());
+
+    const page = await service.keywordSearch({
+      ownerId: 'user_1',
+      query: '命中',
+      page: 1,
+      pageSize: 10,
+      highlight: true,
+    });
+
+    expect(page.hits[0].highlight).toEqual([
+      { text: '这里', hit: false },
+      { text: '命中', hit: true },
+      { text: '了', hit: false },
+    ]);
+  });
+
+  it('shards getByChunkIds over 100 ids and reports coverage（I6）', async () => {
+    let call = 0;
+    const search = jest.fn().mockImplementation(() => {
+      call += 1;
+      const ids = call === 1 ? ['chunk_0'] : ['chunk_100'];
+      return Promise.resolve({
+        hits: {
+          hits: ids.map((id) => ({ _id: id, _source: { chunkId: id } })),
+        },
+      });
+    });
+    const service = new ElasticsearchIndexService(
+      { search } as never,
+      config(),
+    );
+    const ids = Array.from({ length: 130 }, (_, index) => `chunk_${index}`);
+
+    const result = await service.getByChunkIds({
+      ownerId: 'user_1',
+      chunkIds: ids,
+    });
+
+    // 130 个 id 拆成 100 + 30 两批并发查询
+    expect(search).toHaveBeenCalledTimes(2);
+    expect(result.requestedCount).toBe(130);
+    expect(result.returnedCount).toBe(2);
   });
 
   it('applies offset pagination, time range and recent sort to keyword search', async () => {

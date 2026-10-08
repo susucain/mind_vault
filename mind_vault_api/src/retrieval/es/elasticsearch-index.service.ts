@@ -24,6 +24,9 @@ const HIGHLIGHT_POST = '\u0003';
 /** kNN 的 k 上限：k 即返回上限，超过后无法继续深翻页 */
 export const VECTOR_K_CAP = 100;
 
+/** `getByChunkIds` 单次查询的 terms 分片大小（I6）：超出则并发分片后合并 */
+export const CHUNK_ID_BATCH_SIZE = 100;
+
 /** bulk 中失败条目的明细（I2）：便于定位是 mapping 冲突还是单条超长 */
 export interface BulkIndexFailure {
   chunkId: string;
@@ -294,45 +297,58 @@ export class ElasticsearchIndexService {
     };
   }
 
+  /**
+   * 按 chunkId 批量回捞（I6）：单次 `size` 上限 100，超出部分过去会**静默丢失**
+   * 且无法区分「没有这段」与「没查」。改为按 `CHUNK_ID_BATCH_SIZE` 分片并发查询后合并，
+   * 并在返回体暴露 `requestedCount / returnedCount` 供观测覆盖率。
+   */
   async getByChunkIds(input: {
     ownerId: string;
     chunkIds: string[];
     datasetIds?: string[];
-  }) {
-    if (input.chunkIds.length === 0) return [];
-    const result = await this.client.search({
-      index: this.indexName,
-      size: Math.min(input.chunkIds.length, 100),
-      query: {
-        bool: {
-          filter: [
-            ...this.filters(input.ownerId, input.datasetIds),
-            { terms: { chunkId: input.chunkIds } },
-          ],
-        },
-      },
-    });
-    return this.toHits(result, 'graph');
+  }): Promise<{
+    hits: RetrievalHit[];
+    requestedCount: number;
+    returnedCount: number;
+  }> {
+    const unique = [...new Set(input.chunkIds.filter(Boolean))];
+    if (unique.length === 0) {
+      return { hits: [], requestedCount: 0, returnedCount: 0 };
+    }
+    const batches: string[][] = [];
+    for (let index = 0; index < unique.length; index += CHUNK_ID_BATCH_SIZE) {
+      batches.push(unique.slice(index, index + CHUNK_ID_BATCH_SIZE));
+    }
+    const pages = await Promise.all(
+      batches.map((batch) =>
+        this.client.search({
+          index: this.indexName,
+          size: batch.length,
+          query: {
+            bool: {
+              filter: [
+                ...this.filters(input.ownerId, input.datasetIds),
+                { terms: { chunkId: batch } },
+              ],
+            },
+          },
+        }),
+      ),
+    );
+    const hits = pages.flatMap((page) => this.toHits(page, 'graph'));
+    return { hits, requestedCount: unique.length, returnedCount: hits.length };
   }
 
   /**
    * 批量判断 chunkId 是否仍存在于索引（K6 引用降级用）。
-   * `getByChunkIds` 单次最多返回 100 条，超出分批查询，避免未被返回的 chunkId 被误判为失效。
+   * 分片逻辑收敛在 `getByChunkIds`（I6），这里只关心命中的 chunkId 集合。
    */
   async existingChunkIds(
     ownerId: string,
     chunkIds: string[],
   ): Promise<Set<string>> {
-    const unique = [...new Set(chunkIds.filter(Boolean))];
-    const found = new Set<string>();
-    for (let index = 0; index < unique.length; index += 100) {
-      const hits = await this.getByChunkIds({
-        ownerId,
-        chunkIds: unique.slice(index, index + 100),
-      });
-      hits.forEach((hit) => found.add(hit.chunkId));
-    }
-    return found;
+    const { hits } = await this.getByChunkIds({ ownerId, chunkIds });
+    return new Set(hits.map((hit) => hit.chunkId));
   }
 
   async deleteByDocument(ownerId: string, documentId: string) {
@@ -403,7 +419,8 @@ export class ElasticsearchIndexService {
       pre_tags: [HIGHLIGHT_PRE],
       post_tags: [HIGHLIGHT_POST],
       fields: {
-        text: { fragment_size: 240, number_of_fragments: 1 },
+        // I4：chunk 长 1600 字时命中常不在第一个片段，多取几片再挑含命中的那片
+        text: { fragment_size: 240, number_of_fragments: 3 },
       },
     };
   }
@@ -429,12 +446,24 @@ export class ElasticsearchIndexService {
       locator: objectValue(hit._source.locator),
       titlePath: stringArray(hit._source.titlePath),
       datasetIds: stringArray(hit._source.datasetIds),
-      highlight: splitHighlight(hit.highlight?.text?.[0]),
+      highlight: splitHighlight(pickHighlightFragment(hit.highlight?.text)),
       updatedAt: optionalString(hit._source.updatedAt),
       score: hit._score ?? 0,
       sources: [source],
     }));
   }
+}
+
+/**
+ * 从多个高亮片段里挑一个用于展示（I4）：优先取「含命中标记」的那片，
+ * 全部都没标记时退回第一片；避免命中落在后段片段时引用卡片看不到高亮。
+ */
+function pickHighlightFragment(fragments?: string[]): string | undefined {
+  if (!fragments?.length) return undefined;
+  return (
+    fragments.find((fragment) => fragment.includes(HIGHLIGHT_PRE)) ??
+    fragments[0]
+  );
 }
 
 /**

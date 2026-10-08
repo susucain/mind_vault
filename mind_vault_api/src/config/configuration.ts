@@ -51,6 +51,12 @@ export function buildConfiguration(env: EnvironmentInput = process.env) {
       // ES kNN 对 cosine 返回的 _score 为 (1 + 余弦相似度) / 2，落在 0~1。
       // 默认 0.75 约等于余弦 0.5：低于它视为资料中没有相关内容，需要按真实语料校准。
       vectorMinScore: parseNumber(env.RETRIEVAL_VECTOR_MIN_SCORE, 0.75),
+      // I5：关键字/向量各自召回的候选数，语料变化时用环境变量微调而不改代码
+      candidateTopK: parseNumber(env.RETRIEVAL_CANDIDATE_TOP_K, 30),
+      // I5：RRF 融合后交给回答的条数
+      fusionTopK: parseNumber(env.RETRIEVAL_FUSION_TOP_K, 8),
+      // I5：相关性门控阶段向量召回条数
+      evidenceTopK: parseNumber(env.RETRIEVAL_EVIDENCE_TOP_K, 30),
     },
     chat: {
       // 每轮回答后追加一次「追问推荐」调用。关掉即完全不调模型，

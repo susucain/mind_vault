@@ -26,6 +26,27 @@ describe('RetrievalService', () => {
     truncated: false,
   });
 
+  /** getByChunkIds 现在返回 { hits, requestedCount, returnedCount }（I6） */
+  const byIds = (hits: ReturnType<typeof hit>[]) => ({
+    hits,
+    requestedCount: hits.length,
+    returnedCount: hits.length,
+  });
+
+  /** 配置桩：门控阈值 + I5 检索参数默认值，避免测试依赖真实环境配置 */
+  const configStub = (overrides: Record<string, number> = {}) => ({
+    get: jest.fn((key: string, fallback?: number) => {
+      const values: Record<string, number> = {
+        'retrieval.vectorMinScore': 0.75,
+        'retrieval.candidateTopK': 30,
+        'retrieval.fusionTopK': 8,
+        'retrieval.evidenceTopK': 30,
+        ...overrides,
+      };
+      return values[key] ?? fallback;
+    }),
+  });
+
   it('fuses keyword and vector results with reciprocal rank fusion', async () => {
     const es = {
       keywordSearch: jest
@@ -38,7 +59,7 @@ describe('RetrievalService', () => {
         .mockResolvedValue(
           page([hit('chunk_b', 4, 'vector'), hit('chunk_c', 3, 'vector')]),
         ),
-      getByChunkIds: jest.fn().mockResolvedValue([]),
+      getByChunkIds: jest.fn().mockResolvedValue(byIds([])),
     };
     const embedding = { embedQuery: jest.fn().mockResolvedValue([0.1]) };
     const graph = { search: jest.fn().mockResolvedValue({ relations: [] }) };
@@ -47,7 +68,7 @@ describe('RetrievalService', () => {
       embedding as never,
       graph as never,
       {} as never,
-      { get: jest.fn().mockReturnValue(0.75) } as never,
+      configStub() as never,
     );
 
     const result = await service.hybrid({
@@ -68,12 +89,14 @@ describe('RetrievalService', () => {
     const es = {
       keywordSearch: jest.fn().mockResolvedValue(page([])),
       vectorSearch: jest.fn().mockResolvedValue(page([])),
-      getByChunkIds: jest.fn().mockResolvedValue([
-        {
-          ...hit('chunk_graph', 0, 'keyword'),
-          sources: ['keyword'],
-        },
-      ]),
+      getByChunkIds: jest.fn().mockResolvedValue(
+        byIds([
+          {
+            ...hit('chunk_graph', 0, 'keyword'),
+            sources: ['keyword'],
+          },
+        ]),
+      ),
     };
     const service = new RetrievalService(
       es as never,
@@ -84,7 +107,7 @@ describe('RetrievalService', () => {
         }),
       } as never,
       {} as never,
-      { get: jest.fn().mockReturnValue(0.75) } as never,
+      configStub() as never,
     );
 
     const hits = await service.graph({
@@ -113,7 +136,7 @@ describe('RetrievalService', () => {
       { embedQuery: jest.fn().mockResolvedValue([0.1]) } as never,
       {} as never,
       {} as never,
-      { get: jest.fn().mockReturnValue(0.75) } as never,
+      configStub() as never,
     );
 
     await expect(
@@ -132,7 +155,7 @@ describe('RetrievalService', () => {
       { embedQuery: jest.fn().mockResolvedValue([0.1]) } as never,
       {} as never,
       {} as never,
-      { get: jest.fn().mockReturnValue(0.75) } as never,
+      configStub() as never,
     );
 
     const result = await service.assessEvidence({
@@ -148,7 +171,7 @@ describe('RetrievalService', () => {
     const es = {
       keywordSearch: jest.fn().mockResolvedValue(page([])),
       vectorSearch: jest.fn(),
-      getByChunkIds: jest.fn().mockResolvedValue([]),
+      getByChunkIds: jest.fn().mockResolvedValue(byIds([])),
     };
     const embedding = { embedQuery: jest.fn() };
     const service = new RetrievalService(
@@ -156,7 +179,7 @@ describe('RetrievalService', () => {
       embedding as never,
       {} as never,
       {} as never,
-      { get: jest.fn().mockReturnValue(0.75) } as never,
+      configStub() as never,
     );
 
     await service.hybrid({
@@ -177,10 +200,14 @@ describe('RetrievalService', () => {
       {} as never,
       {} as never,
       {} as never,
-      { get: jest.fn().mockReturnValue(0.75) } as never,
+      configStub() as never,
     );
 
-    await service.keyword({ ownerId: 'user_1', query: 'Kafka', highlight: true });
+    await service.keyword({
+      ownerId: 'user_1',
+      query: 'Kafka',
+      highlight: true,
+    });
 
     expect(es.keywordSearch).toHaveBeenCalledWith(
       expect.objectContaining({ highlight: true }),
@@ -191,20 +218,55 @@ describe('RetrievalService', () => {
     const es = {
       keywordSearch: jest.fn().mockResolvedValue(page([])),
       vectorSearch: jest.fn().mockResolvedValue(page([])),
-      getByChunkIds: jest.fn().mockResolvedValue([]),
+      getByChunkIds: jest.fn().mockResolvedValue(byIds([])),
     };
     const service = new RetrievalService(
       es as never,
       { embedQuery: jest.fn().mockResolvedValue([0.1]) } as never,
       {} as never,
       {} as never,
-      { get: jest.fn().mockReturnValue(0.75) } as never,
+      configStub() as never,
     );
 
     await service.hybrid({ ownerId: 'user_1', query: 'Kafka', topK: 3 });
 
     expect(es.keywordSearch).toHaveBeenCalledWith(
       expect.objectContaining({ highlight: true }),
+    );
+  });
+
+  it('reads candidate / fusion / evidence sizes from retrieval config（I5）', async () => {
+    const hits = Array.from({ length: 5 }, (_, index) =>
+      hit(`chunk_${index}`, 5 - index, 'keyword'),
+    );
+    const es = {
+      keywordSearch: jest.fn().mockResolvedValue(page(hits)),
+      vectorSearch: jest.fn().mockResolvedValue(page([])),
+      getByChunkIds: jest.fn().mockResolvedValue(byIds([])),
+    };
+    const service = new RetrievalService(
+      es as never,
+      { embedQuery: jest.fn().mockResolvedValue([0.1]) } as never,
+      {} as never,
+      {} as never,
+      configStub({
+        'retrieval.candidateTopK': 12,
+        'retrieval.fusionTopK': 2,
+        'retrieval.evidenceTopK': 7,
+      }) as never,
+    );
+
+    const result = await service.hybrid({ ownerId: 'user_1', query: 'Kafka' });
+
+    // 关键字腿按 candidateTopK 召回，融合后按 fusionTopK 截断
+    expect(es.keywordSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ topK: 12 }),
+    );
+    expect(result.hits).toHaveLength(2);
+
+    await service.assessEvidence({ ownerId: 'user_1', query: 'Kafka' });
+    expect(es.vectorSearch).toHaveBeenLastCalledWith(
+      expect.objectContaining({ topK: 7 }),
     );
   });
 
@@ -230,7 +292,7 @@ describe('RetrievalService', () => {
         (extras.embedding ?? {}) as never,
         (extras.graph ?? {}) as never,
         meta as never,
-        { get: jest.fn().mockReturnValue(0.75) } as never,
+        configStub() as never,
       );
 
     it('normalizes keyword BM25 scores in-page and reports paging state', async () => {
@@ -292,10 +354,9 @@ describe('RetrievalService', () => {
       const es = {
         getByChunkIds: jest
           .fn()
-          .mockResolvedValue([
-            hit('chunk_a', 0, 'keyword'),
-            hit('chunk_b', 0, 'keyword'),
-          ]),
+          .mockResolvedValue(
+            byIds([hit('chunk_a', 0, 'keyword'), hit('chunk_b', 0, 'keyword')]),
+          ),
       };
       const graph = {
         neighborhood: jest.fn().mockResolvedValue({
@@ -355,7 +416,7 @@ describe('RetrievalService', () => {
         }),
         getByChunkIds: jest
           .fn()
-          .mockResolvedValue([hit('chunk_c', 0, 'keyword')]),
+          .mockResolvedValue(byIds([hit('chunk_c', 0, 'keyword')])),
       };
       const embedding = { embedQuery: jest.fn().mockResolvedValue([0.1]) };
       const graph = {

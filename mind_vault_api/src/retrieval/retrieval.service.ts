@@ -114,7 +114,7 @@ export class RetrievalService {
           .filter((id): id is string => Boolean(id)),
       ),
     ];
-    const hits = await this.es.getByChunkIds({
+    const { hits } = await this.es.getByChunkIds({
       ownerId: input.ownerId,
       chunkIds,
       datasetIds: input.datasetIds,
@@ -136,7 +136,7 @@ export class RetrievalService {
   async assessEvidence(
     input: RetrievalInput,
   ): Promise<{ hits: RetrievalHit[]; hasEvidence: boolean }> {
-    const hits = await this.vector({ ...input, topK: 30 });
+    const hits = await this.vector({ ...input, topK: this.evidenceTopK() });
     const top = hits[0];
     const minScore = this.config.get<number>('retrieval.vectorMinScore', 0.75);
     return { hits, hasEvidence: Boolean(top && top.score >= minScore) };
@@ -150,11 +150,11 @@ export class RetrievalService {
   ) {
     const [keywordHits, vectorHits, graphHits] = await Promise.all([
       // 问答链路复用 hybrid 时也要拿到命中高亮，供引用片段分段渲染
-      this.keyword({ ...input, topK: 30, highlight: true }),
+      this.keyword({ ...input, topK: this.candidateTopK(), highlight: true }),
       // 门控阶段已经算过向量时直接复用，省掉一次 embedding 调用
       input.vectorHits
         ? Promise.resolve(input.vectorHits)
-        : this.vector({ ...input, topK: 30 }),
+        : this.vector({ ...input, topK: this.candidateTopK() }),
       input.entityNames?.length
         ? this.graph({ ...input, entityNames: input.entityNames, maxHops: 2 })
         : Promise.resolve([]),
@@ -162,8 +162,23 @@ export class RetrievalService {
     const hits = reciprocalRankFusion([keywordHits, vectorHits, graphHits]);
     return {
       usedTools: ['keyword', 'vector', ...(graphHits.length ? ['graph'] : [])],
-      hits: hits.slice(0, input.topK ?? 8),
+      hits: hits.slice(0, input.topK ?? this.fusionTopK()),
     };
+  }
+
+  /** 关键字/向量各自召回的候选数（I5）：语料变化时无需改代码即可调整 */
+  private candidateTopK(): number {
+    return this.config.get<number>('retrieval.candidateTopK', 30);
+  }
+
+  /** RRF 融合后保留给回答的条数（I5） */
+  private fusionTopK(): number {
+    return this.config.get<number>('retrieval.fusionTopK', 8);
+  }
+
+  /** 门控阶段向量召回条数（I5） */
+  private evidenceTopK(): number {
+    return this.config.get<number>('retrieval.evidenceTopK', 30);
   }
 
   /**
@@ -240,7 +255,7 @@ export class RetrievalService {
         this.es.keywordSearch({
           ...base,
           query: input.query,
-          topK: 30,
+          topK: this.candidateTopK(),
           highlight: true,
         }),
         this.embedding.embedQuery(input.query),
@@ -255,7 +270,7 @@ export class RetrievalService {
       const vectorPage = await this.es.vectorSearch({
         ...base,
         vector,
-        topK: 30,
+        topK: this.candidateTopK(),
       });
       const graphHits = await this.chunksOfGraph(
         input.ownerId,
@@ -343,7 +358,8 @@ export class RetrievalService {
           .filter((id): id is string => Boolean(id)),
       ),
     ];
-    return this.es.getByChunkIds({ ownerId, chunkIds, datasetIds });
+    return (await this.es.getByChunkIds({ ownerId, chunkIds, datasetIds }))
+      .hits;
   }
 }
 
