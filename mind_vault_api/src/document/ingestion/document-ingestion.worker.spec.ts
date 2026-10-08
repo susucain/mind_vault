@@ -351,6 +351,131 @@ describe('DocumentIngestionWorker', () => {
     );
   });
 
+  it('records how long each stage took in stage_timings (M6)', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    try {
+      const job = {
+        id: 'job_1',
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        documentVersion: 1,
+        status: IngestionJobStatus.Uploaded,
+        currentStage: 'uploaded',
+        retryCount: 0,
+        stageTimings: {},
+      };
+      const jobs = {
+        findOne: jest.fn().mockResolvedValue(job),
+        save: jest.fn((input: unknown) => Promise.resolve(input)),
+      };
+      const documents = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'doc_1',
+          ownerId: 'user_1',
+          sourceFileName: 'notes.md',
+          sourceFileKey: null,
+          contentId: 'content_1',
+        }),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      };
+      const contents = {
+        findOne: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({
+            sourceBytes: Buffer.from('# 标题\n正文'),
+          }),
+        }),
+        updateOne: jest.fn().mockResolvedValue({ matchedCount: 1 }),
+      };
+      // 解析阶段耗时 3 秒：用假时钟把「切阶段」之间的间隔造出来
+      const parser = {
+        parseStructured: jest.fn(async () => {
+          jest.setSystemTime(new Date('2026-01-01T00:00:03.000Z'));
+          return {
+            title: 'notes.md',
+            format: 'md',
+            rawText: '# 标题\n正文',
+            sections: [],
+            assets: [],
+          };
+        }),
+      };
+      const worker = new DocumentIngestionWorker(
+        jobs as never,
+        documents as never,
+        contents as never,
+        parser as never,
+        {} as never,
+        { get: jest.fn().mockReturnValue(false) } as never,
+        { chunk: jest.fn().mockReturnValue([]) } as never,
+        { embedDocuments: jest.fn().mockResolvedValue([]) } as never,
+        {
+          indexChunks: jest.fn().mockResolvedValue(undefined),
+          refresh: jest.fn().mockResolvedValue(undefined),
+        } as never,
+        {} as never,
+        {
+          cleanupOrphanChunks: jest.fn().mockResolvedValue(undefined),
+        } as never,
+        { find: jest.fn().mockResolvedValue([]) } as never,
+      );
+
+      await worker.process({
+        jobId: 'job_1',
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        documentVersion: 1,
+        operation: 'index',
+      });
+
+      expect(job.stageTimings).toEqual({ parsing: { ms: 3000, runs: 1 } });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('accumulates stage durations across retries and skips stages without a start time (M6)', () => {
+    const worker = new DocumentIngestionWorker(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const internals = worker as unknown as {
+      accrueStageTiming: (
+        job: Record<string, unknown>,
+        now: Date,
+      ) => { stage: string; ms: number } | undefined;
+    };
+
+    // 重试续跑：同一阶段的耗时累加、进入次数 +1
+    const job = {
+      currentStage: 'embedding',
+      stageStartedAt: new Date('2026-01-01T00:00:00.000Z'),
+      stageTimings: { embedding: { ms: 1000, runs: 1 } },
+    };
+    expect(
+      internals.accrueStageTiming(job, new Date('2026-01-01T00:00:02.000Z')),
+    ).toEqual({ stage: 'embedding', ms: 2000 });
+    expect(job.stageTimings).toEqual({ embedding: { ms: 3000, runs: 2 } });
+
+    // 没有上一阶段的起算时间（如首次进入）则不计，避免把排队时间算进来
+    expect(
+      internals.accrueStageTiming(
+        { currentStage: 'parsing', stageStartedAt: null, stageTimings: {} },
+        new Date('2026-01-01T00:00:10.000Z'),
+      ),
+    ).toBeUndefined();
+  });
+
   it('downloads from RustFS when a source mirror is unavailable', async () => {
     const jobs = {
       findOne: jest.fn().mockResolvedValue({

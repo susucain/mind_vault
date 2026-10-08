@@ -28,6 +28,20 @@ export enum IngestionJobStatus {
   Deleted = 'DELETED',
 }
 
+/**
+ * 单个阶段的累计耗时（M6）。
+ * 口径：`currentStage` 从该阶段切到下一阶段之间的间隔；重试续跑会对同一阶段累加。
+ * 模型 token / 模型耗时以 Langfuse 为准，业务库不重复落 token（见 §10.2）。
+ */
+export interface StageTiming {
+  /** 该阶段累计耗时（毫秒） */
+  ms: number;
+  /** 该阶段进入次数（重试续跑会累加） */
+  runs: number;
+}
+
+export type JobStageTimings = Record<string, StageTiming>;
+
 @Entity('kh_document_ingestion_job')
 export class DocumentIngestionJobEntity {
   @PrimaryColumn({ type: 'varchar' })
@@ -60,6 +74,14 @@ export class DocumentIngestionJobEntity {
 
   @Column({ name: 'stage_started_at', type: 'timestamp', nullable: true })
   stageStartedAt?: Date | null;
+
+  /** 各阶段累计耗时（M6）：worker 每次切阶段时 append，事后可算各阶段历史耗时 */
+  @Column({
+    name: 'stage_timings',
+    type: 'jsonb',
+    default: () => "'{}'::jsonb",
+  })
+  stageTimings: JobStageTimings;
 
   @Column({ name: 'finished_at', type: 'timestamp', nullable: true })
   finishedAt?: Date | null;

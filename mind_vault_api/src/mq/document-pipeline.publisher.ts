@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Channel, ChannelModel, connect } from 'amqplib';
+import {
+  IngestionEvent,
+  logIngestionEvent,
+} from '../common/logging/ingestion-event.logger';
 
 @Injectable()
 export class DocumentPipelinePublisher {
@@ -27,6 +31,14 @@ export class DocumentPipelinePublisher {
     this.logger.debug(
       `Document pipeline message published: operation=${message.operation}, documentId=${message.documentId}`,
     );
+    logIngestionEvent(this.logger, IngestionEvent.Published, {
+      jobId: message.jobId,
+      ownerId: message.ownerId,
+      documentId: message.documentId,
+      operation: message.operation,
+      documentVersion: message.documentVersion,
+      routingKey: `document.${message.operation}`,
+    });
   }
 
   async publishDelete(message: {
@@ -55,6 +67,14 @@ export class DocumentPipelinePublisher {
     this.logger.debug(
       `Graph task message published: taskId=${message.taskId}, documentId=${message.documentId}`,
     );
+    logIngestionEvent(this.logger, IngestionEvent.Published, {
+      jobId: message.taskId,
+      ownerId: message.ownerId,
+      documentId: message.documentId,
+      operation: 'graph',
+      documentVersion: message.documentVersion,
+      routingKey: 'graph.extract',
+    });
   }
 
   async publishProgress(message: Record<string, unknown>): Promise<void> {

@@ -27,6 +27,10 @@ import { DatasetDocumentEntity } from '../../dataset/entities/dataset-document.e
 import { DocumentGraphTaskService } from '../graph/document-graph-task.service';
 import { DocumentStatus } from '../document-status';
 import { DocumentPipelinePublisher } from '../../mq/document-pipeline.publisher';
+import {
+  IngestionEvent,
+  logIngestionEvent,
+} from '../../common/logging/ingestion-event.logger';
 
 interface IndexMessage {
   jobId: string;
@@ -140,6 +144,14 @@ export class DocumentIngestionWorker {
           this.logger.warn(
             `检测到未投递成功的文档任务，已重投: jobId=${job.id} documentId=${job.documentId}`,
           );
+          logIngestionEvent(this.logger, IngestionEvent.Republished, {
+            jobId: job.id,
+            ownerId: job.ownerId,
+            documentId: job.documentId,
+            operation: job.operation,
+            status: job.status,
+            retryCount: job.retryCount,
+          });
         } catch (error) {
           this.logger.error(
             `文档任务重投失败: jobId=${job.id} error=${error instanceof Error ? error.message : String(error)}`,
@@ -285,6 +297,14 @@ export class DocumentIngestionWorker {
       },
     });
     if (!job) throw new Error(`索引任务不存在: ${message.jobId}`);
+    logIngestionEvent(this.logger, IngestionEvent.ConsumeStarted, {
+      jobId: job.id,
+      ownerId: job.ownerId,
+      documentId: job.documentId,
+      operation: message.operation,
+      status: job.status,
+      retryCount: job.retryCount,
+    });
     if (job.documentVersion !== message.documentVersion) {
       this.logger.warn(`跳过过期索引任务: jobId=${job.id}`);
       return { ...job, skipped: true };
@@ -525,6 +545,7 @@ export class DocumentIngestionWorker {
     const now = new Date();
     const stageChanged = job.currentStage !== stage;
     job.startedAt ??= now;
+    const accrued = stageChanged ? this.accrueStageTiming(job, now) : undefined;
     if (stageChanged) job.stageStartedAt = now;
     job.status = status;
     job.currentStage = stage;
@@ -547,7 +568,41 @@ export class DocumentIngestionWorker {
     this.logger.log(
       `文档索引阶段: jobId=${job.id} documentId=${job.documentId} stage=${stage} status=${status} progress=${completed}/${total}`,
     );
+    logIngestionEvent(this.logger, IngestionEvent.StageChanged, {
+      jobId: job.id,
+      ownerId: job.ownerId,
+      documentId: job.documentId,
+      stage,
+      status,
+      completed,
+      total,
+      ...(accrued
+        ? { previousStage: accrued.stage, previousStageMs: accrued.ms }
+        : {}),
+    });
     return saved;
+  }
+
+  /**
+   * M6：把上一阶段的耗时累加进 `stage_timings`，返回本次归集结果供日志使用。
+   * 口径为「`currentStage` 从上一阶段切到下一阶段之间的间隔」，重试续跑对同一阶段累加。
+   */
+  private accrueStageTiming(
+    job: DocumentIngestionJobEntity,
+    now: Date,
+  ): { stage: string; ms: number } | undefined {
+    const previous = job.currentStage;
+    if (!previous || !job.stageStartedAt) return undefined;
+    const elapsed = now.getTime() - new Date(job.stageStartedAt).getTime();
+    if (!Number.isFinite(elapsed) || elapsed <= 0) return undefined;
+    const timings = { ...(job.stageTimings ?? {}) };
+    const accumulated = timings[previous] ?? { ms: 0, runs: 0 };
+    timings[previous] = {
+      ms: accumulated.ms + elapsed,
+      runs: accumulated.runs + 1,
+    };
+    job.stageTimings = timings;
+    return { stage: previous, ms: elapsed };
   }
 
   private async deleteDocument(

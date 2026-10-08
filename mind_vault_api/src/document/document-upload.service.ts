@@ -45,6 +45,10 @@ import { FileParserService } from './parser/file-parser.service';
 import { nextSnowflakeId } from '../common/snowflake-id';
 import { DocumentGraphTaskService } from './graph/document-graph-task.service';
 import { DocumentStatus } from './document-status';
+import {
+  IngestionEvent,
+  logIngestionEvent,
+} from '../common/logging/ingestion-event.logger';
 
 const MAX_SOURCE_BYTES_MIRROR = 8 * 1024 * 1024;
 
@@ -396,6 +400,13 @@ export class DocumentUploadService implements OnModuleInit {
     this.logger.log(
       `文档上传已取消：ownerId=${ownerId}, documentId=${documentId}, jobId=${job.id}`,
     );
+    logIngestionEvent(this.logger, IngestionEvent.Cancelled, {
+      jobId: job.id,
+      ownerId,
+      documentId,
+      status: job.status,
+      stage: 'cancelled',
+    });
     return { documentId, jobId: job.id, status: job.status };
   }
 

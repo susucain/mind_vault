@@ -47,6 +47,7 @@ import { DropGraphTaskText1791504000000 } from './migrations/1791504000000-drop-
 import { AddDocumentContentHash1791590400000 } from './migrations/1791590400000-add-document-content-hash';
 import { AddDocumentUploadKey1791676800000 } from './migrations/1791676800000-add-document-upload-key';
 import { AddGraphTaskQuality1791763200000 } from './migrations/1791763200000-add-graph-task-quality';
+import { AddJobStageTimings1791849600000 } from './migrations/1791849600000-add-job-stage-timings';
 
 const standalone = buildConfiguration(process.env).runtime.standalone;
 
@@ -116,6 +117,7 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
                 AddDocumentContentHash1791590400000,
                 AddDocumentUploadKey1791676800000,
                 AddGraphTaskQuality1791763200000,
+                AddJobStageTimings1791849600000,
               ],
               migrationsRun: true,
             }),
