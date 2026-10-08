@@ -4,7 +4,6 @@ import {
   Controls,
   Handle,
   MarkerType,
-  MiniMap,
   Position,
   ReactFlow,
   useReactFlow,
@@ -135,12 +134,6 @@ export function GraphCanvas({ view, positions, selectedNodeId, onSelectNode, onE
       <FitViewOnLayout positions={positions} />
       <Background color="var(--mv-line)" gap={22} />
       <Controls showInteractive={false} />
-      <MiniMap
-        maskColor="rgba(245, 241, 232, 0.75)"
-        nodeColor={(node) => ENTITY_TYPE_COLORS[(node.data as EntityNodeData).type]}
-        pannable
-        zoomable
-      />
     </ReactFlow>
   );
 }
