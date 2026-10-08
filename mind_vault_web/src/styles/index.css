@@ -173,7 +173,7 @@ a { color: inherit; }
 .button--sm { min-height: 30px; padding: 0 10px; font-size: 0.78rem; gap: 5px; }
 .page-heading { min-width: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 h1, h2, p { overflow-wrap: anywhere; }
-h1 { margin: 0.25rem 0 0; color: var(--mv-ink); font-family: var(--font-serif); font-size: 1.625rem; line-height: 1.25; font-weight: 600; letter-spacing: 0; }
+h1 { margin: 0.25rem 0 0; color: var(--mv-ink); font-family: var(--font-serif); font-size: 1.5rem; line-height: 1.25; font-weight: 600; letter-spacing: 0; }
 h2 { margin: 0; color: var(--mv-ink); font-size: 1rem; line-height: 1.3; }
 .eyebrow { margin: 0; color: var(--mv-primary); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
 .muted { margin: 0; color: var(--mv-muted); font-size: 0.9rem; line-height: 1.55; }
@@ -906,11 +906,11 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .interview-page .interview-grid { align-items: stretch; }
 .interview-page .interview-grid > .workspace-panel { display: flex; flex-direction: column; }
 .interview-session-list { display: grid; margin-top: 10px; }
-.interview-session-list a, .interview-review-link { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 58px; border-top: 1px solid var(--mv-line); color: var(--mv-ink); text-decoration: none; }
+.interview-session-list a, .interview-review-link { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 58px; border-top: 1px solid var(--mv-line); color: var(--mv-ink); text-decoration: none; padding: 8px; }
 .interview-session-list a div { display: grid; gap: 4px; }
 .interview-session-list a span, .interview-review-link span { color: var(--mv-muted); font-size: .75rem; }
 .interview-tip { margin: 12px 0; }
-.interview-review-link { min-height: 44px; }
+.interview-review-link { min-height: 44px; padding: 8px; }
 .interview-form { width: min(100%, 960px); display: grid; gap: 20px; }
 .interview-form > label, .form-grid label { display: grid; align-content: start; gap: 7px; color: var(--mv-ink-soft); font-size: .8rem; font-weight: 650; }
 /* 主按钮定宽右对齐，不再整行铺满 */
@@ -939,7 +939,7 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .question-panel { min-width: 0; border: 1px solid var(--mv-line); padding: clamp(18px, 4vw, 38px); background: var(--mv-surface); }
 .question-meta { justify-content: space-between; color: var(--mv-muted); font-size: .78rem; }
 .question-meta span:last-child { display: inline-flex; align-items: center; gap: 5px; }
-.question-panel h2 { margin: 30px 0 22px; font-size: clamp(1.2rem, 2.4vw, 1.7rem); line-height: 1.45; }
+.question-panel h2 { margin: 30px 0 22px; font-size: clamp(1.2rem, 2.4vw, 1.5rem); line-height: 1.45; }
 .question-panel textarea { min-height: 210px; resize: vertical; }
 .answer-actions { justify-content: flex-end; margin-top: 12px; }
 .session-side { display: grid; gap: 12px; }
@@ -977,7 +977,7 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .review-search { position: relative; width: min(100%, 320px); }
 .review-search svg { position: absolute; z-index: 1; top: 11px; left: 10px; color: var(--mv-muted); }
 .review-search .input { padding-left: 32px; }
-.review-item-row { min-height: 74px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--mv-line); }
+.review-item-row { min-height: 74px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px; border-top: 1px solid var(--mv-line); }
 .review-item-copy { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; }
 .review-item-copy > div { min-width: 0; display: flex; align-items: center; gap: 8px; }
 .review-item-copy strong { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .86rem; }
