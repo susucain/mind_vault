@@ -26,12 +26,14 @@ test('allows retrying failed and undelivered ingestion jobs', () => {
 test('labels ingestion states for the document list', () => {
   expectEqual(ingestionStatusLabel('FAILED'), '解析失败');
   expectEqual(ingestionStatusLabel('READY'), '解析完成');
+  expectEqual(ingestionStatusLabel('CANCELLED'), '已取消');
   expectEqual(ingestionStatusLabel(null), '等待解析');
 });
 
 test('treats failed, ready, and deleted ingestion states as terminal', () => {
   expectEqual(isTerminalIngestionStatus('FAILED'), true);
   expectEqual(isTerminalIngestionStatus('READY'), true);
+  expectEqual(isTerminalIngestionStatus('CANCELLED'), true);
   expectEqual(isTerminalIngestionStatus('DELETED'), true);
   expectEqual(isTerminalIngestionStatus('EMBEDDING'), false);
 });

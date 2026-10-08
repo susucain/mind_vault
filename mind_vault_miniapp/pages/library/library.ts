@@ -1,6 +1,7 @@
 import { ensureAuthenticated } from '../../utils/auth-guard';
 import { createDataset, listDatasets } from '../../services/datasets';
 import {
+  cancelDocumentProcess,
   getDocumentProcess,
   getDatasetDocumentStats,
   getSupportedFormats,
@@ -8,6 +9,7 @@ import {
   retryDocumentProcess,
   streamLibraryDocumentProgress,
   uploadDocument,
+  UploadTaskHandle,
 } from '../../services/documents';
 import {
   Dataset,
@@ -35,8 +37,23 @@ let progressReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let libraryRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let datasetSearchTimer: ReturnType<typeof setTimeout> | null = null;
 let statusRequestInFlight = false;
+/** 正在传输字节的上传任务句柄：U8 档 1 允许在此阶段 abort */
+let uploadTask: UploadTaskHandle | null = null;
+/** 标记本次上传是否由用户主动取消，用于把 abort 造成的 fail 与真实错误区分 */
+let uploadCancelled = false;
 const STATUS_FALLBACK_INTERVAL_MS = 10_000;
 const RECENT_DATASETS_KEY = 'mind_vault_recent_datasets';
+
+type UploadCancelState = 'hidden' | 'active' | 'locked';
+
+/**
+ * 取消按钮状态（U8 档 1）：字节仍在传输、或 job 仍停留在 `UPLOADED`
+ * （worker 尚未接手）时可取消；进入解析及之后阶段 worker 无中途检查点，只能置灰。
+ */
+function uploadCancelState(status: DocumentProcessStatus | ''): UploadCancelState {
+  if (!status || isTerminalIngestionStatus(status)) return 'hidden';
+  return status === 'UPLOADED' ? 'active' : 'locked';
+}
 
 type LibraryDocumentItem = DocumentItem & {
   ingestionStatusLabel: string;
@@ -80,6 +97,7 @@ Page({
     showMainIngestionProgress: false,
     showGraphProgress: false,
     uploadError: '',
+    uploadCancelState: 'hidden' as UploadCancelState,
     retryingDocumentId: '',
   },
 
@@ -212,6 +230,8 @@ Page({
       return;
     }
     this.stopPolling();
+    uploadCancelled = false;
+    uploadTask = null;
     this.setData({
       uploading: true,
       uploadProgress: 0,
@@ -225,6 +245,7 @@ Page({
       showMainIngestionProgress: true,
       showGraphProgress: false,
       uploadError: '',
+      uploadCancelState: 'active',
     });
     try {
       const idempotencyKey = `mini-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -232,23 +253,68 @@ Page({
         file,
         this.data.selectedDatasetId,
         (uploadProgress) => this.setData({ uploadProgress }),
-        idempotencyKey
+        idempotencyKey,
+        (task) => {
+          uploadTask = task;
+        }
       );
       this.setData({
         uploadDocumentId: result.documentId,
         uploadStatus: result.status,
+        uploadCancelState: uploadCancelState(result.status),
       });
       void this.refreshDocumentSnapshot(result.documentId);
       await this.loadLibrary();
     } catch (error) {
+      // 用户主动取消（U8 档 1）：界面已在 cancelUpload 里切换到已取消，不再当作失败
+      if (uploadCancelled) {
+        uploadCancelled = false;
+        return;
+      }
       this.setData({
         uploadStatus: 'FAILED',
+        uploadCancelState: 'hidden',
         uploadError:
           error instanceof Error ? error.message : '文件上传失败，请重试',
       });
       showRequestError(error);
     } finally {
+      uploadTask = null;
       this.setData({ uploading: false });
+    }
+  },
+
+  async cancelUpload() {
+    // 字节仍在传输：abort 掉 wx.uploadFile 任务即可，服务端不会留下文档
+    if (this.data.uploading) {
+      uploadCancelled = true;
+      uploadTask?.abort();
+      uploadTask = null;
+      this.stopPolling();
+      this.setData({
+        uploading: false,
+        uploadStatus: 'CANCELLED',
+        uploadCancelState: 'hidden',
+        uploadError: '已取消上传',
+      });
+      return;
+    }
+    const documentId = this.data.uploadDocumentId;
+    if (!documentId || this.data.uploadCancelState !== 'active') {
+      wx.showToast({ title: '已进入处理，无法取消', icon: 'none' });
+      return;
+    }
+    try {
+      const result = await cancelDocumentProcess(documentId);
+      this.stopPolling();
+      this.setData({
+        uploadStatus: result.status,
+        uploadCancelState: 'hidden',
+        uploadError: '已取消上传',
+      });
+      await this.loadDocuments(true);
+    } catch (error) {
+      showRequestError(error);
     }
   },
 
@@ -257,7 +323,11 @@ Page({
     if (!documentId) return;
     try {
       const result = await retryDocumentProcess(documentId);
-      this.setData({ uploadStatus: result.status, uploadError: '' });
+      this.setData({
+        uploadStatus: result.status,
+        uploadCancelState: uploadCancelState(result.status),
+        uploadError: '',
+      });
       void this.refreshDocumentSnapshot(documentId);
     } catch (error) {
       showRequestError(error);
@@ -398,6 +468,7 @@ Page({
     const graph = process.graph ?? null;
     this.setData({
       uploadStatus: process.status,
+      uploadCancelState: uploadCancelState(process.status),
       uploadError: process.errorMessage ?? '',
       uploadStageProgress: process.stageProgress,
       uploadGraph: graph,
@@ -416,6 +487,7 @@ Page({
       event.stage === 'graph' ? this.data.uploadStatus : event.status;
     this.setData({
       uploadStatus: status,
+      uploadCancelState: uploadCancelState(status),
       uploadError: event.errorMessage ?? this.data.uploadError,
       uploadStageProgress:
         event.stage === 'graph'

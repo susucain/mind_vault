@@ -68,6 +68,7 @@ export type DocumentProcessStatus =
   | 'INDEXING'
   | 'READY'
   | 'FAILED'
+  | 'CANCELLED'
   | 'DELETING'
   | 'DELETED';
 

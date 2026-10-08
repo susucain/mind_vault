@@ -9,7 +9,12 @@ export function isRetryableIngestionStatus(
 export function isTerminalIngestionStatus(
   status: DocumentProcessStatus | ''
 ): boolean {
-  return status === 'READY' || status === 'FAILED' || status === 'DELETED';
+  return (
+    status === 'READY' ||
+    status === 'FAILED' ||
+    status === 'CANCELLED' ||
+    status === 'DELETED'
+  );
 }
 
 export function shouldShowMainIngestionProgress(
@@ -54,6 +59,8 @@ export function ingestionStatusLabel(
       return '正在索引';
     case 'DELETING':
       return '正在删除';
+    case 'CANCELLED':
+      return '已取消';
     case 'DELETED':
       return '已删除';
     default:

@@ -197,6 +197,12 @@
   line-height: 1.5;
 }
 
+.upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
 .dataset-selector {
   position: absolute;
   z-index: 4;

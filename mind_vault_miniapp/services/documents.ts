@@ -66,16 +66,22 @@ export function deleteDocument(id: string) {
   });
 }
 
+export interface UploadTaskHandle {
+  abort: () => void;
+}
+
 export function uploadDocument(
   file: SelectedFile,
   datasetId: string,
   onProgress: (progress: number) => void,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  onTaskReady?: (task: UploadTaskHandle) => void
 ) {
   const session = loadSession();
   if (!session) return Promise.reject(new Error('登录已失效'));
   const startedAt = Date.now();
   return new Promise<UploadDocumentResponse>((resolve, reject) => {
+    let aborted = false;
     const task = wx.uploadFile({
       url: `${environment.apiBaseUrl}/documents/upload`,
       timeout: 60_000,
@@ -123,7 +129,10 @@ export function uploadDocument(
         resolve(JSON.parse(response.data) as UploadDocumentResponse);
       },
       fail(error) {
-        const uploadError = new Error(error.errMsg || '文件上传失败');
+        // 用户主动取消（U8 档 1）：wx.uploadFile 的 abort 会走 fail，这里给出明确文案而不是通用失败
+        const uploadError = new Error(
+          aborted ? '已取消上传' : error.errMsg || '文件上传失败'
+        );
         recordRequestTrace({
           timestamp: Date.now(),
           method: 'POST',
@@ -135,6 +144,12 @@ export function uploadDocument(
       },
     });
     task.onProgressUpdate((progress) => onProgress(progress.progress));
+    onTaskReady?.({
+      abort: () => {
+        aborted = true;
+        task.abort();
+      },
+    });
   });
 }
 
@@ -147,6 +162,17 @@ export function getDocumentProcess(id: string) {
 export function retryDocumentProcess(id: string) {
   return request<Pick<DocumentProcess, 'documentId' | 'jobId' | 'status'>>({
     path: `/documents/${id}/retry`,
+    method: 'POST',
+  });
+}
+
+/**
+ * 取消上传（U8 档 1）：仅对尚未被 worker 接手的任务生效。
+ * 已进入解析及之后阶段后端会返回 400，前端据此提示「已进入处理，无法取消」。
+ */
+export function cancelDocumentProcess(id: string) {
+  return request<Pick<DocumentProcess, 'documentId' | 'jobId' | 'status'>>({
+    path: `/documents/${id}/cancel`,
     method: 'POST',
   });
 }

@@ -74,15 +74,36 @@
       <text>{{uploadGraph.estimatedRemainingSeconds === null ? '正在估算' : uploadEta}}</text>
     </view>
     <text wx:if="{{uploadError}}" class="upload-error">{{uploadError}}</text>
-    <van-button
-      wx:if="{{uploadStatus === 'FAILED'}}"
-      type="primary"
-      plain
-      size="small"
-      bind:click="retryUploadProcess"
-    >
-      重试解析
-    </van-button>
+    <view class="upload-actions">
+      <van-button
+        wx:if="{{uploadCancelState === 'active'}}"
+        type="default"
+        plain
+        size="small"
+        bind:click="cancelUpload"
+      >
+        取消上传
+      </van-button>
+      <van-button
+        wx:elif="{{uploadCancelState === 'locked'}}"
+        type="default"
+        plain
+        size="small"
+        disabled
+        bind:click="cancelUpload"
+      >
+        已进入处理，无法取消
+      </van-button>
+      <van-button
+        wx:if="{{uploadStatus === 'FAILED'}}"
+        type="primary"
+        plain
+        size="small"
+        bind:click="retryUploadProcess"
+      >
+        重试解析
+      </van-button>
+    </view>
   </view>
 
   <app-state wx:if="{{loading}}" type="loading"></app-state>
