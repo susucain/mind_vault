@@ -51,6 +51,31 @@ describe('UploadQueue', () => {
     expect(screen.getByText('已可问答（未构建图谱）')).toBeInTheDocument();
   });
 
+  it('shows the degradation copy keyed by the server error code', () => {
+    render(
+      <UploadQueue
+        cancel={vi.fn()}
+        items={[
+          {
+            localId: '1',
+            file: new File(['a'], 'scan.pdf'),
+            datasetId: 'd',
+            status: 'failed',
+            progress: 0,
+            failedStage: 'parsing',
+            errorCode: 'PARSE_SUSPECTED_SCANNED',
+            errorMessage: '文件解析结果为空',
+          },
+        ]}
+        retry={vi.fn()}
+        stopTracking={vi.fn()}
+      />,
+    );
+
+    // 有错误码时以定向文案覆盖服务端原文
+    expect(screen.getByText('失败于 parsing：疑似扫描件，暂不支持文字提取')).toBeInTheDocument();
+  });
+
   it('keeps tracking a ready document while its graph is still building', async () => {
     const stopTracking = vi.fn();
     render(

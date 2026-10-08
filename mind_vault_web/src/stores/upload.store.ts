@@ -33,6 +33,8 @@ export interface QueuedUpload {
     estimatedRemainingSeconds?: number | null;
   };
   failedStage?: string;
+  /** 服务端失败分类（A2）：`PARSE_SUSPECTED_SCANNED` 等，用于展示定向降级文案 */
+  errorCode?: string;
   errorMessage?: string;
   /** 内容指纹命中同资料集既有文档（U3）：后端 409 拒绝时携带 */
   duplicateOf?: DuplicateDocumentRef;

@@ -82,6 +82,7 @@ function isTrackable(item: QueuedUpload): boolean {
 interface ProgressSource {
   status: string;
   currentStage?: string | null;
+  errorCode?: string | null;
   errorMessage?: string | null;
   stageProgress?: QueuedUpload['stageProgress'];
   graph?: DocumentGraphProgress | null;
@@ -142,6 +143,7 @@ export function useUploadQueue() {
       stageProgress: source.stageProgress ?? item.stageProgress,
       graphProgress: source.graphKnown ? graph : item.graphProgress,
       failedStage: nextStatus === 'failed' ? source.currentStage ?? undefined : undefined,
+      errorCode: source.errorCode ?? undefined,
       errorMessage: source.errorMessage ?? undefined,
     });
     if (nextStatus === 'ready' && graphUnknown && !graphPending) {
@@ -164,6 +166,7 @@ export function useUploadQueue() {
         const settled = applyStatus(current.documentId, {
           status: status.status,
           currentStage: status.currentStage,
+          errorCode: status.errorCode,
           errorMessage: status.errorMessage,
           stageProgress: status.stageProgress,
           graph: status.graph ?? null,
@@ -192,6 +195,7 @@ export function useUploadQueue() {
     const settled = applyStatus(event.documentId, {
       status: event.status,
       currentStage: event.stage,
+      errorCode: event.errorCode,
       errorMessage: event.errorMessage,
       stageProgress: {
         completed: event.completed,
@@ -336,6 +340,7 @@ export function useUploadQueue() {
           currentStage: 'retry_pending',
           stageProgress: undefined,
           failedStage: undefined,
+          errorCode: undefined,
           errorMessage: undefined,
         };
         update(localId, next);
@@ -351,6 +356,7 @@ export function useUploadQueue() {
       currentStage: undefined,
       stageProgress: undefined,
       failedStage: undefined,
+      errorCode: undefined,
       errorMessage: undefined,
       duplicateOf: undefined,
     });

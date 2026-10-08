@@ -1,6 +1,22 @@
 import { Ban, CircleCheck, EyeOff, LoaderCircle, RotateCcw, X } from 'lucide-react';
 import { canCancelUpload, type QueuedUpload } from '../../stores/upload.store';
 
+/**
+ * 解析失败错误码 → 定向降级文案（A2）。后端 `error_message` 已可读，
+ * 这里按码覆盖是为了让「扫描件/老格式」等原因在不同入口保持同一措辞。
+ */
+const FAILURE_LABELS: Record<string, string> = {
+  PARSE_EMPTY: '文件解析结果为空，请确认包含可提取的文本',
+  PARSE_SUSPECTED_SCANNED: '疑似扫描件，暂不支持文字提取',
+  PARSE_LEGACY_UNAVAILABLE: '旧版 Office 格式需服务端安装 LibreOffice',
+  PARSE_FAILED: '解析失败，可稍后重试',
+};
+
+/** 优先用错误码定向文案，缺失时回落到服务端原文 */
+function failureLabel(errorCode?: string, errorMessage?: string): string | undefined {
+  return (errorCode && FAILURE_LABELS[errorCode]) || errorMessage;
+}
+
 export function UploadQueue({
   cancel,
   items,
@@ -51,7 +67,7 @@ export function UploadQueue({
                   {item.status === 'failed' &&
                     (item.duplicateOf
                       ? `该文件已存在：${item.duplicateOf.name}`
-                      : `失败${item.failedStage ? `于 ${item.failedStage}` : ''}${item.errorMessage ? `：${item.errorMessage}` : ''}`)}
+                      : `失败${item.failedStage ? `于 ${item.failedStage}` : ''}${failureLabel(item.errorCode, item.errorMessage) ? `：${failureLabel(item.errorCode, item.errorMessage)}` : ''}`)}
                 </span>
                 {item.status === 'uploading' ? (
                   <progress aria-label={`${item.file.name} 上传中`} max="100" value={item.progress} />
