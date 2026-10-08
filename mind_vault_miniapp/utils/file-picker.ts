@@ -1,29 +1,21 @@
-const allowedExtensions = [
-  'pdf',
-  'docx',
-  'doc',
-  'xlsx',
-  'xls',
-  'pptx',
-  'ppt',
-  'txt',
-  'md',
-  'csv',
-  'json',
-];
-
 export interface SelectedFile {
   name: string;
   path: string;
   size: number;
 }
 
-export function chooseKnowledgeFile(): Promise<SelectedFile> {
+/**
+ * 选择知识文件。允许的扩展名由服务端 `/documents/supported-formats` 下发，
+ * 不再在小程序侧硬编码（老格式是否可用取决于服务端 soffice）。
+ */
+export function chooseKnowledgeFile(
+  extensions: string[]
+): Promise<SelectedFile> {
   return new Promise((resolve, reject) => {
     wx.chooseMessageFile({
       count: 1,
       type: 'file',
-      extension: allowedExtensions,
+      extension: extensions.length ? extensions : undefined,
       success(result) {
         const file = result.tempFiles[0];
         if (!file) {

@@ -3,6 +3,7 @@ import { createDataset, listDatasets } from '../../services/datasets';
 import {
   getDocumentProcess,
   getDatasetDocumentStats,
+  getSupportedFormats,
   listDocuments,
   retryDocumentProcess,
   streamLibraryDocumentProgress,
@@ -203,7 +204,8 @@ Page({
     }
     let file: SelectedFile;
     try {
-      file = await chooseKnowledgeFile();
+      const formats = await getSupportedFormats();
+      file = await chooseKnowledgeFile(formats.extensions);
     } catch (error) {
       if (error instanceof Error && error.message === '已取消选择文件') return;
       showRequestError(error);
@@ -225,10 +227,12 @@ Page({
       uploadError: '',
     });
     try {
+      const idempotencyKey = `mini-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const result = await uploadDocument(
         file,
         this.data.selectedDatasetId,
-        (uploadProgress) => this.setData({ uploadProgress })
+        (uploadProgress) => this.setData({ uploadProgress }),
+        idempotencyKey
       );
       this.setData({
         uploadDocumentId: result.documentId,

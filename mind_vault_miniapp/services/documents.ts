@@ -39,6 +39,22 @@ export function getDatasetDocumentStats(datasetId: string) {
   });
 }
 
+export interface SupportedFormats {
+  extensions: string[];
+}
+
+let supportedFormatsCache: string[] | null = null;
+
+/** 可上传格式清单：小程序不再硬编码白名单，统一由服务端下发（老格式取决于 soffice） */
+export async function getSupportedFormats(): Promise<SupportedFormats> {
+  if (supportedFormatsCache) return { extensions: supportedFormatsCache };
+  const result = await request<SupportedFormats>({
+    path: '/documents/supported-formats',
+  });
+  supportedFormatsCache = result.extensions;
+  return result;
+}
+
 export function deleteDocument(id: string) {
   return request<{
     documentId: string;
@@ -53,7 +69,8 @@ export function deleteDocument(id: string) {
 export function uploadDocument(
   file: SelectedFile,
   datasetId: string,
-  onProgress: (progress: number) => void
+  onProgress: (progress: number) => void,
+  idempotencyKey?: string
 ) {
   const session = loadSession();
   if (!session) return Promise.reject(new Error('登录已失效'));
@@ -70,6 +87,7 @@ export function uploadDocument(
       },
       header: {
         Authorization: `Bearer ${session.accessToken}`,
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
       },
       success(response) {
         if (response.statusCode < 200 || response.statusCode >= 300) {
