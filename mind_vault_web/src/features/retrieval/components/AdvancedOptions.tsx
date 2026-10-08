@@ -1,6 +1,4 @@
 import { useState } from 'react';
-import { SlidersHorizontal } from 'lucide-react';
-import { Button } from '@/components/ui';
 import {
   MAX_HOPS_OPTIONS,
   PAGE_SIZE_OPTIONS,
@@ -16,13 +14,19 @@ interface AdvancedOptionsProps {
   onChange: (patch: Partial<RetrievalQueryState>) => void;
 }
 
-/** 高级选项默认收起，展开为一行；条件变化即时写回 URL 并重新检索。 */
+/**
+ * 高级选项默认收起，展开为一行；条件变化即时写回 URL 并重新检索。
+ *
+ * 入口按钮暂时隐藏（模板见下方注释），因此面板当前不可达；保留 open 状态与面板代码，
+ * 便于后续改回按钮开关或改为常驻展开。
+ */
 export function AdvancedOptions({ state, onChange }: AdvancedOptionsProps) {
-  const [open, setOpen] = useState(false);
+  const [open] = useState(false);
   const activeRange = matchTimeRange(state.from, state.to) ?? 'all';
 
   return (
     <div className="retrieval-advanced">
+      {/* 入口按钮（暂时隐藏）：
       <Button
         aria-expanded={open}
         onClick={() => setOpen((prev) => !prev)}
@@ -32,6 +36,7 @@ export function AdvancedOptions({ state, onChange }: AdvancedOptionsProps) {
         <SlidersHorizontal aria-hidden="true" size={15} />
         高级选项
       </Button>
+      */}
       {open ? (
         <div className="retrieval-advanced__panel">
           <label className="retrieval-field">
