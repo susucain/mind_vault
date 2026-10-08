@@ -1,0 +1,4 @@
+onlyBuiltDependencies:
+  - protobufjs
+  - tesseract.js
+  - unrs-resolver
