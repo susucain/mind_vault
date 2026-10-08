@@ -57,6 +57,26 @@ describe('request', () => {
     } satisfies Partial<ApiRequestError>);
   });
 
+  it('keeps the structured details returned for rejected duplicate uploads', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          statusCode: 409,
+          message: '该文件已存在：a.txt',
+          error: 'DUPLICATE_DOCUMENT',
+          details: { duplicateOf: { id: 'doc-9', name: 'a.txt' } },
+        }),
+        { status: 409, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    await expect(request('/documents/upload')).rejects.toMatchObject({
+      status: 409,
+      code: 'DUPLICATE_DOCUMENT',
+      details: { duplicateOf: { id: 'doc-9', name: 'a.txt' } },
+    } satisfies Partial<ApiRequestError>);
+  });
+
   it('serializes plain request bodies as JSON but preserves FormData', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ ok: true }), {

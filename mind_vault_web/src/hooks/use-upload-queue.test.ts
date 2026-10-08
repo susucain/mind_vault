@@ -13,8 +13,11 @@ const { uploadDocument, getDocumentStatus, retryDocument } = vi.hoisted(() => ({
 
 vi.mock('../api/documents', () => ({ uploadDocument, getDocumentStatus, retryDocument }));
 
-function createFile(name: string): File {
-  return new File(['content'], name, { type: 'text/plain' });
+function createFile(name: string, size = 7): File {
+  const file = new File(['content'], name, { type: 'text/plain' });
+  // 双闸门按 file.size 计算；测试里不便构造 100MB 真实内容，直接覆写只读的 size。
+  Object.defineProperty(file, 'size', { value: size });
+  return file;
 }
 
 function deferred<T>() {
@@ -58,6 +61,64 @@ describe('useUploadQueue', () => {
       uploads[0]?.resolve({ documentId: 'doc-1', jobId: 'job-1', status: 'UPLOADED' });
     });
     await vi.waitFor(() => expect(uploadDocument).toHaveBeenCalledTimes(4));
+  });
+
+  it('keeps large files queued when they would exceed the byte gate', async () => {
+    const uploads = [deferred<UploadDocumentResult>(), deferred<UploadDocumentResult>()];
+    let nextUpload = 0;
+    uploadDocument.mockImplementation(() => uploads[nextUpload++]!.promise);
+    getDocumentStatus.mockResolvedValue({
+      status: 'CHUNKING',
+      currentStage: 'chunking',
+      errorMessage: null,
+      stageProgress: { completed: 1, total: 10, percent: 10 },
+    });
+    const { result } = renderHook(() => useUploadQueue());
+
+    act(() => {
+      // 两份 100MB 文件：文件数闸门（3）未满，但字节闸门（150MB）只容得下一份
+      result.current.enqueue(
+        [createFile('big-a.txt', 100 * 1024 * 1024), createFile('big-b.txt', 100 * 1024 * 1024)],
+        'dataset-1',
+      );
+    });
+    await vi.waitFor(() => expect(uploadDocument).toHaveBeenCalledTimes(1));
+    expect(result.current.items.filter((item) => item.status === 'uploading')).toHaveLength(1);
+    expect(result.current.items.filter((item) => item.status === 'queued')).toHaveLength(1);
+
+    await act(async () => {
+      uploads[0]?.resolve({ documentId: 'doc-1', jobId: 'job-1', status: 'UPLOADED' });
+    });
+    await vi.waitFor(() => expect(uploadDocument).toHaveBeenCalledTimes(2));
+  });
+
+  it('records the duplicate document reference when the backend rejects a repeated file', async () => {
+    uploadDocument.mockRejectedValueOnce(
+      new ApiRequestError({
+        status: 409,
+        code: 'DUPLICATE_DOCUMENT',
+        message: '该文件已存在：a.txt',
+        details: { duplicateOf: { id: 'doc-9', name: 'a.txt', createdAt: '2026-01-01T00:00:00.000Z' } },
+      }),
+    );
+    uploadDocument.mockReturnValueOnce(deferred<UploadDocumentResult>().promise);
+    const { result } = renderHook(() => useUploadQueue());
+
+    act(() => result.current.enqueue([createFile('a.txt')], 'dataset-1'));
+    await act(async () => {
+      await vi.waitFor(() =>
+        expect(result.current.items[0]).toMatchObject({
+          status: 'failed',
+          duplicateOf: { id: 'doc-9', name: 'a.txt' },
+        }),
+      );
+    });
+
+    await act(async () => {
+      await result.current.retry(result.current.items[0].localId);
+    });
+    await vi.waitFor(() => expect(result.current.items[0]).toMatchObject({ status: 'uploading' }));
+    expect(result.current.items[0].duplicateOf).toBeUndefined();
   });
 
   it('cancels queued uploads before a request starts', async () => {

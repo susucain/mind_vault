@@ -11,6 +11,8 @@ export interface ApiErrorPayload {
   statusCode: number;
   message: string | string[];
   error: string;
+  /** Nest 允许在异常体里附带结构化上下文（如重复文件的 duplicateOf） */
+  details?: Record<string, unknown>;
 }
 
 /** Nest sends the request id in this response header, not in the JSON payload. */

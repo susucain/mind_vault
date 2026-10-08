@@ -9,6 +9,13 @@ export type UploadQueueStatus =
   | 'failed'
   | 'cancelled';
 
+/** 409 拒绝时后端返回的既有文档引用，用于提示并高亮列表中的同内容文件 */
+export interface DuplicateDocumentRef {
+  id: string;
+  name: string;
+  createdAt?: string;
+}
+
 export interface QueuedUpload {
   localId: string;
   file: File;
@@ -27,6 +34,8 @@ export interface QueuedUpload {
   };
   failedStage?: string;
   errorMessage?: string;
+  /** 内容指纹命中同资料集既有文档（U3）：后端 409 拒绝时携带 */
+  duplicateOf?: DuplicateDocumentRef;
   /** 图谱构建进度：job 进入 READY 后图谱仍在后台构建，队列据此继续展示 */
   graphProgress?: DocumentGraphProgress | null;
 }

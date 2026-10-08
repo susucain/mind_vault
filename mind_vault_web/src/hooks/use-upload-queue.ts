@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { getDocumentStatus, retryDocument, uploadDocument } from '../api/documents';
 import { isApiError } from '../lib/errors';
-import { useUploadStore, type QueuedUpload } from '../stores/upload.store';
+import { useUploadStore, type DuplicateDocumentRef, type QueuedUpload } from '../stores/upload.store';
 
 const MAX_CONCURRENT_UPLOADS = 3;
+/** 并发字节闸门（U6）：在传 + 待启动字节合计上限，避免 100MB × 并发数 的内存峰值 */
+const MAX_CONCURRENT_BYTES = 150 * 1024 * 1024;
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 
 function extension(file: File): string {
@@ -14,10 +16,31 @@ function id(): string {
   return globalThis.crypto?.randomUUID?.() ?? `upload-${Date.now()}-${Math.random()}`;
 }
 
-function errorDetails(error: unknown): { failedStage?: string; errorMessage: string } {
+/** 从 409 的 details 中解析既有文档引用（U3），字段不合法时返回 undefined */
+function duplicateOf(details: Record<string, unknown> | undefined): DuplicateDocumentRef | undefined {
+  const value = details?.duplicateOf;
+  if (typeof value !== 'object' || value === null) return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.id !== 'string' || typeof candidate.name !== 'string') return undefined;
+  return {
+    id: candidate.id,
+    name: candidate.name,
+    createdAt: typeof candidate.createdAt === 'string' ? candidate.createdAt : undefined,
+  };
+}
+
+function errorDetails(error: unknown): {
+  failedStage?: string;
+  errorMessage: string;
+  duplicateOf?: DuplicateDocumentRef;
+} {
   if (isApiError(error)) {
     const stage = typeof error.details?.stage === 'string' ? error.details.stage : undefined;
-    return { failedStage: stage, errorMessage: error.message };
+    return {
+      failedStage: stage,
+      errorMessage: error.message,
+      duplicateOf: duplicateOf(error.details),
+    };
   }
   return { errorMessage: error instanceof Error ? error.message : 'Upload failed' };
 }
@@ -119,13 +142,21 @@ export function useUploadQueue() {
   }, [poll, update]);
 
   useEffect(() => {
-    const active = items.filter((item) => item.status === 'uploading').length;
-    const available = MAX_CONCURRENT_UPLOADS - active;
-    if (available <= 0) return;
+    // 双闸门（U6）：并发文件数 ≤3 **且** 在传 + 待启动字节 ≤150MB。
+    // 超出字节闸门的大文件保持 queued（UI 显示「排队中」），自动串行等待，避免内存峰值叠加。
+    const active = items.filter((item) => item.status === 'uploading');
+    let fileSlots = MAX_CONCURRENT_UPLOADS - active.length;
+    let byteBudget = MAX_CONCURRENT_BYTES - active.reduce((sum, item) => sum + item.file.size, 0);
+    if (fileSlots <= 0 || byteBudget <= 0) return;
     items
       .filter((item) => item.status === 'queued')
-      .slice(0, available)
-      .forEach((item) => void startUpload(item));
+      .forEach((item) => {
+        if (fileSlots <= 0) return;
+        if (item.file.size > byteBudget) return;
+        fileSlots -= 1;
+        byteBudget -= item.file.size;
+        void startUpload(item);
+      });
   }, [items, startUpload]);
 
   const enqueue = useCallback((files: File[], datasetId: string, options: { graphEnabled?: boolean; extensions?: string[] } = {}) => {
@@ -191,6 +222,7 @@ export function useUploadQueue() {
       stageProgress: undefined,
       failedStage: undefined,
       errorMessage: undefined,
+      duplicateOf: undefined,
     });
   }, [poll, update]);
 

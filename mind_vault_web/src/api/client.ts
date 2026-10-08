@@ -66,6 +66,8 @@ export async function responseError(
     code: payload?.error || `HTTP_${response.status}`,
     message,
     requestId: response.headers.get('X-Request-Id') ?? undefined,
+    // 透传 details，供上传队列识别 409 的 duplicateOf 并高亮既有文档
+    details: payload?.details,
   });
   if (error.status === 401 && notifyAuthExpiry) authExpiredHandler?.();
   return error;

@@ -41,11 +41,14 @@ export function UploadQueue({
                 <strong>{item.file.name}</strong>
                 <span>
                   {item.status === 'uploading' && '正在上传（服务端未提供进度）'}
-                  {item.status === 'queued' && '等待上传'}
+                  {item.status === 'queued' && '排队中'}
                   {item.status === 'processing' && `正在处理${item.currentStage ? `：${item.currentStage}` : ''}${item.stageProgress?.total ? ` · ${item.stageProgress.completed}/${item.stageProgress.total}` : ''}`}
                   {readyLabel}
                   {item.status === 'cancelled' && '已取消上传'}
-                  {item.status === 'failed' && `失败${item.failedStage ? `于 ${item.failedStage}` : ''}${item.errorMessage ? `：${item.errorMessage}` : ''}`}
+                  {item.status === 'failed' &&
+                    (item.duplicateOf
+                      ? `该文件已存在：${item.duplicateOf.name}`
+                      : `失败${item.failedStage ? `于 ${item.failedStage}` : ''}${item.errorMessage ? `：${item.errorMessage}` : ''}`)}
                 </span>
                 {item.status === 'uploading' ? <progress aria-label={`${item.file.name} 上传中`} /> : null}
                 {item.status === 'processing' ? (

@@ -572,6 +572,9 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .document-results--list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border: 0; background: transparent; }
 .document-results--list .document-row { min-height: 150px; grid-template-columns: 20px minmax(0, 1fr); align-content: start; border: 1px solid var(--mv-line); border-radius: 7px; padding: 16px; background: var(--mv-surface); }
 .document-results--list .document-row > :nth-child(n+3) { grid-column: 2; }
+/* 重复上传命中同资料集既有文档（U3）：高亮既有条目，与队列中的「该文件已存在」呼应 */
+.document-row--duplicate { background: var(--mv-danger-soft); box-shadow: inset 3px 0 0 var(--mv-danger); }
+.document-results--list .document-row--duplicate { border-color: var(--mv-danger); background: var(--mv-danger-soft); }
 .batch-bar { min-height: 48px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--mv-line-strong); border-radius: 6px; padding: 6px 10px; color: var(--mv-ink-soft); background: var(--mv-primary-soft); font-size: 0.84rem; }
 .batch-bar .button { margin-left: auto; }
 .dropdown-content { z-index: 60; min-width: 190px; border: 1px solid var(--mv-line); border-radius: 6px; padding: 5px; background: var(--mv-surface); box-shadow: 0 12px 32px rgb(31 41 37 / 16%); }

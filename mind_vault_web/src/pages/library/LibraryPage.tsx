@@ -78,11 +78,14 @@ function queuedUploadToDocument(item: QueuedUpload, datasetName?: string): Docum
 function DocumentRows({
   buildingId,
   documents,
+  highlightedIds,
   onBuildGraph,
   view,
 }: {
   buildingId: string | null;
   documents: Document[];
+  /** 被上传队列判定为重复的既有文档 id（U3）：高亮提示「该文件已存在」 */
+  highlightedIds: Set<string>;
   onBuildGraph: (documentId: string) => void;
   view: ViewMode;
 }) {
@@ -97,7 +100,10 @@ function DocumentRows({
         <span>更新时间</span>
       </div>
       {documents.map((document) => (
-        <article className="document-row" key={document.id}>
+        <article
+          className={`document-row${highlightedIds.has(document.id) ? ' document-row--duplicate' : ''}`}
+          key={document.id}
+        >
           <span />
           <div className="document-name">
             <span className="file-extension">{fileType(document)}</span>
@@ -191,6 +197,16 @@ export function LibraryPage() {
     return [...localDocuments, ...serverDocuments];
   }, [datasetId, datasets.data?.items, documents.data?.items, search, uploadItems]);
   const totalPages = Math.max(1, Math.ceil((documents.data?.total ?? 0) / pageSize));
+  // 上传队列中命中 409 的既有文档 id（U3）：在列表里高亮，配合队列中的「该文件已存在」提示
+  const duplicateIds = useMemo(
+    () =>
+      new Set(
+        uploadItems
+          .map((item) => item.duplicateOf?.id)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    [uploadItems],
+  );
   const hasDatasets = (datasets.data?.items?.length ?? 0) > 0;
   const hasDocuments = filtered.length > 0;
   const isEmpty = !documents.isPending && !hasDocuments;
@@ -262,6 +278,7 @@ export function LibraryPage() {
             <DocumentRows
               buildingId={buildGraphMutation.isPending ? buildGraphMutation.variables ?? null : null}
               documents={filtered}
+              highlightedIds={duplicateIds}
               onBuildGraph={(documentId) => buildGraphMutation.mutate(documentId)}
               view={view}
             />
