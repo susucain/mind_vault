@@ -34,8 +34,8 @@ export interface ParsePdfOptions {
  * 整体流程：
  * 1. 按页提取文本；
  * 2. 若提供 uploadImage，则按页提取图片 → 上传 → 记下 URL；
- * 3. 按页拼装：先文本，再该页图片的 `![](url)`；
- * 4. 尝试提取表格；若正文里尚无 Markdown 表格，则追加到文末「检测到的表格」章节；
+ * 3. 尝试提取表格，按页码分组（A4）；
+ * 4. 按页拼装：先文本，再该页图片的 `![](url)`，最后并入该页表格；
  * 5. 无论成败，在 finally 中销毁 parser，释放底层资源。
  *
  * 图片提取失败不会中断解析，会降级为仅文本；单张图片上传失败则跳过该张。
@@ -118,58 +118,30 @@ export async function parsePdfDocument(
       }
     }
 
-    // ---------- 3. 按页拼装 Markdown ----------
-    // 有分页文本时：每页「文本 + 该页图片」，页与页之间空行分隔
-    // 无分页信息时：退回全文 text，图片统一追加在后
-    const parts: string[] = [];
-    if (pageTexts.length > 0) {
-      for (const page of pageTexts) {
-        const text = (page.text ?? '').trim();
-        if (text) parts.push(text);
-
-        // page.num 与图片侧的 pageNumber 对应同一页码
-        const urls = pageImageUrls.get(page.num) ?? [];
-        for (const url of urls) {
-          parts.push(`![](${url})`);
-        }
-        // 该页有内容时末尾加空串，join 后形成段落间距
-        if (text || urls.length) parts.push('');
-      }
-    } else {
-      const fallback = (textResult?.text ?? '').trim();
-      if (fallback) parts.push(fallback);
-      for (const urls of pageImageUrls.values()) {
-        for (const url of urls) parts.push(`![](${url})`);
-      }
-    }
-
-    let markdown = cleanMarkdown(parts.join('\n\n'));
-
-    // ---------- 4. 表格（尽力而为）----------
-    // 仅当正文中尚未出现 Markdown 表头分隔行（| ---）时才追加，避免与正文重复
+    // ---------- 3. 表格（A4，尽力而为）：按页码分组，稍后并入对应页正文 ----------
+    /** pageNumber → 该页表格的 Markdown 片段（保持检出顺序） */
+    const pageTables = new Map<number, string[]>();
+    /** 无页码信息时的兜底：统一附在文末，避免整块丢失 */
+    const tailTables: string[] = [];
     try {
       const tableResult = await parser.getTable();
-      const pages = tableResult?.pages ?? [];
-      if (pages.length > 0 && !markdown.includes('| ---')) {
-        const tableParts: string[] = [];
-        let tableIdx = 0;
-        for (const page of pages) {
-          for (const table of page.tables ?? []) {
-            // pdf-parse 返回结构不固定，先归一成 string[][]
-            const rows = normalizePdfTable(table);
-            if (rows.length > 0) {
-              tableIdx += 1;
-              tableCount += 1;
-              tableParts.push(
-                `### 表格 ${tableIdx}\n\n${toMarkdownTable(rows)}`,
-              );
-            }
+      let tableIdx = 0;
+      for (const page of tableResult?.pages ?? []) {
+        for (const table of page.tables ?? []) {
+          // pdf-parse 返回结构不固定，先归一成 string[][]
+          const rows = normalizePdfTable(table);
+          if (rows.length === 0) continue;
+          tableIdx += 1;
+          tableCount += 1;
+          const block = `### 表格 ${tableIdx}\n\n${toMarkdownTable(rows)}`;
+          if (typeof page.num === 'number') {
+            pageTables.set(page.num, [
+              ...(pageTables.get(page.num) ?? []),
+              block,
+            ]);
+          } else {
+            tailTables.push(block);
           }
-        }
-        if (tableParts.length > 0) {
-          markdown = cleanMarkdown(
-            `${markdown}\n\n## 检测到的表格\n\n${tableParts.join('\n')}`,
-          );
         }
       }
     } catch {
@@ -177,25 +149,53 @@ export async function parsePdfDocument(
       warnings.push('表格提取失败');
     }
 
+    // ---------- 4. 按页拼装 Markdown ----------
+    // 每页「文本 + 该页图片 + 该页表格」；页内已有 Markdown 表格时不重复追加
+    const pageBlocks: Array<{ pageNumber: number; text: string }> = [];
+    const parts: string[] = [];
+    if (pageTexts.length > 0) {
+      pageTexts.forEach((page, index) => {
+        const pageNumber = page.num ?? index + 1;
+        const text = (page.text ?? '').trim();
+        const urls = pageImageUrls.get(pageNumber) ?? [];
+        const tables = text.includes('| ---')
+          ? []
+          : (pageTables.get(pageNumber) ?? []);
+        const blocks = [
+          text,
+          ...urls.map((url) => `![](${url})`),
+          ...tables,
+        ].filter(Boolean);
+        if (blocks.length === 0) return;
+        parts.push(...blocks, '');
+        pageBlocks.push({
+          pageNumber,
+          text: cleanMarkdown(blocks.join('\n\n')),
+        });
+      });
+      if (tailTables.length > 0) {
+        parts.push(`## 检测到的表格\n\n${tailTables.join('\n')}`, '');
+      }
+    } else {
+      const fallback = (textResult?.text ?? '').trim();
+      if (fallback) parts.push(fallback);
+      for (const urls of pageImageUrls.values()) {
+        for (const url of urls) parts.push(`![](${url})`);
+      }
+      for (const block of tailTables) parts.push(block);
+    }
+
+    const markdown = cleanMarkdown(parts.join('\n\n'));
+
     const sections =
-      pageTexts.length > 0
-        ? pageTexts
-            .map((page, index) => {
-              const pageNumber = page.num ?? index + 1;
-              const text = (page.text ?? '').trim();
-              const urls = pageImageUrls.get(pageNumber) ?? [];
-              const sectionText = cleanMarkdown(
-                [text, ...urls.map((url) => `![](${url})`)].join('\n\n'),
-              );
-              return {
-                sectionId: `section_${String(index + 1).padStart(4, '0')}`,
-                heading: `第 ${pageNumber} 页`,
-                text: sectionText,
-                order: index,
-                locator: { page: pageNumber },
-              };
-            })
-            .filter((section) => section.text)
+      pageBlocks.length > 0
+        ? pageBlocks.map((block, index) => ({
+            sectionId: `section_${String(index + 1).padStart(4, '0')}`,
+            heading: `第 ${block.pageNumber} 页`,
+            text: block.text,
+            order: index,
+            locator: { page: block.pageNumber },
+          }))
         : markdown
           ? [
               {

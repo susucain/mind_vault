@@ -2,9 +2,19 @@ jest.mock('./parsers/pdf.parser', () => ({
   parsePdfDocument: jest.fn(),
 }));
 
+jest.mock('./parsers/docx.parser', () => ({
+  parseDocx: jest.fn(),
+}));
+
+jest.mock('./parsers/pptx.parser', () => ({
+  parsePptx: jest.fn(),
+}));
+
 import { FileParserService } from './file-parser.service';
 import { ParseError } from './parsed-document';
+import { parseDocx } from './parsers/docx.parser';
 import { parsePdfDocument } from './parsers/pdf.parser';
+import { parsePptx } from './parsers/pptx.parser';
 
 describe('FileParserService', () => {
   const service = new FileParserService(
@@ -194,5 +204,51 @@ describe('FileParserService', () => {
         buffer: Buffer.from('doc'),
       }),
     ).rejects.toMatchObject({ code: 'PARSE_LEGACY_UNAVAILABLE' });
+  });
+
+  it('registers DOCX images and warnings on the parsed document (A5)', async () => {
+    const buffer = Buffer.from('docx');
+    (parseDocx as jest.MockedFunction<typeof parseDocx>).mockResolvedValue({
+      markdown: '# 标题\n\n正文',
+      assets: [{ url: 'documents/user_1/doc_1/abc123.png' }],
+      images: 2,
+      warnings: ['未识别的样式：自定义标题'],
+    });
+
+    const result = await service.parseStructured({
+      originalname: 'notes.docx',
+      buffer,
+    });
+
+    expect(result.assets).toEqual([
+      { url: 'documents/user_1/doc_1/abc123.png' },
+    ]);
+    expect(result.quality).toMatchObject({
+      images: 2,
+      warnings: ['未识别的样式：自定义标题'],
+    });
+    expect(parseDocx).toHaveBeenCalledWith(buffer, { uploadImage: undefined });
+  });
+
+  it('attaches PPTX speaker notes as a note-located section (A6)', async () => {
+    (parsePptx as jest.MockedFunction<typeof parsePptx>).mockResolvedValue({
+      body: '## 幻灯片 1\n\n### 架构总览\n\n正文要点',
+      notes: [{ slide: 1, text: '记得补充容量估算' }],
+      warnings: [],
+    });
+
+    const result = await service.parseStructured({
+      originalname: 'deck.pptx',
+      buffer: Buffer.from('pptx'),
+    });
+
+    const last = result.sections[result.sections.length - 1];
+    expect(last).toMatchObject({
+      heading: '第 1 页备注',
+      text: '## 第 1 页备注\n\n> 备注：记得补充容量估算',
+      locator: { slide: 1, note: true },
+    });
+    // 备注同时进入正文，供预览与检索使用
+    expect(result.rawText).toContain('> 备注：记得补充容量估算');
   });
 });

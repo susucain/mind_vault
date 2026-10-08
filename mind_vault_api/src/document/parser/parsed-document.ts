@@ -6,6 +6,8 @@ export interface DocumentLocator {
   lineStart?: number;
   lineEnd?: number;
   jsonPath?: string;
+  /** PPTX 讲者备注（A6）：true 表示该 section 来自备注而非幻灯片正文 */
+  note?: boolean;
 }
 
 export interface ParsedSection {

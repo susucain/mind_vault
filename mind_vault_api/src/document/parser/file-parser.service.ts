@@ -7,11 +7,15 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { RustfsService } from '../../storage/rustfs.service';
 import { parseDocx } from './parsers/docx.parser';
-import { ParsePdfOptions, parsePdfDocument } from './parsers/pdf.parser';
+import {
+  ParsePdfOptions,
+  parsePdfDocument,
+  ImageUploader,
+} from './parsers/pdf.parser';
 import { parsePlainText } from './parsers/plain-text.parser';
 import { parsePptx } from './parsers/pptx.parser';
 import { parseXlsx } from './parsers/xlsx.parser';
-import { getExtension } from './utils/markdown.util';
+import { getExtension, cleanMarkdown } from './utils/markdown.util';
 import {
   buildQuality,
   ParsedDocument,
@@ -188,31 +192,23 @@ export class FileParserService implements OnModuleInit {
         );
         break;
       case 'docx':
-        parsed = this.markdownDocument(
-          file.originalname,
-          extension,
-          await parseDocx(file.buffer),
-        );
+        parsed = await this.docxDocument(file, extension, file.buffer);
         break;
       case 'doc':
-        parsed = this.markdownDocument(
-          file.originalname,
+        parsed = await this.docxDocument(
+          file,
           extension,
-          await this.parseLegacyOffice(file, 'docx'),
+          await this.convertLegacyOffice(file, 'docx'),
         );
         break;
       case 'pptx':
-        parsed = this.markdownDocument(
-          file.originalname,
-          extension,
-          await parsePptx(file.buffer),
-        );
+        parsed = await this.pptxDocument(file, extension, file.buffer);
         break;
       case 'ppt':
-        parsed = this.markdownDocument(
-          file.originalname,
+        parsed = await this.pptxDocument(
+          file,
           extension,
-          await this.parseLegacyOffice(file, 'pptx'),
+          await this.convertLegacyOffice(file, 'pptx'),
         );
         break;
       case 'xlsx':
@@ -226,7 +222,9 @@ export class FileParserService implements OnModuleInit {
         parsed = this.markdownDocument(
           file.originalname,
           extension,
-          await this.parseLegacyOffice(file, 'xlsx'),
+          await this.parseXlsxWithFallback(
+            await this.convertLegacyOffice(file, 'xlsx'),
+          ),
         );
         break;
       default:
@@ -264,24 +262,87 @@ export class FileParserService implements OnModuleInit {
     return { ...parsed.quality, chars, pages, suspectedScanned };
   }
 
+  /**
+   * DOCX（含 soffice 转换后的 .doc）→ ParsedDocument（A5）：
+   * 内嵌图片走 A1 资产通道，mammoth messages 计入 quality.warnings。
+   */
+  private async docxDocument(
+    file: ParseInput,
+    format: string,
+    buffer: Buffer,
+  ): Promise<ParsedDocument> {
+    const result = await parseDocx(buffer, {
+      uploadImage: this.imageUploader(file.ownerId, file.documentId),
+    });
+    return this.markdownDocument(file.originalname, format, result.markdown, {
+      assets: result.assets,
+      quality: { images: result.images, warnings: result.warnings },
+    });
+  }
+
+  /**
+   * PPTX（含 soffice 转换后的 .ppt）→ ParsedDocument（A6）：
+   * 讲者备注作为独立 section，以 `> 备注：` 引用块挂在对应幻灯片之后。
+   */
+  private async pptxDocument(
+    file: ParseInput,
+    format: string,
+    buffer: Buffer,
+  ): Promise<ParsedDocument> {
+    const result = await parsePptx(buffer);
+    return this.markdownDocument(file.originalname, format, result.body, {
+      quality: { warnings: result.warnings },
+      notes: result.notes,
+    });
+  }
+
   private markdownDocument(
     title: string,
     format: string,
     rawText: string,
+    extras: {
+      /** 解析期间登记的图片资产（A5） */
+      assets?: ParsedDocument['assets'];
+      /** parser 侧已知的质量信号（tables/images/warnings），chars/pages 由 finalizeQuality 回填 */
+      quality?: Partial<ParseQuality>;
+      /** PPTX 讲者备注（A6）：独立 section 并标 locator.note */
+      notes?: Array<{ slide: number; text: string }>;
+    } = {},
   ): ParsedDocument {
-    return {
-      title,
-      format,
-      sections: sectionsFromMarkdown(rawText, (index, heading, lineStart) =>
+    const sections = sectionsFromMarkdown(
+      rawText,
+      (index, heading, lineStart) =>
         format.startsWith('ppt')
           ? { slide: Number(heading?.match(/\d+/)?.[0] ?? index + 1) }
           : format.startsWith('xls')
             ? { sheet: heading }
             : { lineStart },
+    );
+
+    // A6：备注单独成段，既不与正文 section 重复，又能通过 locator.note 区分
+    const noteTexts: string[] = [];
+    for (const note of extras.notes ?? []) {
+      const heading = `第 ${note.slide} 页备注`;
+      const text = `## ${heading}\n\n> 备注：${note.text}`;
+      noteTexts.push(text);
+      sections.push({
+        sectionId: `section_${String(sections.length + 1).padStart(4, '0')}`,
+        heading,
+        text,
+        order: sections.length,
+        locator: { slide: note.slide, note: true },
+      });
+    }
+
+    return {
+      title,
+      format,
+      sections,
+      assets: extras.assets ?? [],
+      rawText: cleanMarkdown(
+        [rawText, ...noteTexts].filter(Boolean).join('\n\n'),
       ),
-      assets: [],
-      rawText,
-      quality: buildQuality({ chars: rawText.length }),
+      quality: buildQuality({ chars: rawText.length, ...extras.quality }),
     };
   }
 
@@ -290,18 +351,20 @@ export class FileParserService implements OnModuleInit {
    * 内容哈希命名使同图天然幂等，且规避了 OSS 对中文/空格/非法字符的限制。
    * 缺少归属信息时禁用图片上传，绝不退回到无 owner 段的全局 key。
    */
+  private imageUploader(
+    ownerId?: string,
+    documentId?: string,
+  ): ImageUploader | undefined {
+    if (!this.rustfs.isEnabled() || !ownerId || !documentId) return undefined;
+    return (bytes, _fileName, contentType) =>
+      this.rustfs.uploadBytes(bytes, {
+        key: assetObjectKey(ownerId, documentId, bytes, contentType),
+        contentType,
+      });
+  }
+
   private pdfOptions(ownerId?: string, documentId?: string): ParsePdfOptions {
-    const enabled =
-      this.rustfs.isEnabled() && Boolean(ownerId) && Boolean(documentId);
-    return {
-      uploadImage: enabled
-        ? (bytes, _fileName, contentType) =>
-            this.rustfs.uploadBytes(bytes, {
-              key: assetObjectKey(ownerId!, documentId!, bytes, contentType),
-              contentType,
-            })
-        : undefined,
-    };
+    return { uploadImage: this.imageUploader(ownerId, documentId) };
   }
 
   /**
@@ -326,10 +389,14 @@ export class FileParserService implements OnModuleInit {
     }
   }
 
-  private async parseLegacyOffice(
+  /**
+   * 老格式（.doc/.xls/.ppt）先用 soffice 转成现代格式，再交给对应 parser。
+   * 只负责转换，解析仍走 docx/pptx/xlsx 各自入口，避免绕开 A5/A6 的资产与备注处理。
+   */
+  private async convertLegacyOffice(
     file: ParseInput,
     targetExtension: 'docx' | 'xlsx' | 'pptx',
-  ): Promise<string> {
+  ): Promise<Buffer> {
     const directory = await mkdtemp(join(tmpdir(), 'mind-vault-office-'));
     const sourceName = basename(file.originalname);
     const sourcePath = join(directory, sourceName);
@@ -346,11 +413,7 @@ export class FileParserService implements OnModuleInit {
         directory,
         sourcePath,
       ]);
-      const converted = await readFile(targetPath);
-      if (targetExtension === 'docx') return parseDocx(converted);
-      if (targetExtension === 'xlsx')
-        return this.parseXlsxWithFallback(converted);
-      return parsePptx(converted);
+      return await readFile(targetPath);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new BadRequestException(
