@@ -93,8 +93,15 @@ export function uploadDocument(
         if (response.statusCode < 200 || response.statusCode >= 300) {
           const data = JSON.parse(response.data || '{}') as {
             message?: string;
+            details?: { duplicateOf?: { name?: string } };
           };
-          const error = new Error(data.message ?? '文件上传失败');
+          // 内容指纹命中同资料集既有文档（U3）：后端 409 返回 duplicateOf，明确提示而不是只透传枚举文案
+          const duplicateName = data.details?.duplicateOf?.name;
+          const error = new Error(
+            duplicateName
+              ? `该文件已存在：${duplicateName}`
+              : data.message ?? '文件上传失败'
+          );
           recordRequestTrace({
             timestamp: Date.now(),
             method: 'POST',
