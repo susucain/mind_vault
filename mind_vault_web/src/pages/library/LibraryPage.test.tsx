@@ -3,12 +3,13 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { listDocuments } from '../../api/documents';
+import { buildDocumentGraph, listDocuments } from '../../api/documents';
 import { listDatasets } from '../../api/datasets';
 import { useUploadStore } from '../../stores/upload.store';
 import { LibraryPage } from './LibraryPage';
 
 vi.mock('../../api/documents', () => ({
+  buildDocumentGraph: vi.fn(),
   listDocuments: vi.fn(),
   getSupportedFormats: vi.fn().mockResolvedValue({ extensions: [] }),
 }));
@@ -35,8 +36,34 @@ function renderPage() {
 describe('LibraryPage', () => {
   beforeEach(() => {
     vi.mocked(listDocuments).mockReset();
+    vi.mocked(buildDocumentGraph).mockReset();
     useUploadStore.getState().reset();
     vi.mocked(listDatasets).mockResolvedValue({ items: [], page: 1, pageSize: 100, total: 0 });
+  });
+
+  it('老文档缺分块检查点时提示已自动改为重建索引', async () => {
+    vi.mocked(listDocuments).mockResolvedValue({
+      items: [
+        { id: '1', title: '老简历', status: 1, sourceFileExtension: 'pdf', graphEnabled: false },
+      ],
+      page: 1,
+      pageSize: 10,
+      total: 1,
+    });
+    vi.mocked(buildDocumentGraph).mockResolvedValue({
+      documentId: '1',
+      graphEnabled: true,
+      totalChunks: 0,
+      graph: null,
+      reindexQueued: true,
+      jobId: 'job_1',
+    });
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: /未构建图谱/ }));
+
+    expect(buildDocumentGraph).toHaveBeenCalledWith('1');
+    expect(await screen.findByText(/已自动改为重建索引/)).toBeInTheDocument();
   });
 
   it('uses supported server filters and hides unsupported real-mode controls', async () => {

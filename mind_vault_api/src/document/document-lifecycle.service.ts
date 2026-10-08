@@ -153,6 +153,11 @@ export class DocumentLifecycleService {
       throw new BadRequestException('文档尚未处理完成，暂不能构建图谱');
     }
 
+    if (!document.graphEnabled) {
+      document.graphEnabled = true;
+      await this.documents.save(document);
+    }
+
     const chunks =
       (await this.checkpoints?.loadComplete(
         ownerId,
@@ -160,13 +165,18 @@ export class DocumentLifecycleService {
         job.documentVersion,
       )) ?? [];
     if (chunks.length === 0) {
-      // 早于检查点方案入库的文档没有 kh_document_chunk 行，需要先整体重建
-      throw new BadRequestException('缺少分块检查点，请先重建索引后再构建图谱');
-    }
-
-    if (!document.graphEnabled) {
-      document.graphEnabled = true;
-      await this.documents.save(document);
+      // 早于检查点方案入库的文档没有 kh_document_chunk 行，抽不出正文（图谱任务行已不存全文）。
+      // 这里不报错，改为自动重建索引：重建收尾会落检查点，且因 graphEnabled 已打开，
+      // indexing 之后会自行入队图谱任务，用户点一次「未构建图谱」即可。
+      const queued = await this.reindex(ownerId, documentId);
+      return {
+        documentId,
+        graphEnabled: true,
+        totalChunks: 0,
+        graph: null,
+        reindexQueued: true,
+        jobId: queued.jobId,
+      };
     }
 
     const datasetRows =

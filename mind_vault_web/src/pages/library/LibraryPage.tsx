@@ -274,6 +274,10 @@ export function LibraryPage() {
               <p className="library-notice" role="alert">
                 补建图谱失败：{buildGraphMutation.error instanceof Error ? buildGraphMutation.error.message : '请稍后重试'}
               </p>
+            ) : buildGraphMutation.data?.reindexQueued ? (
+              <p className="library-notice" role="status">
+                该文档缺少分块检查点，已自动改为重建索引，重建完成后会自动构建图谱。
+              </p>
             ) : null}
             <DocumentRows
               buildingId={buildGraphMutation.isPending ? buildGraphMutation.variables ?? null : null}

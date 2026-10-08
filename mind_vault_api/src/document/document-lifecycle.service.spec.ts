@@ -299,34 +299,52 @@ describe('DocumentLifecycleService', () => {
     );
   });
 
-  it('rejects building a graph when the chunk checkpoint is missing', async () => {
-    const graphTasks = { enqueue: jest.fn() };
+  it('rebuilds the index instead of failing when the chunk checkpoint is missing', async () => {
+    const documents = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'doc_1',
+        deleted: false,
+        graphEnabled: false,
+      }),
+      save: jest.fn((input: unknown) => Promise.resolve(input)),
+      update: jest.fn().mockResolvedValue({}),
+    };
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'job_1',
+        documentVersion: 1,
+        status: 'READY',
+      }),
+      create: jest.fn((input: unknown) => input),
+      save: jest.fn((input: unknown) => Promise.resolve(input)),
+    };
+    const graphTasks = { enqueue: jest.fn(), cancelActiveTasks: jest.fn() };
+    const publisher = { publishIndex: jest.fn() };
     const service = new DocumentLifecycleService(
-      {
-        findOne: jest.fn().mockResolvedValue({
-          id: 'doc_1',
-          deleted: false,
-          graphEnabled: false,
-        }),
-      } as never,
+      documents as never,
       {} as never,
-      {
-        findOne: jest.fn().mockResolvedValue({
-          id: 'job_1',
-          documentVersion: 1,
-          status: 'READY',
-        }),
-      } as never,
-      {} as never,
+      jobs as never,
+      publisher as never,
       {} as never,
       {} as never,
       graphTasks as never,
       { loadComplete: jest.fn().mockResolvedValue(null) } as never,
     );
 
-    await expect(service.buildGraph('user_1', 'doc_1')).rejects.toThrow(
-      BadRequestException,
+    await expect(service.buildGraph('user_1', 'doc_1')).resolves.toMatchObject({
+      documentId: 'doc_1',
+      graphEnabled: true,
+      totalChunks: 0,
+      reindexQueued: true,
+    });
+    // 老文档没有检查点：先打开图谱开关，再走一次重建索引
+    expect(documents.save).toHaveBeenCalledWith(
+      expect.objectContaining({ graphEnabled: true }),
     );
+    expect(publisher.publishIndex).toHaveBeenCalledWith(
+      expect.objectContaining({ documentId: 'doc_1', operation: 'reindex' }),
+    );
+    // 图谱任务不在这里入队：重建收尾会因 graphEnabled 自行入队
     expect(graphTasks.enqueue).not.toHaveBeenCalled();
   });
 

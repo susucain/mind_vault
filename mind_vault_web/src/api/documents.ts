@@ -59,6 +59,9 @@ export interface BuildDocumentGraphResult {
   graphEnabled: boolean;
   totalChunks: number;
   graph?: DocumentGraphProgress | null;
+  /** 老文档缺分块检查点：后端已自动改为重建索引，重建收尾会自动建图 */
+  reindexQueued?: boolean;
+  jobId?: string;
 }
 
 export interface RetryDocumentResult {
