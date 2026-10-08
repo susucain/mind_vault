@@ -1,0 +1,3 @@
+service,port,protocol
+api,3001,http
+web,5173,http

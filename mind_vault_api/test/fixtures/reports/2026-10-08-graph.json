@@ -1,0 +1,113 @@
+{
+  "name": "graph",
+  "generatedAt": "2026-10-08T07:38:36.468Z",
+  "dryRun": true,
+  "summary": {
+    "entities": 12,
+    "normalizedEntityCount": 7,
+    "normalizeAccuracy": 1,
+    "closureRate": 0.4,
+    "validRelations": 2,
+    "relatedToRatio": 0.2,
+    "dropped": {
+      "missingEndpoint": 1,
+      "selfLoop": 1,
+      "invalidType": 1
+    },
+    "pass": true
+  },
+  "entities": [
+    {
+      "name": "Elasticsearch (ES)",
+      "actual": "elasticsearch",
+      "expected": "elasticsearch",
+      "pass": true
+    },
+    {
+      "name": "Elasticsearch。",
+      "actual": "elasticsearch",
+      "expected": "elasticsearch",
+      "pass": true
+    },
+    {
+      "name": "elasticsearch",
+      "actual": "elasticsearch",
+      "expected": "elasticsearch",
+      "pass": true
+    },
+    {
+      "name": "mind_vault",
+      "actual": "mind vault",
+      "expected": "mind vault",
+      "pass": true
+    },
+    {
+      "name": "Mind-Vault",
+      "actual": "mind vault",
+      "expected": "mind vault",
+      "pass": true
+    },
+    {
+      "name": "Mind Vault",
+      "actual": "mind vault",
+      "expected": "mind vault",
+      "pass": true
+    },
+    {
+      "name": "Projects",
+      "actual": "project",
+      "expected": "project",
+      "pass": true
+    },
+    {
+      "name": "project",
+      "actual": "project",
+      "expected": "project",
+      "pass": true
+    },
+    {
+      "name": "「因果」",
+      "actual": "因果",
+      "expected": "因果",
+      "pass": true
+    },
+    {
+      "name": "PostgreSQL",
+      "actual": "postgresql",
+      "expected": "postgresql",
+      "pass": true
+    },
+    {
+      "name": "Kubernetes",
+      "actual": "kubernetes",
+      "expected": "kubernetes",
+      "pass": true
+    },
+    {
+      "name": "Services",
+      "actual": "services",
+      "expected": "services",
+      "pass": true
+    }
+  ],
+  "groups": [
+    {
+      "expected": "elasticsearch",
+      "members": "Elasticsearch (ES) / Elasticsearch。 / elasticsearch",
+      "actual": "elasticsearch",
+      "pass": true
+    },
+    {
+      "expected": "mind vault",
+      "members": "mind_vault / Mind-Vault / Mind Vault",
+      "actual": "mind vault",
+      "pass": true
+    },
+    {
+      "expected": "project",
+      "members": "Projects / project",
+      "actual": "project",
+      "pass": true
+    }
+  ]
+}

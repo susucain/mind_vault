@@ -1,0 +1,30 @@
+{
+  "name": "retrieval",
+  "generatedAt": "2026-10-08T07:38:43.702Z",
+  "dryRun": true,
+  "summary": {
+    "cases": 2,
+    "passed": 2,
+    "recallAvg": 0.75
+  },
+  "cases": [
+    {
+      "name": "关键词 + 向量 双路融合",
+      "resultSets": 2,
+      "ranked": 4,
+      "actualTop": "c1 > c5 > c2 > c3",
+      "recall10": 1,
+      "mrr": 0.5,
+      "orderMatch": true
+    },
+    {
+      "name": "三路融合（关键词 + 向量 + 图谱）",
+      "resultSets": 3,
+      "ranked": 3,
+      "actualTop": "c1 > c2 > c3",
+      "recall10": 0.5,
+      "mrr": 0.3333,
+      "orderMatch": true
+    }
+  ]
+}

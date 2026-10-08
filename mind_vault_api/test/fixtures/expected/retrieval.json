@@ -1,0 +1,32 @@
+{
+  "constant": 60,
+  "cases": [
+    {
+      "name": "关键词 + 向量 双路融合",
+      "relevant": ["c2", "c5"],
+      "resultSets": [
+        [
+          { "chunkId": "c1", "sources": ["lexical"] },
+          { "chunkId": "c2", "sources": ["lexical"] },
+          { "chunkId": "c5", "sources": ["lexical"] }
+        ],
+        [
+          { "chunkId": "c5", "sources": ["vector"] },
+          { "chunkId": "c3", "sources": ["vector"] },
+          { "chunkId": "c1", "sources": ["vector"] }
+        ]
+      ],
+      "expectedTop": ["c1", "c5", "c2", "c3"]
+    },
+    {
+      "name": "三路融合（关键词 + 向量 + 图谱）",
+      "relevant": ["c3", "c9"],
+      "resultSets": [
+        [{ "chunkId": "c1", "sources": ["lexical"] }],
+        [{ "chunkId": "c2", "sources": ["vector"] }],
+        [{ "chunkId": "c3", "sources": ["graph"] }]
+      ],
+      "expectedTop": ["c1", "c2", "c3"]
+    }
+  ]
+}

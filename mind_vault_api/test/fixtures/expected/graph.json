@@ -1,0 +1,71 @@
+{
+  "entities": [
+    { "name": "Elasticsearch (ES)", "type": "TECHNOLOGY" },
+    { "name": "Elasticsearch。", "type": "TECHNOLOGY" },
+    { "name": "elasticsearch", "type": "TECHNOLOGY" },
+    { "name": "mind_vault", "type": "PROJECT" },
+    { "name": "Mind-Vault", "type": "PROJECT" },
+    { "name": "Mind Vault", "type": "PROJECT" },
+    { "name": "Projects", "type": "PROJECT" },
+    { "name": "project", "type": "PROJECT" },
+    { "name": "「因果」", "type": "CONCEPT" },
+    { "name": "PostgreSQL", "type": "TECHNOLOGY" },
+    { "name": "Kubernetes", "type": "TECHNOLOGY" },
+    { "name": "Services", "type": "TECHNOLOGY" }
+  ],
+  "equivalenceGroups": [
+    {
+      "expected": "elasticsearch",
+      "members": ["Elasticsearch (ES)", "Elasticsearch。", "elasticsearch"]
+    },
+    {
+      "expected": "mind vault",
+      "members": ["mind_vault", "Mind-Vault", "Mind Vault"]
+    },
+    { "expected": "project", "members": ["Projects", "project"] }
+  ],
+  "expectedNormalized": {
+    "「因果」": "因果",
+    "PostgreSQL": "postgresql",
+    "Kubernetes": "kubernetes",
+    "Services": "services"
+  },
+  "relations": [
+    {
+      "source": "mind_vault",
+      "target": "Elasticsearch (ES)",
+      "type": "USES",
+      "confidence": 0.9
+    },
+    {
+      "source": "Projects",
+      "target": "mind-vault",
+      "type": "PART_OF",
+      "confidence": 0.8
+    },
+    {
+      "source": "api",
+      "target": "Elasticsearch。",
+      "type": "USES",
+      "confidence": 0.7
+    },
+    {
+      "source": "Mind Vault",
+      "target": "Mind-Vault",
+      "type": "RELATED_TO",
+      "confidence": 0.6
+    },
+    {
+      "source": "Mind Vault",
+      "target": "Projects",
+      "type": "NOT_A_TYPE",
+      "confidence": 0.5
+    }
+  ],
+  "expected": {
+    "entityCount": 12,
+    "normalizedEntityCount": 7,
+    "validRelations": 2,
+    "dropped": { "missingEndpoint": 1, "selfLoop": 1, "invalidType": 1 }
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "documents": {
+    "md-multilevel.md": {
+      "format": "md",
+      "accuracyMode": "source",
+      "expectedSections": 4,
+      "quality": { "tables": 0, "suspectedScanned": false },
+      "mustContain": ["# 项目指南", "pnpm install", "| 字段 | 类型 | 说明 |"]
+    },
+    "md-code.md": {
+      "format": "md",
+      "accuracyMode": "source",
+      "expectedSections": 4,
+      "quality": { "tables": 0, "suspectedScanned": false },
+      "mustContain": ["# 部署手册", "docker compose up -d"]
+    },
+    "md-tables.md": {
+      "format": "md",
+      "accuracyMode": "source",
+      "expectedSections": 3,
+      "quality": { "tables": 0, "suspectedScanned": false },
+      "mustContain": ["| 服务 | 端口 | 协议 |", "bolt://localhost:7687"]
+    },
+    "txt-plain.txt": {
+      "format": "txt",
+      "accuracyMode": "source",
+      "expectedSections": 1,
+      "quality": { "tables": 0, "suspectedScanned": false },
+      "mustContain": ["知识库系统用于沉淀团队文档"]
+    },
+    "txt-headings.txt": {
+      "format": "txt",
+      "accuracyMode": "source",
+      "expectedSections": 3,
+      "quality": { "tables": 0, "suspectedScanned": false },
+      "mustContain": ["# 会议纪要", "## 待办"]
+    },
+    "txt-long.txt": {
+      "format": "txt",
+      "accuracyMode": "source",
+      "expectedSections": 1,
+      "quality": { "tables": 0, "suspectedScanned": false },
+      "mustContain": ["第 1 条", "第 30 条"]
+    },
+    "csv-basic.csv": {
+      "format": "csv",
+      "accuracyMode": "reference",
+      "reference": "service | port | protocol\napi | 3001 | http\nweb | 5173 | http",
+      "expectedSections": 1,
+      "quality": { "tables": 1, "suspectedScanned": false },
+      "mustContain": ["service | port | protocol"]
+    },
+    "csv-quoted.csv": {
+      "format": "csv",
+      "accuracyMode": "reference",
+      "reference": "name | desc\napi, worker | 含逗号的字段\nweb | 普通字段",
+      "expectedSections": 1,
+      "quality": { "tables": 1, "suspectedScanned": false },
+      "mustContain": ["api, worker | 含逗号的字段"]
+    },
+    "csv-ragged.csv": {
+      "format": "csv",
+      "accuracyMode": "reference",
+      "reference": "a | b | c\n1 | 2\n3 | 4 | 5 | 6",
+      "expectedSections": 1,
+      "quality": { "tables": 1, "suspectedScanned": false },
+      "mustContain": ["3 | 4 | 5 | 6"]
+    }
+  }
+}
