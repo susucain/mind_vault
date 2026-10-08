@@ -538,4 +538,80 @@ describe('DocumentUploadService', () => {
       response: { error: 'FILE_TYPE_MISMATCH' },
     });
   });
+
+  it('marks an uploaded job as cancelled before the worker picks it up', async () => {
+    const job = {
+      id: 'job_1',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      status: 'UPLOADED',
+      currentStage: 'uploaded',
+      stageCompleted: 0,
+      stageTotal: 0,
+    };
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue(job),
+      save: jest.fn(async (input) => input),
+    };
+    const publisher = {
+      publishProgress: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new DocumentUploadService(
+      {} as never,
+      {} as never,
+      jobs as never,
+      {} as never,
+      publisher as never,
+      {} as never,
+      parser,
+    );
+
+    await expect(service.cancel('user_1', 'doc_1')).resolves.toMatchObject({
+      documentId: 'doc_1',
+      jobId: 'job_1',
+      status: 'CANCELLED',
+    });
+    expect(jobs.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'CANCELLED',
+        currentStage: 'cancelled',
+        finishedAt: expect.any(Date),
+      }),
+    );
+    expect(publisher.publishProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        stage: 'cancelled',
+        status: 'CANCELLED',
+      }),
+    );
+  });
+
+  it('refuses to cancel a job the worker has already started', async () => {
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'job_1',
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        status: 'PARSING',
+        currentStage: 'parsing',
+      }),
+      save: jest.fn(),
+    };
+    const service = new DocumentUploadService(
+      {} as never,
+      {} as never,
+      jobs as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      parser,
+    );
+
+    await expect(service.cancel('user_1', 'doc_1')).rejects.toMatchObject({
+      message: '已进入处理，无法取消',
+    });
+    expect(jobs.save).not.toHaveBeenCalled();
+  });
 });

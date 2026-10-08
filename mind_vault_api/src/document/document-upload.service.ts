@@ -365,6 +365,40 @@ export class DocumentUploadService implements OnModuleInit {
     };
   }
 
+  /**
+   * 取消上传（U8 档 1）：仅当 job 仍停留在 `UPLOADED`（worker 尚未接手）时置为 `CANCELLED`。
+   * 已进入解析及之后的阶段不做中途取消——worker 没有阶段间检查点，硬砍会留下半成品索引，
+   * 因此这里直接拒绝，由前端把按钮置灰并提示「已进入处理，无法取消」。
+   */
+  async cancel(ownerId: string, documentId: string) {
+    const job = await this.jobRepository.findOne({
+      where: { ownerId, documentId },
+      order: { createdAt: 'DESC' },
+    });
+    if (!job) throw new BadRequestException('未找到文档处理任务');
+    if (job.status !== IngestionJobStatus.Uploaded) {
+      throw new BadRequestException('已进入处理，无法取消');
+    }
+    job.status = IngestionJobStatus.Cancelled;
+    job.currentStage = 'cancelled';
+    job.finishedAt = new Date();
+    job.lastHeartbeatAt = job.finishedAt;
+    await this.jobRepository.save(job);
+    await this.publisher.publishProgress({
+      ownerId,
+      documentId,
+      stage: 'cancelled',
+      status: IngestionJobStatus.Cancelled,
+      completed: job.stageCompleted ?? 0,
+      total: job.stageTotal ?? 0,
+      percent: 0,
+    });
+    this.logger.log(
+      `文档上传已取消：ownerId=${ownerId}, documentId=${documentId}, jobId=${job.id}`,
+    );
+    return { documentId, jobId: job.id, status: job.status };
+  }
+
   /** 按幂等键返回既有文档与其最新 job；未命中返回 null */
   private async findByUploadKey(ownerId: string, uploadKey: string) {
     const document = await this.em.findOne(DocumentEntity, {

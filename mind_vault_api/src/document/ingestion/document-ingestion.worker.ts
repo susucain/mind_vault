@@ -290,7 +290,9 @@ export class DocumentIngestionWorker {
     }
     if (
       job.status === IngestionJobStatus.Parsed ||
-      job.status === IngestionJobStatus.Ready
+      job.status === IngestionJobStatus.Ready ||
+      // 用户在 worker 接手前已取消（U8 档 1）：消息可能已经投出，这里直接跳过
+      job.status === IngestionJobStatus.Cancelled
     ) {
       return job;
     }

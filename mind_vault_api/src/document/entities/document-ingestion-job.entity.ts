@@ -22,6 +22,8 @@ export enum IngestionJobStatus {
   Indexing = 'INDEXING',
   Ready = 'READY',
   Failed = 'FAILED',
+  /** 用户在上传后、worker 接手前主动取消（U8 档 1）；status 为 varchar，无需迁移 */
+  Cancelled = 'CANCELLED',
   Deleting = 'DELETING',
   Deleted = 'DELETED',
 }

@@ -897,4 +897,49 @@ describe('DocumentIngestionWorker', () => {
       }),
     ]);
   });
+
+  it('skips an index message for a job the user cancelled before it started', async () => {
+    const job = {
+      id: 'job_1',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      operation: 'index',
+      status: IngestionJobStatus.Cancelled,
+      currentStage: 'cancelled',
+      retryCount: 0,
+    };
+    const parser = { parseStructured: jest.fn() };
+    const index = { indexChunks: jest.fn() };
+    const worker = new DocumentIngestionWorker(
+      { findOne: jest.fn().mockResolvedValue(job), save: jest.fn() } as never,
+      {
+        findOne: jest.fn().mockResolvedValue({ id: 'doc_1' }),
+        update: jest.fn(),
+      } as never,
+      {} as never,
+      parser as never,
+      { downloadBytes: jest.fn() } as never,
+      { get: jest.fn().mockReturnValue(false) } as never,
+      { chunk: jest.fn() } as never,
+      { embedDocuments: jest.fn() } as never,
+      index as never,
+      { extract: jest.fn() } as never,
+      { indexChunk: jest.fn() } as never,
+      { find: jest.fn().mockResolvedValue([]) } as never,
+    );
+
+    await expect(
+      worker.process({
+        jobId: 'job_1',
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        documentVersion: 1,
+        operation: 'index',
+      }),
+    ).resolves.toMatchObject({ status: IngestionJobStatus.Cancelled });
+
+    expect(parser.parseStructured).not.toHaveBeenCalled();
+    expect(index.indexChunks).not.toHaveBeenCalled();
+  });
 });
