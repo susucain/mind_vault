@@ -209,6 +209,8 @@ export interface GraphNode {
   type: EntityType;
   degree: number;
   isFocus?: boolean;
+  /** 被归一合并的原始写法（G2 展示层），如「Elasticsearch (ES)」 */
+  aliases?: string[];
 }
 
 export interface GraphEdge {

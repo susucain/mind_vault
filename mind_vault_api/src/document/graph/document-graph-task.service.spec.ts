@@ -7,8 +7,10 @@ import { DocumentGraphTaskService } from './document-graph-task.service';
 describe('DocumentGraphTaskService', () => {
   it('persists and publishes one graph task for each indexed chunk', async () => {
     const tasks = {
-      create: jest.fn((input) => input),
-      save: jest.fn(async (input) => input),
+      create: jest.fn((input: DocumentGraphTaskEntity) => input),
+      save: jest.fn((input: DocumentGraphTaskEntity[]) =>
+        Promise.resolve(input),
+      ),
       find: jest.fn().mockResolvedValue([]),
       update: jest.fn(),
     };
@@ -201,5 +203,48 @@ describe('DocumentGraphTaskService', () => {
       expect.objectContaining({ ownerId: 'user_1', documentId: 'doc_1' }),
       { status: GraphTaskStatus.Cancelled },
     );
+  });
+
+  it('aggregates per-task quality counts into the document progress (G3)', async () => {
+    const tasks = {
+      find: jest.fn().mockResolvedValue([
+        {
+          status: GraphTaskStatus.Ready,
+          quality: {
+            entities: 3,
+            relations: 2,
+            dropped: { missingEndpoint: 1, selfLoop: 0, invalidType: 1 },
+            truncatedEntities: 2,
+            truncatedRelations: 0,
+          },
+        },
+        {
+          status: GraphTaskStatus.Ready,
+          quality: {
+            entities: 1,
+            relations: 0,
+            dropped: { missingEndpoint: 0, selfLoop: 1, invalidType: 0 },
+            truncatedEntities: 0,
+            truncatedRelations: 5,
+          },
+        },
+        // 迁移前留下的空 quality 行按 0 计，不能让汇总变成 NaN
+        { status: GraphTaskStatus.Pending },
+      ]),
+    };
+    const service = new DocumentGraphTaskService(tasks as never, {} as never);
+
+    const progress = await service.getProgress('user_1', 'doc_1');
+
+    expect(progress.quality).toEqual({
+      entities: 4,
+      relations: 2,
+      droppedMissingEndpoint: 1,
+      droppedSelfLoop: 1,
+      droppedInvalidType: 1,
+      truncatedEntities: 2,
+      truncatedRelations: 5,
+    });
+    expect(progress.status).toBe('PROCESSING');
   });
 });

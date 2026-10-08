@@ -45,8 +45,18 @@ describe('KnowledgeGraphService', () => {
         ownerId: 'user_1',
         chunkId: 'chunk_1',
         entities: [
-          { normalizedName: 'kafka', name: 'Kafka', type: 'TECHNOLOGY' },
-          { normalizedName: '消息队列', name: '消息队列', type: 'CONCEPT' },
+          {
+            normalizedName: 'kafka',
+            name: 'Kafka',
+            type: 'TECHNOLOGY',
+            alias: null,
+          },
+          {
+            normalizedName: '消息队列',
+            name: '消息队列',
+            type: 'CONCEPT',
+            alias: null,
+          },
         ],
       }),
     );
@@ -60,6 +70,145 @@ describe('KnowledgeGraphService', () => {
         ],
       }),
     );
+  });
+
+  it('records the original spelling as an alias only when normalization changes it (G2)', async () => {
+    const tx = {
+      run: jest.fn().mockResolvedValue({ records: [] }),
+      close: jest.fn(),
+    };
+    const service = new KnowledgeGraphService({
+      session: jest.fn().mockReturnValue(tx),
+    } as never);
+
+    await service.indexChunk({
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      chunkId: 'chunk_1',
+      // 归一后与展示名不一致的写法才落别；纯大小写差异不算别名
+      entities: [
+        { name: 'Elasticsearch (ES)', type: 'TECHNOLOGY' },
+        { name: 'Kafka', type: 'TECHNOLOGY' },
+      ],
+      relations: [],
+    });
+
+    const calls = tx.run.mock.calls as unknown as [
+      string,
+      Record<string, unknown>,
+    ][];
+    expect(calls[1][1]).toEqual(
+      expect.objectContaining({
+        entities: [
+          {
+            normalizedName: 'elasticsearch',
+            name: 'Elasticsearch (ES)',
+            type: 'TECHNOLOGY',
+            alias: 'Elasticsearch (ES)',
+          },
+          {
+            normalizedName: 'kafka',
+            name: 'Kafka',
+            type: 'TECHNOLOGY',
+            alias: null,
+          },
+        ],
+      }),
+    );
+  });
+
+  it('closes endpoints against existing entities and classifies drops (G3)', async () => {
+    const tx = {
+      run: jest
+        .fn()
+        // findExistingNames：同 owner 下已存在 kafka
+        .mockResolvedValueOnce({ records: [record({ name: 'kafka' })] })
+        .mockResolvedValue({ records: [] }),
+      close: jest.fn(),
+    };
+    const service = new KnowledgeGraphService({
+      session: jest.fn().mockReturnValue(tx),
+    } as never);
+
+    const stats = await service.indexChunk({
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      chunkId: 'chunk_1',
+      entities: [{ name: '消息队列', type: 'CONCEPT' }],
+      relations: [
+        // 端点 kafka 不在本 chunk，但同 owner 下已存在 → 保留
+        {
+          source: 'Kafka',
+          target: '消息队列',
+          type: 'USED_FOR',
+          confidence: 0.9,
+        },
+        // 端点同 owner 也查不到 → 丢弃
+        {
+          source: '消息队列',
+          target: '不存在的实体',
+          type: 'USES',
+          confidence: 0.5,
+        },
+        // 自环 → 丢弃
+        {
+          source: '消息队列',
+          target: '消息队列',
+          type: 'USES',
+          confidence: 0.5,
+        },
+      ],
+    });
+
+    expect(stats).toEqual({
+      entities: 1,
+      relations: 1,
+      dropped: { missingEndpoint: 1, selfLoop: 1, invalidType: 0 },
+    });
+    const calls = tx.run.mock.calls as unknown as [
+      string,
+      Record<string, unknown>,
+    ][];
+    // 端点回查只带本 chunk 未覆盖的归一名
+    expect(calls[0][0]).toContain('UNWIND $names');
+    expect(calls[0][1]).toEqual({
+      ownerId: 'user_1',
+      names: ['kafka', '不存在的实体'],
+    });
+  });
+
+  it('passes stored aliases through to the view nodes (G2)', async () => {
+    const focusResult = {
+      records: [
+        record({
+          id: 'elasticsearch',
+          name: 'Elasticsearch',
+          type: 'TECHNOLOGY',
+          aliases: ['ES', 'Elasticsearch (ES)'],
+        }),
+      ],
+    };
+    const run = jest
+      .fn()
+      .mockResolvedValueOnce(focusResult)
+      .mockResolvedValueOnce({ records: [] });
+    const service = new KnowledgeGraphService({
+      session: jest.fn().mockReturnValue({ run, close: jest.fn() }),
+    } as never);
+
+    const view = await service.neighborhood({
+      ownerId: 'user_1',
+      entities: ['Elasticsearch'],
+    });
+
+    expect(view.nodes).toEqual([
+      expect.objectContaining({
+        id: 'elasticsearch',
+        aliases: ['ES', 'Elasticsearch (ES)'],
+      }),
+    ]);
   });
 
   it('queries paths with owner and dataset-independent document scope', async () => {

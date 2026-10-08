@@ -129,18 +129,58 @@ describe('DocumentChunkCheckpointService', () => {
     expect(decode(row.embedding as Buffer)).toEqual([0.25, -0.5]);
   });
 
-  it('looks up chunk text by chunkId for the graph worker', async () => {
-    const chunks = {
-      findOne: jest.fn().mockResolvedValue({ text: '正文' }),
-    };
-    const service = new DocumentChunkCheckpointService(chunks as never);
+  it('loads the chunk text with neighbor fragments for the graph worker（G1）', async () => {
+    const findOne = jest
+      .fn()
+      .mockResolvedValueOnce({
+        text: '正文',
+        titlePath: ['A', 'B'],
+        chunkOrder: 5,
+        documentVersion: 1,
+      })
+      .mockResolvedValueOnce({ text: '上一段' })
+      .mockResolvedValueOnce({ text: '下一段' });
+    const service = new DocumentChunkCheckpointService({
+      findOne,
+    } as never);
 
     await expect(
-      service.findTextByChunkId('user_1', 'doc_1', 'chunk_1'),
-    ).resolves.toBe('正文');
-    expect(chunks.findOne).toHaveBeenCalledWith({
-      where: { ownerId: 'user_1', documentId: 'doc_1', chunkId: 'chunk_1' },
+      service.findGraphContext('user_1', 'doc_1', 'chunk_1'),
+    ).resolves.toEqual({
+      text: '正文',
+      titlePath: ['A', 'B'],
+      chunkOrder: 5,
+      previousText: '上一段',
+      nextText: '下一段',
+    });
+    // 邻居按 chunkOrder ± 1 取（同版本、同文档），跨章节也能衔接
+    expect(findOne).toHaveBeenNthCalledWith(2, {
+      where: {
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        documentVersion: 1,
+        chunkOrder: 4,
+      },
       select: { text: true },
     });
+    expect(findOne).toHaveBeenNthCalledWith(3, {
+      where: {
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        documentVersion: 1,
+        chunkOrder: 6,
+      },
+      select: { text: true },
+    });
+  });
+
+  it('returns null when the graph chunk has no checkpoint row', async () => {
+    const service = new DocumentChunkCheckpointService({
+      findOne: jest.fn().mockResolvedValue(null),
+    } as never);
+
+    await expect(
+      service.findGraphContext('user_1', 'doc_1', 'chunk_1'),
+    ).resolves.toBeNull();
   });
 });

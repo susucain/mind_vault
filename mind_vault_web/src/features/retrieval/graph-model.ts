@@ -24,6 +24,12 @@ function recomputeDegree(nodes: GraphNode[], edges: GraphEdge[]): GraphNode[] {
   return nodes.map((node) => ({ ...node, degree: degree.get(node.id) ?? 0 }));
 }
 
+/** 合并别名：展开回来的节点可能带出基础图没有的别名，去重后并集 */
+function mergeAliases(a?: string[], b?: string[]): string[] | undefined {
+  const merged = [...new Set([...(a ?? []), ...(b ?? [])])];
+  return merged.length > 0 ? merged : undefined;
+}
+
 /**
  * 合并基础图与各次展开的邻域：节点按 id 去重、边按 id 去重，
  * 焦点节点优先保留，超出上限则截断并标记 `truncated`。
@@ -35,8 +41,18 @@ export function mergeGraphViews(base: GraphView, expansions: GraphView[]): Graph
   for (const view of [base, ...expansions]) {
     for (const node of view.nodes) {
       const existing = nodeMap.get(node.id);
-      if (!existing) nodeMap.set(node.id, node);
-      else if (node.isFocus && !existing.isFocus) nodeMap.set(node.id, { ...existing, isFocus: true });
+      if (!existing) {
+        nodeMap.set(node.id, node);
+        continue;
+      }
+      const aliases = mergeAliases(existing.aliases, node.aliases);
+      if ((node.isFocus && !existing.isFocus) || aliases !== existing.aliases) {
+        nodeMap.set(node.id, {
+          ...existing,
+          isFocus: existing.isFocus || Boolean(node.isFocus),
+          aliases,
+        });
+      }
     }
     for (const edge of view.edges) {
       if (!edgeMap.has(edge.id)) edgeMap.set(edge.id, edge);

@@ -85,17 +85,59 @@ export class DocumentChunkCheckpointService {
     });
   }
 
-  /** 图谱 worker 按 chunkId 取正文（图谱任务行已不再存全文） */
-  async findTextByChunkId(
+  /**
+   * 图谱 worker 取抽取上下文（G1）：正文 + 章节路径 + 片段序号 + 邻居片段正文。
+   * 邻居按 `chunkOrder`（文档内全局递增）取前后各一块，跨章节也能拿到衔接上下文。
+   * 图谱任务行已不再存全文（见 1791504000000 迁移），故正文从检查点表取。
+   */
+  async findGraphContext(
     ownerId: string,
     documentId: string,
     chunkId: string,
-  ): Promise<string | null> {
-    const row = await this.chunks.findOne({
+  ): Promise<{
+    text: string;
+    titlePath: string[];
+    chunkOrder: number;
+    previousText?: string;
+    nextText?: string;
+  } | null> {
+    const target = await this.chunks.findOne({
       where: { ownerId, documentId, chunkId },
-      select: { text: true },
+      select: {
+        text: true,
+        titlePath: true,
+        chunkOrder: true,
+        documentVersion: true,
+      },
     });
-    return row?.text ?? null;
+    if (!target) return null;
+    const [previous, next] = await Promise.all([
+      this.chunks.findOne({
+        where: {
+          ownerId,
+          documentId,
+          documentVersion: target.documentVersion,
+          chunkOrder: target.chunkOrder - 1,
+        },
+        select: { text: true },
+      }),
+      this.chunks.findOne({
+        where: {
+          ownerId,
+          documentId,
+          documentVersion: target.documentVersion,
+          chunkOrder: target.chunkOrder + 1,
+        },
+        select: { text: true },
+      }),
+    ]);
+    return {
+      text: target.text,
+      titlePath: target.titlePath ?? [],
+      chunkOrder: target.chunkOrder,
+      previousText: previous?.text,
+      nextText: next?.text,
+    };
   }
 
   /** 重建完成后旧版本检查点不再需要，清掉避免无限累积 */

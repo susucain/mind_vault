@@ -80,6 +80,15 @@ describe('mergeGraphViews', () => {
 
     expect(merged.nodes[0].id).toBe('Z');
   });
+
+  it('unions aliases carried by an expansion into the base node (G2)', () => {
+    const base = view('A', [{ ...node('A', 'TECHNOLOGY', true), aliases: ['ES'] }], []);
+    const expansion = view('A', [{ ...node('A', 'TECHNOLOGY'), aliases: ['ES', 'Elasticsearch'] }], []);
+
+    const merged = mergeGraphViews(base, [expansion]);
+
+    expect(merged.nodes[0].aliases).toEqual(['ES', 'Elasticsearch']);
+  });
 });
 
 describe('applyGraphFilters', () => {

@@ -39,6 +39,10 @@ export function NodeDetailCard({
         <span className="graph-detail__degree">关联 {node.degree} 条</span>
       </header>
 
+      {node.aliases?.length ? (
+        <p className="graph-detail__aliases">别名：{node.aliases.join('、')}</p>
+      ) : null}
+
       <div className="graph-detail__actions">
         <Button
           disabled={expanding || node.degree === 0}

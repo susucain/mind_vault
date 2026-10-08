@@ -5,7 +5,9 @@ import {
   GraphEntitySuggestion,
   GraphEntitySuggestionInput,
   GraphExtraction,
+  GraphIndexStats,
   GraphNeighborhoodInput,
+  GraphRelationDropCounts,
   GraphSearchInput,
   GraphView,
   GraphViewEdge,
@@ -13,8 +15,12 @@ import {
   RelationType,
   RELATION_TYPES,
 } from './graph-types';
+import { normalizeEntityName } from './entity-normalizer';
 
 export const NEO4J_DRIVER = Symbol('NEO4J_DRIVER');
+
+/** 别名展示上限（G2）：避免高频实体把 aliases 数组撑爆 */
+const MAX_ALIASES = 10;
 
 interface GraphIndexInput extends GraphExtraction {
   ownerId: string;
@@ -45,30 +51,82 @@ export class KnowledgeGraphService {
     }
   }
 
-  async indexChunk(input: GraphIndexInput): Promise<void> {
-    const entities = input.entities.map((entity) => ({
-      ...entity,
-      normalizedName: normalizeName(entity.name),
-      name: entity.name.trim(),
-    }));
+  async indexChunk(input: GraphIndexInput): Promise<GraphIndexStats> {
+    const entities = input.entities
+      .map((entity) => ({
+        normalizedName: normalizeEntityName(entity.name),
+        name: entity.name.trim(),
+        type: entity.type,
+      }))
+      // 归一后为空的（如纯括号注释）无法作为实体键，直接剔除
+      .filter((entity) => entity.normalizedName);
     const entitiesByName = new Map(
       entities.map((entity) => [entity.normalizedName, entity]),
     );
+
+    const dropped: GraphRelationDropCounts = {
+      missingEndpoint: 0,
+      selfLoop: 0,
+      invalidType: 0,
+    };
+    const candidates: {
+      type: RelationType;
+      sourceKey: string;
+      targetKey: string;
+      confidence: number;
+    }[] = [];
+    for (const relation of input.relations) {
+      if (!RELATION_TYPE_SET.has(relation.type)) {
+        dropped.invalidType += 1;
+        continue;
+      }
+      const sourceKey = normalizeEntityName(relation.source);
+      const targetKey = normalizeEntityName(relation.target);
+      if (!sourceKey || !targetKey) {
+        dropped.missingEndpoint += 1;
+        continue;
+      }
+      if (sourceKey === targetKey) {
+        dropped.selfLoop += 1;
+        continue;
+      }
+      candidates.push({
+        type: relation.type,
+        sourceKey,
+        targetKey,
+        confidence: relation.confidence,
+      });
+    }
+
+    // 端点闭合（G3）：本 chunk 实体表 → 同 owner 已存在实体 → 仍无则丢弃并计数
+    const unresolved = [
+      ...new Set(
+        candidates
+          .flatMap((relation) => [relation.sourceKey, relation.targetKey])
+          .filter((key) => !entitiesByName.has(key)),
+      ),
+    ];
+    const knownNames =
+      unresolved.length > 0
+        ? await this.findExistingNames(input.ownerId, unresolved)
+        : new Set<string>();
+    const resolve = (key: string) =>
+      entitiesByName.has(key) || knownNames.has(key);
+
     // 关系类型无法作为 Cypher 参数，按类型分组后每种一次 UNWIND 批量写
     const relationsByType = new Map<
       RelationType,
       { sourceName: string; targetName: string; confidence: number }[]
     >();
-    for (const relation of input.relations) {
-      if (!RELATION_TYPE_SET.has(relation.type)) continue;
-      const source = entitiesByName.get(normalizeName(relation.source));
-      const target = entitiesByName.get(normalizeName(relation.target));
-      if (!source || !target || source.normalizedName === target.normalizedName)
+    for (const relation of candidates) {
+      if (!resolve(relation.sourceKey) || !resolve(relation.targetKey)) {
+        dropped.missingEndpoint += 1;
         continue;
+      }
       const rows = relationsByType.get(relation.type) ?? [];
       rows.push({
-        sourceName: source.normalizedName,
-        targetName: target.normalizedName,
+        sourceName: relation.sourceKey,
+        targetName: relation.targetKey,
         confidence: relation.confidence,
       });
       relationsByType.set(relation.type, rows);
@@ -92,13 +150,21 @@ export class KnowledgeGraphService {
           datasetIds: input.datasetIds ?? [],
         },
       );
+      let relationCount = 0;
       if (entities.length > 0) {
-        // 单次 UNWIND 写完整块实体与 MENTIONED_IN，替代逐实体串行往返
+        // 单次 UNWIND 写完整块实体与 MENTIONED_IN，替代逐实体串行往返。
+        // 展示名只在创建时落一次，避免同实体在不同 chunk 的类型/写法来回覆盖（G2）。
         await session.run(
           `
           UNWIND $entities AS row
           MERGE (entity:Entity {ownerId: $ownerId, normalizedName: row.normalizedName})
-          SET entity.name = row.name, entity.type = row.type
+          ON CREATE SET entity.name = row.name
+          SET entity.type = row.type,
+              entity.aliases = CASE
+                WHEN row.alias IS NULL THEN coalesce(entity.aliases, [])
+                WHEN row.alias IN coalesce(entity.aliases, []) THEN coalesce(entity.aliases, [])
+                ELSE (coalesce(entity.aliases, []) + row.alias)[..${MAX_ALIASES}]
+              END
           WITH entity
           MATCH (chunk:Chunk {ownerId: $ownerId, id: $chunkId})
           MERGE (entity)-[:MENTIONED_IN {ownerId: $ownerId}]->(chunk)
@@ -110,6 +176,10 @@ export class KnowledgeGraphService {
               normalizedName: entity.normalizedName,
               name: entity.name,
               type: entity.type,
+              alias:
+                entity.name.toLocaleLowerCase('zh-CN') === entity.normalizedName
+                  ? null
+                  : entity.name,
             })),
           },
         );
@@ -129,7 +199,34 @@ export class KnowledgeGraphService {
             relations: rows,
           },
         );
+        relationCount += rows.length;
       }
+      return { entities: entities.length, relations: relationCount, dropped };
+    } finally {
+      await session.close();
+    }
+  }
+
+  /** 按归一名批量回查同 owner 下已存在的实体（G3 端点闭合阶段②） */
+  private async findExistingNames(
+    ownerId: string,
+    names: string[],
+  ): Promise<Set<string>> {
+    const session = this.driver.session();
+    try {
+      const result = await session.run(
+        `
+        UNWIND $names AS name
+        MATCH (entity:Entity {ownerId: $ownerId, normalizedName: name})
+        RETURN entity.normalizedName AS name
+        `,
+        { ownerId, names },
+      );
+      return new Set(
+        result.records
+          .map((record) => asString(record.get('name')))
+          .filter(Boolean),
+      );
     } finally {
       await session.close();
     }
@@ -137,7 +234,7 @@ export class KnowledgeGraphService {
 
   async search(input: GraphSearchInput) {
     const maxHops = Math.min(Math.max(input.maxHops ?? 2, 1), 3);
-    const names = input.entityNames.map(normalizeName).filter(Boolean);
+    const names = input.entityNames.map(normalizeEntityName).filter(Boolean);
     if (names.length === 0) return { entities: [], relations: [] };
     const session = this.driver.session();
     try {
@@ -265,7 +362,7 @@ export class KnowledgeGraphService {
   async neighborhood(input: GraphNeighborhoodInput): Promise<GraphView> {
     const maxHops = Math.min(Math.max(input.maxHops ?? 1, 1), 3);
     const limit = Math.trunc(Math.min(Math.max(input.limit ?? 60, 10), 200));
-    const names = input.entities.map(normalizeName).filter(Boolean);
+    const names = input.entities.map(normalizeEntityName).filter(Boolean);
     const focusLabel = input.entities[0]?.trim() ?? '';
     if (names.length === 0) {
       return { focus: focusLabel, nodes: [], edges: [], truncated: false };
@@ -276,7 +373,8 @@ export class KnowledgeGraphService {
         `
         MATCH (entity:Entity {ownerId: $ownerId})
         WHERE entity.normalizedName IN $names
-        RETURN entity.normalizedName AS id, entity.name AS name, entity.type AS type
+        RETURN entity.normalizedName AS id, entity.name AS name, entity.type AS type,
+               entity.aliases AS aliases
         `,
         { ownerId: input.ownerId, names },
       );
@@ -290,6 +388,7 @@ export class KnowledgeGraphService {
           type: asString(record.get('type')),
           degree: 0,
           isFocus: true,
+          aliases: stringArray(record.get('aliases')),
         });
       }
 
@@ -366,7 +465,7 @@ export class KnowledgeGraphService {
         degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
         degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
       }
-      const focusId = normalizeName(focusLabel);
+      const focusId = normalizeEntityName(focusLabel);
       return {
         focus: nodeMap.get(focusId)?.name ?? focusLabel,
         nodes: nodes.map((node) => ({
@@ -403,7 +502,8 @@ export class KnowledgeGraphService {
         `
         MATCH (entity:Entity {ownerId: $ownerId})-[:MENTIONED_IN {ownerId: $ownerId}]->(chunk:Chunk {ownerId: $ownerId})
         WHERE chunk.id IN $chunkIds
-        RETURN DISTINCT entity.normalizedName AS id, entity.name AS name, entity.type AS type
+        RETURN DISTINCT entity.normalizedName AS id, entity.name AS name, entity.type AS type,
+               entity.aliases AS aliases
         LIMIT ${limit}
         `,
         { ownerId: input.ownerId, chunkIds },
@@ -417,6 +517,7 @@ export class KnowledgeGraphService {
           name: asString(row.get('name')) || id,
           type: asString(row.get('type')),
           degree: 0,
+          aliases: stringArray(row.get('aliases')),
         });
       }
       if (nodeMap.size === 0) return empty;
@@ -535,12 +636,24 @@ export class KnowledgeGraphService {
 
 const RELATION_TYPE_SET = new Set<string>(RELATION_TYPES);
 
-function normalizeName(value: string): string {
-  return value.trim().toLocaleLowerCase('zh-CN').replace(/\s+/g, ' ');
-}
-
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : '';
+}
+
+/** 读取 aliases 数组，过滤空白项（G2 展示层） */
+function stringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value.filter(
+    (item): item is string => typeof item === 'string' && item.length > 0,
+  );
+  return items.length > 0 ? items : undefined;
+}
+
+function stringArrayProperty(
+  properties: Record<string, unknown>,
+  key: string,
+): string[] | undefined {
+  return stringArray(properties[key]);
 }
 
 /** Neo4j 的 count() 返回 Integer，需经 toNumber 转换 */
@@ -568,6 +681,7 @@ function collectNode(
     name: asString(properties.name) || id,
     type: asString(properties.type),
     degree: 0,
+    aliases: stringArrayProperty(properties, 'aliases'),
   });
 }
 

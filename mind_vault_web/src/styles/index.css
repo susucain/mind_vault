@@ -1092,6 +1092,7 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .graph-detail__type--organization::before { background: var(--mv-graph-org); }
 .graph-detail__type--event::before { background: var(--mv-graph-event); }
 .graph-detail__degree { color: var(--mv-muted); font-size: 0.72rem; }
+.graph-detail__aliases { margin: 0; color: var(--mv-muted); font-size: 0.72rem; }
 .graph-detail__actions .button { width: fit-content; }
 .graph-detail__relations { margin: 0; padding: 0; display: grid; gap: 2px; list-style: none; max-height: 240px; overflow-y: auto; }
 .graph-detail__relations > li { min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--mv-line); font-size: 0.78rem; }

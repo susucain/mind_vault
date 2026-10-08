@@ -15,6 +15,19 @@ export enum GraphTaskStatus {
   Cancelled = 'CANCELLED',
 }
 
+/** 单块图谱抽取质量计数（G3）：用于「丢了多少 / 截了多少」可度量 */
+export interface GraphTaskQuality {
+  entities: number;
+  relations: number;
+  dropped: {
+    missingEndpoint: number;
+    selfLoop: number;
+    invalidType: number;
+  };
+  truncatedEntities: number;
+  truncatedRelations: number;
+}
+
 @Entity('kh_document_graph_task')
 export class DocumentGraphTaskEntity {
   @PrimaryColumn({ type: 'varchar' })
@@ -47,6 +60,14 @@ export class DocumentGraphTaskEntity {
 
   @Column({ name: 'error_message', type: 'varchar', nullable: true })
   errorMessage?: string | null;
+
+  /** 抽取 prompt 版本（G1）：质量回归时用于归因 */
+  @Column({ name: 'prompt_version', type: 'int', nullable: true })
+  promptVersion?: number | null;
+
+  /** 单块质量计数（G3）：实体/关系条数 + 丢弃分类 + 截断量 */
+  @Column({ name: 'quality', type: 'jsonb', default: () => "'{}'::jsonb" })
+  quality: GraphTaskQuality;
 
   @Column({ name: 'started_at', type: 'timestamp', nullable: true })
   startedAt?: Date | null;

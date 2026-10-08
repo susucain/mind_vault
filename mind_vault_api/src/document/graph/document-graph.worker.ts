@@ -4,8 +4,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Channel, ChannelModel, connect, ConsumeMessage } from 'amqplib';
 import { Repository } from 'typeorm';
 import { DocumentEntity } from '../entities/document.entity';
-import { GraphExtractionService } from '../../graph/graph-extraction.service';
+import {
+  GraphExtractionService,
+  GRAPH_EXTRACTION_PROMPT_VERSION,
+} from '../../graph/graph-extraction.service';
 import { KnowledgeGraphService } from '../../graph/knowledge-graph.service';
+import { NEIGHBOR_CONTEXT_CHARS } from '../../graph/graph-types';
 import {
   DocumentGraphTaskEntity,
   GraphTaskStatus,
@@ -155,13 +159,13 @@ export class DocumentGraphWorker {
       `图谱任务开始: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} retry=${task.retryCount}`,
     );
     try {
-      // 任务行不再存全文：按 chunkId 从检查点表取正文
-      const text = await this.checkpoints?.findTextByChunkId(
+      // 任务行不再存全文：按 chunkId 从检查点表取正文与上下文（G1）
+      const context = await this.checkpoints?.findGraphContext(
         task.ownerId,
         task.documentId,
         task.chunkId,
       );
-      if (!text) {
+      if (!context) {
         // 没有检查点就无法抽取，且重试也不会变好——取消而不是失败，避免无限重投
         task.status = GraphTaskStatus.Cancelled;
         task.errorMessage = '缺少分块检查点，无法抽取';
@@ -173,15 +177,20 @@ export class DocumentGraphWorker {
         );
         return;
       }
+      const document = await this.findActiveDocument(task);
       const extractStartedAt = Date.now();
-      const extraction = await this.extraction.extract({
+      const { extraction, truncated } = await this.extraction.extract({
         chunkId: task.chunkId,
         ownerId: task.ownerId,
         documentId: task.documentId,
         documentVersion: task.documentVersion,
-        text,
-        datasetIds: task.datasetIds,
-      } as never);
+        text: context.text,
+        documentTitle: document?.title,
+        titlePath: context.titlePath,
+        chunkOrder: context.chunkOrder,
+        previousText: tailOf(context.previousText),
+        nextText: headOf(context.nextText),
+      });
       const extractMs = Date.now() - extractStartedAt;
       if (!(await this.findActiveDocument(task))) {
         task.status = GraphTaskStatus.Cancelled;
@@ -193,7 +202,7 @@ export class DocumentGraphWorker {
       });
       if (!activeTask) return;
       const graphStartedAt = Date.now();
-      await this.graph.indexChunk({
+      const stats = await this.graph.indexChunk({
         ownerId: task.ownerId,
         documentId: task.documentId,
         documentVersion: task.documentVersion,
@@ -205,10 +214,19 @@ export class DocumentGraphWorker {
       task.status = GraphTaskStatus.Ready;
       task.errorMessage = null;
       task.finishedAt = new Date();
+      // 质量计数落库（G1/G3）：prompt 版本 + 丢弃分类 + 截断量，供回归与调参
+      task.promptVersion = GRAPH_EXTRACTION_PROMPT_VERSION;
+      task.quality = {
+        entities: stats.entities,
+        relations: stats.relations,
+        dropped: stats.dropped,
+        truncatedEntities: truncated.entities,
+        truncatedRelations: truncated.relations,
+      };
       await this.tasks.save(task);
       await this.publishProgress(task);
       this.logger.log(
-        `图谱任务完成: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} extractMs=${extractMs} graphMs=${graphMs} elapsedMs=${task.finishedAt.getTime() - startedAt.getTime()}`,
+        `图谱任务完成: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} promptVersion=${GRAPH_EXTRACTION_PROMPT_VERSION} entities=${stats.entities} relations=${stats.relations} dropped=[missing:${stats.dropped.missingEndpoint} selfLoop:${stats.dropped.selfLoop} invalidType:${stats.dropped.invalidType}] truncated=[entities:${truncated.entities} relations:${truncated.relations}] extractMs=${extractMs} graphMs=${graphMs} elapsedMs=${task.finishedAt.getTime() - startedAt.getTime()}`,
       );
     } catch (error) {
       task.status = GraphTaskStatus.Failed;
@@ -286,8 +304,26 @@ export class DocumentGraphWorker {
       graph.completed + graph.failed >= graph.total
     ) {
       this.logger.log(
-        `图谱文档汇总: documentId=${task.documentId} version=${task.documentVersion} chunks=${graph.total} completed=${graph.completed} failed=${graph.failed} llmCalls=${graph.total} avgMs=${graph.averageDurationMs ?? '-'} totalMs=${graph.totalDurationMs ?? '-'}`,
+        `图谱文档汇总: documentId=${task.documentId} version=${task.documentVersion} chunks=${graph.total} completed=${graph.completed} failed=${graph.failed} llmCalls=${graph.total} avgMs=${graph.averageDurationMs ?? '-'} totalMs=${graph.totalDurationMs ?? '-'} entities=${graph.quality?.entities ?? 0} relations=${graph.quality?.relations ?? 0} dropped=[missing:${graph.quality?.droppedMissingEndpoint ?? 0} selfLoop:${graph.quality?.droppedSelfLoop ?? 0} invalidType:${graph.quality?.droppedInvalidType ?? 0}] truncated=[entities:${graph.quality?.truncatedEntities ?? 0} relations:${graph.quality?.truncatedRelations ?? 0}]`,
       );
     }
   }
+}
+
+/** 邻居上文只保留末尾 N 字（最靠近本块的部分），G1 邻居片段节选 */
+function tailOf(value?: string): string | undefined {
+  const text = value?.trim();
+  if (!text) return undefined;
+  return text.length > NEIGHBOR_CONTEXT_CHARS
+    ? text.slice(-NEIGHBOR_CONTEXT_CHARS)
+    : text;
+}
+
+/** 邻居下文只保留开头 N 字 */
+function headOf(value?: string): string | undefined {
+  const text = value?.trim();
+  if (!text) return undefined;
+  return text.length > NEIGHBOR_CONTEXT_CHARS
+    ? text.slice(0, NEIGHBOR_CONTEXT_CHARS)
+    : text;
 }

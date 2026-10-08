@@ -19,6 +19,19 @@ export interface GraphProgress {
   /** 已终态任务的耗时聚合（毫秒），用于文档级汇总日志 */
   averageDurationMs?: number | null;
   totalDurationMs?: number | null;
+  /** 质量计数聚合（G3）：把「丢了多少 / 截了多少」按文档汇总 */
+  quality?: GraphQualityTotals;
+}
+
+/** 文档级质量合计（G3） */
+export interface GraphQualityTotals {
+  entities: number;
+  relations: number;
+  droppedMissingEndpoint: number;
+  droppedSelfLoop: number;
+  droppedInvalidType: number;
+  truncatedEntities: number;
+  truncatedRelations: number;
 }
 
 @Injectable()
@@ -142,6 +155,7 @@ export class DocumentGraphTaskService {
         status: true,
         startedAt: true,
         finishedAt: true,
+        quality: true,
       },
     });
     const total = tasks.length;
@@ -185,6 +199,30 @@ export class DocumentGraphTaskService {
       durations.length > 0
         ? durations.reduce((sum, duration) => sum + duration, 0)
         : null;
+    // 质量计数按文档汇总（G3）：空 quality（迁移前或未跑）按 0 计
+    const quality = tasks.reduce<GraphQualityTotals>(
+      (totals, task) => {
+        const row = task.quality;
+        if (!row) return totals;
+        totals.entities += row.entities ?? 0;
+        totals.relations += row.relations ?? 0;
+        totals.droppedMissingEndpoint += row.dropped?.missingEndpoint ?? 0;
+        totals.droppedSelfLoop += row.dropped?.selfLoop ?? 0;
+        totals.droppedInvalidType += row.dropped?.invalidType ?? 0;
+        totals.truncatedEntities += row.truncatedEntities ?? 0;
+        totals.truncatedRelations += row.truncatedRelations ?? 0;
+        return totals;
+      },
+      {
+        entities: 0,
+        relations: 0,
+        droppedMissingEndpoint: 0,
+        droppedSelfLoop: 0,
+        droppedInvalidType: 0,
+        truncatedEntities: 0,
+        truncatedRelations: 0,
+      },
+    );
     return {
       status,
       completed,
@@ -198,6 +236,7 @@ export class DocumentGraphTaskService {
         averageDuration === null ? null : Math.round(averageDuration),
       totalDurationMs:
         totalDuration === null ? null : Math.round(totalDuration),
+      quality,
     };
   }
 

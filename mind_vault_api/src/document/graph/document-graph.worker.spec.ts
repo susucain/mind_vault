@@ -3,6 +3,7 @@ import {
   DocumentGraphTaskEntity,
   GraphTaskStatus,
 } from './entities/document-graph-task.entity';
+import { GRAPH_EXTRACTION_PROMPT_VERSION } from '../../graph/graph-extraction.service';
 import { connect } from 'amqplib';
 
 jest.mock('amqplib', () => ({
@@ -92,7 +93,7 @@ describe('DocumentGraphWorker', () => {
     } as DocumentGraphTaskEntity;
     const tasks = {
       findOne: jest.fn().mockResolvedValue(task),
-      save: jest.fn(async (input) => input),
+      save: jest.fn((input: DocumentGraphTaskEntity) => Promise.resolve(input)),
     };
     const documents = {
       findOne: jest.fn().mockResolvedValue({
@@ -103,11 +104,20 @@ describe('DocumentGraphWorker', () => {
     };
     const extraction = {
       extract: jest.fn().mockResolvedValue({
-        entities: [{ name: 'Kafka', type: 'TECHNOLOGY' }],
-        relations: [],
+        extraction: {
+          entities: [{ name: 'Kafka', type: 'TECHNOLOGY' }],
+          relations: [],
+        },
+        truncated: { entities: 0, relations: 0 },
       }),
     };
-    const graph = { indexChunk: jest.fn().mockResolvedValue(undefined) };
+    const graph = {
+      indexChunk: jest.fn().mockResolvedValue({
+        entities: 1,
+        relations: 0,
+        dropped: { missingEndpoint: 0, selfLoop: 0, invalidType: 0 },
+      }),
+    };
     const publisher = {
       publishProgress: jest.fn().mockResolvedValue(undefined),
     };
@@ -121,9 +131,13 @@ describe('DocumentGraphWorker', () => {
       }),
     };
     const checkpoints = {
-      findTextByChunkId: jest
-        .fn()
-        .mockResolvedValue('Kafka handles asynchronous work.'),
+      findGraphContext: jest.fn().mockResolvedValue({
+        text: 'Kafka handles asynchronous work.',
+        titlePath: ['架构'],
+        chunkOrder: 3,
+        previousText: '上文',
+        nextText: '下文',
+      }),
     };
     const worker = new DocumentGraphWorker(
       tasks as never,
@@ -143,6 +157,11 @@ describe('DocumentGraphWorker', () => {
         chunkId: 'chunk_1',
         documentVersion: 2,
         text: 'Kafka handles asynchronous work.',
+        // G1：标题路径 / 片段序号 / 邻居片段一并透传给抽取
+        titlePath: ['架构'],
+        chunkOrder: 3,
+        previousText: '上文',
+        nextText: '下文',
       }),
     );
     expect(graph.indexChunk).toHaveBeenCalledWith(
@@ -154,6 +173,15 @@ describe('DocumentGraphWorker', () => {
       }),
     );
     expect(task.status).toBe(GraphTaskStatus.Ready);
+    // G1/G3：质量计数与 prompt 版本落库
+    expect(task.promptVersion).toBe(GRAPH_EXTRACTION_PROMPT_VERSION);
+    expect(task.quality).toMatchObject({
+      entities: 1,
+      relations: 0,
+      dropped: { missingEndpoint: 0, selfLoop: 0, invalidType: 0 },
+      truncatedEntities: 0,
+      truncatedRelations: 0,
+    });
     expect(publisher.publishProgress).toHaveBeenCalledWith(
       expect.objectContaining({
         documentId: 'doc_1',
@@ -179,7 +207,7 @@ describe('DocumentGraphWorker', () => {
     } as DocumentGraphTaskEntity;
     const tasks = {
       findOne: jest.fn().mockResolvedValue(task),
-      save: jest.fn(async (input) => input),
+      save: jest.fn((input: DocumentGraphTaskEntity) => Promise.resolve(input)),
     };
     const extraction = { extract: jest.fn() };
     const graph = { indexChunk: jest.fn() };
@@ -214,7 +242,7 @@ describe('DocumentGraphWorker', () => {
         .fn()
         .mockResolvedValueOnce(task)
         .mockResolvedValueOnce(null),
-      save: jest.fn(async (input) => input),
+      save: jest.fn((input: DocumentGraphTaskEntity) => Promise.resolve(input)),
     };
     const graph = { indexChunk: jest.fn() };
     const worker = new DocumentGraphWorker(
@@ -227,13 +255,22 @@ describe('DocumentGraphWorker', () => {
         }),
       } as never,
       {
-        extract: jest.fn().mockResolvedValue({ entities: [], relations: [] }),
+        extract: jest.fn().mockResolvedValue({
+          extraction: { entities: [], relations: [] },
+          truncated: { entities: 0, relations: 0 },
+        }),
       } as never,
       graph as never,
       { get: jest.fn().mockReturnValue(false) } as never,
       undefined,
       undefined,
-      { findTextByChunkId: jest.fn().mockResolvedValue('content') } as never,
+      {
+        findGraphContext: jest.fn().mockResolvedValue({
+          text: 'content',
+          titlePath: [],
+          chunkOrder: 0,
+        }),
+      } as never,
     );
 
     await worker.process({ taskId: 'task_1' });
@@ -272,7 +309,7 @@ describe('DocumentGraphWorker', () => {
       { get: jest.fn().mockReturnValue(false) } as never,
       undefined,
       undefined,
-      { findTextByChunkId: jest.fn().mockResolvedValue(null) } as never,
+      { findGraphContext: jest.fn().mockResolvedValue(null) } as never,
     );
 
     await worker.process({ taskId: 'task_1' });
