@@ -36,9 +36,6 @@ export class DocumentGraphTaskEntity {
   @Column({ name: 'chunk_id', type: 'varchar' })
   chunkId: string;
 
-  @Column({ type: 'text' })
-  text: string;
-
   @Column({ name: 'dataset_ids', type: 'jsonb', default: () => "'[]'::jsonb" })
   datasetIds: string[];
 

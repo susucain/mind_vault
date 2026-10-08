@@ -17,6 +17,7 @@ import {
 import { FileParserService } from '../parser/file-parser.service';
 import { RustfsService } from '../../storage/rustfs.service';
 import { DocumentChunkingService } from '../chunking/document-chunking.service';
+import { DocumentChunkCheckpointService } from '../chunking/document-chunk-checkpoint.service';
 import { EmbeddingService } from '../../embedding/embedding.service';
 import { ElasticsearchIndexService } from '../../retrieval/es/elasticsearch-index.service';
 import { GraphExtractionService } from '../../graph/graph-extraction.service';
@@ -68,6 +69,7 @@ export class DocumentIngestionWorker {
     private readonly datasetDocuments: Repository<DatasetDocumentEntity>,
     private readonly graphTasks?: DocumentGraphTaskService,
     private readonly publisher?: DocumentPipelinePublisher,
+    private readonly checkpoints?: DocumentChunkCheckpointService,
   ) {}
 
   async onModuleInit() {
@@ -270,7 +272,6 @@ export class DocumentIngestionWorker {
     }
 
     try {
-      await this.updateJob(job, IngestionJobStatus.Parsing, 'parsing', 0, 1);
       const document = await this.documents.findOne({
         where: {
           id: message.documentId,
@@ -281,70 +282,93 @@ export class DocumentIngestionWorker {
       if (!document)
         throw new Error(`文档不存在或已删除: ${message.documentId}`);
 
-      const content = await this.contents
-        .findOne({ documentId: document.id, deleted: false })
-        .lean();
-      const mirroredBytes = toBuffer(content?.sourceBytes);
-      let buffer = mirroredBytes;
-      if (!buffer?.length && document.sourceFileKey) {
-        try {
-          buffer = await this.storage.downloadBytes(document.sourceFileKey);
-        } catch (error) {
-          if (!mirroredBytes) throw error;
-          this.logger.warn(
-            `RustFS 下载失败，使用开发镜像回退: documentId=${document.id}, error=${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-      }
-      if (!buffer?.length) throw new Error('找不到原文件内容');
+      // 版本级短路：同版本检查点齐全（行数 > 0 且 embedding 全部非空）时，
+      // 跳过 parsing / chunking / embedding 直接进入 indexing——重试不重复解析与重复付费的关键。
+      let chunks =
+        (await this.checkpoints?.loadComplete(
+          message.ownerId,
+          document.id,
+          message.documentVersion,
+        )) ?? [];
+      let sectionCount = new Set(chunks.map((chunk) => chunk.sectionId)).size;
 
-      const parsed = await this.parser.parseStructured({
-        originalname: document.sourceFileName ?? document.title,
-        buffer,
-        size: buffer.length,
-      });
-      await this.contents.updateOne(
-        { _id: document.contentId, deleted: false },
-        {
-          $set: {
-            content: parsed.rawText,
-            contentLength: parsed.rawText.length,
-            contentSummary: parsed.rawText.slice(0, 200),
-            sections: parsed.sections,
-            pageCount: parsed.pageCount ?? 0,
+      if (chunks.length === 0) {
+        await this.updateJob(job, IngestionJobStatus.Parsing, 'parsing', 0, 1);
+        const content = await this.contents
+          .findOne({ documentId: document.id, deleted: false })
+          .lean();
+        const mirroredBytes = toBuffer(content?.sourceBytes);
+        let buffer = mirroredBytes;
+        if (!buffer?.length && document.sourceFileKey) {
+          try {
+            buffer = await this.storage.downloadBytes(document.sourceFileKey);
+          } catch (error) {
+            if (!mirroredBytes) throw error;
+            this.logger.warn(
+              `RustFS 下载失败，使用开发镜像回退: documentId=${document.id}, error=${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+        if (!buffer?.length) throw new Error('找不到原文件内容');
+
+        const parsed = await this.parser.parseStructured({
+          originalname: document.sourceFileName ?? document.title,
+          buffer,
+          size: buffer.length,
+        });
+        await this.contents.updateOne(
+          { _id: document.contentId, deleted: false },
+          {
+            $set: {
+              content: parsed.rawText,
+              contentLength: parsed.rawText.length,
+              contentSummary: parsed.rawText.slice(0, 200),
+              sections: parsed.sections,
+              pageCount: parsed.pageCount ?? 0,
+            },
+            $inc: { version: 1 },
           },
-          $inc: { version: 1 },
-        },
-      );
-      await this.updateJob(job, IngestionJobStatus.Parsed, 'parsed', 1, 1);
-      const chunks = this.chunking.chunk(
-        message.ownerId,
-        document.id,
-        message.documentVersion,
-        parsed,
-      );
-      await this.updateJob(job, IngestionJobStatus.Chunking, 'chunking', 1, 1);
-      stage = 'embedding';
-      await this.updateJob(
-        job,
-        IngestionJobStatus.Embedding,
-        'embedding',
-        0,
-        chunks.length,
-      );
-      const vectors = await this.embedding.embedDocuments(
-        chunks.map((chunk) => chunk.text),
-      );
-      chunks.forEach((chunk, index) => {
-        chunk.embedding = vectors[index];
-      });
-      await this.updateJob(
-        job,
-        IngestionJobStatus.Embedding,
-        'embedding',
-        chunks.length,
-        chunks.length,
-      );
+        );
+        await this.updateJob(job, IngestionJobStatus.Parsed, 'parsed', 1, 1);
+        chunks = this.chunking.chunk(
+          message.ownerId,
+          document.id,
+          message.documentVersion,
+          parsed,
+        );
+        await this.updateJob(
+          job,
+          IngestionJobStatus.Chunking,
+          'chunking',
+          1,
+          1,
+        );
+        stage = 'embedding';
+        await this.updateJob(
+          job,
+          IngestionJobStatus.Embedding,
+          'embedding',
+          0,
+          chunks.length,
+        );
+        const vectors = await this.embedding.embedDocuments(
+          chunks.map((chunk) => chunk.text),
+        );
+        chunks.forEach((chunk, index) => {
+          chunk.embedding = vectors[index];
+        });
+        await this.updateJob(
+          job,
+          IngestionJobStatus.Embedding,
+          'embedding',
+          chunks.length,
+          chunks.length,
+        );
+        // 检查点在 embedding 成功后落库：indexing 阶段失败时重试可整段复用
+        await this.checkpoints?.save(chunks);
+        sectionCount = parsed.sections.length;
+      }
+
       const datasetRows = await this.datasetDocuments.find({
         where: { ownerId: message.ownerId, documentId: document.id },
       });
@@ -369,6 +393,12 @@ export class DocumentIngestionWorker {
         );
         await this.index.deleteByDocument(message.ownerId, message.documentId);
         await this.graph.deleteDocument(message.ownerId, message.documentId);
+        // 旧版本检查点重建后不再需要，清掉避免随版本号无限累积
+        await this.checkpoints?.deleteOtherVersions(
+          message.ownerId,
+          message.documentId,
+          message.documentVersion,
+        );
       }
       await this.index.indexChunks(chunks);
       await this.updateJob(
@@ -402,7 +432,7 @@ export class DocumentIngestionWorker {
         jobId: job.id,
         documentId: document.id,
         status: IngestionJobStatus.Ready,
-        sectionCount: parsed.sections.length,
+        sectionCount,
         chunkCount: chunks.length,
       };
     } catch (error) {
@@ -495,6 +525,10 @@ export class DocumentIngestionWorker {
     }
     await this.index.deleteByDocument(message.ownerId, message.documentId);
     await this.graph.deleteDocument(message.ownerId, message.documentId);
+    await this.checkpoints?.deleteByDocument(
+      message.ownerId,
+      message.documentId,
+    );
     job.status = IngestionJobStatus.Deleted;
     job.currentStage = 'deleted';
     job.errorCode = null;

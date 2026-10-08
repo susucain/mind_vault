@@ -13,6 +13,7 @@ import { DatasetEntity } from './dataset/entities/dataset.entity';
 import { DatasetDocumentEntity } from './dataset/entities/dataset-document.entity';
 import { DocumentIngestionJobEntity } from './document/entities/document-ingestion-job.entity';
 import { DocumentGraphTaskEntity } from './document/graph/entities/document-graph-task.entity';
+import { DocumentChunkEntity } from './document/entities/document-chunk.entity';
 import { GraphModule } from './graph/graph.module';
 import { RetrievalModule } from './retrieval/retrieval.module';
 import { ChatModule } from './chat/chat.module';
@@ -41,6 +42,8 @@ import { AddConversationFavorite1791072000000 } from './migrations/1791072000000
 import { AddCitationHighlight1791158400000 } from './migrations/1791158400000-add-citation-highlight';
 import { AddMessageSuggestions1791244800000 } from './migrations/1791244800000-add-message-suggestions';
 import { AddGraphEnabled1791331200000 } from './migrations/1791331200000-add-graph-enabled';
+import { AddDocumentChunkCheckpoint1791417600000 } from './migrations/1791417600000-add-document-chunk-checkpoint';
+import { DropGraphTaskText1791504000000 } from './migrations/1791504000000-drop-graph-task-text';
 
 const standalone = buildConfiguration(process.env).runtime.standalone;
 
@@ -81,6 +84,7 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
                 DatasetDocumentEntity,
                 DocumentIngestionJobEntity,
                 DocumentGraphTaskEntity,
+                DocumentChunkEntity,
                 ConversationEntity,
                 ChatMessageEntity,
                 ChatCitationEntity,
@@ -104,6 +108,8 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
                 AddCitationHighlight1791158400000,
                 AddMessageSuggestions1791244800000,
                 AddGraphEnabled1791331200000,
+                AddDocumentChunkCheckpoint1791417600000,
+                DropGraphTaskText1791504000000,
               ],
               migrationsRun: true,
             }),

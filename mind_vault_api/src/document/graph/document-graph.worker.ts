@@ -12,6 +12,7 @@ import {
 } from './entities/document-graph-task.entity';
 import { DocumentPipelinePublisher } from '../../mq/document-pipeline.publisher';
 import { DocumentGraphTaskService } from './document-graph-task.service';
+import { DocumentChunkCheckpointService } from '../chunking/document-chunk-checkpoint.service';
 
 const RECONNECT_DELAY_MS = 5_000;
 
@@ -37,6 +38,7 @@ export class DocumentGraphWorker {
     private readonly config: ConfigService,
     private readonly publisher?: DocumentPipelinePublisher,
     private readonly graphTasks?: DocumentGraphTaskService,
+    private readonly checkpoints?: DocumentChunkCheckpointService,
   ) {}
 
   async onModuleInit() {
@@ -153,13 +155,31 @@ export class DocumentGraphWorker {
       `图谱任务开始: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} retry=${task.retryCount}`,
     );
     try {
+      // 任务行不再存全文：按 chunkId 从检查点表取正文
+      const text = await this.checkpoints?.findTextByChunkId(
+        task.ownerId,
+        task.documentId,
+        task.chunkId,
+      );
+      if (!text) {
+        // 没有检查点就无法抽取，且重试也不会变好——取消而不是失败，避免无限重投
+        task.status = GraphTaskStatus.Cancelled;
+        task.errorMessage = '缺少分块检查点，无法抽取';
+        task.finishedAt = new Date();
+        await this.tasks.save(task);
+        await this.publishProgress(task);
+        this.logger.warn(
+          `图谱任务缺少分块检查点: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId}`,
+        );
+        return;
+      }
       const extractStartedAt = Date.now();
       const extraction = await this.extraction.extract({
         chunkId: task.chunkId,
         ownerId: task.ownerId,
         documentId: task.documentId,
         documentVersion: task.documentVersion,
-        text: task.text,
+        text,
         datasetIds: task.datasetIds,
       } as never);
       const extractMs = Date.now() - extractStartedAt;

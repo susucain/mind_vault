@@ -67,7 +67,6 @@ export class DocumentGraphTaskService {
             documentId: chunk.documentId,
             documentVersion: chunk.documentVersion,
             chunkId: chunk.chunkId,
-            text: chunk.text,
             datasetIds: chunk.datasetIds ?? [],
             status: GraphTaskStatus.Pending,
             retryCount: 0,
@@ -152,12 +151,16 @@ export class DocumentGraphTaskService {
     const failed = tasks.filter(
       (task) => task.status === GraphTaskStatus.Failed,
     ).length;
+    const cancelled = tasks.filter(
+      (task) => task.status === GraphTaskStatus.Cancelled,
+    ).length;
     const active = tasks.filter(
       (task) =>
         task.status === GraphTaskStatus.Pending ||
         task.status === GraphTaskStatus.Processing,
     ).length;
-    const terminal = completed + failed;
+    // 取消的块同样是终态：否则进度会永远停在 PROCESSING
+    const terminal = completed + failed + cancelled;
     const status =
       total === 0
         ? 'NOT_STARTED'

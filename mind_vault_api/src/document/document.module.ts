@@ -13,6 +13,7 @@ import { DatasetModule } from '../dataset/dataset.module';
 import { DocumentEntity } from './entities/document.entity';
 import { DocumentIngestionJobEntity } from './entities/document-ingestion-job.entity';
 import { DocumentGraphTaskEntity } from './graph/entities/document-graph-task.entity';
+import { DocumentChunkEntity } from './entities/document-chunk.entity';
 import { DatasetDocumentEntity } from '../dataset/entities/dataset-document.entity';
 import { DocumentUploadService } from './document-upload.service';
 import { DocumentUploadController } from './document-upload.controller';
@@ -22,6 +23,7 @@ import { DocumentLifecycleController } from './document-lifecycle.controller';
 import { DocumentLifecycleService } from './document-lifecycle.service';
 import { DocumentIngestionWorker } from './ingestion/document-ingestion.worker';
 import { DocumentChunkingService } from './chunking/document-chunking.service';
+import { DocumentChunkCheckpointService } from './chunking/document-chunk-checkpoint.service';
 import { EmbeddingService } from '../embedding/embedding.service';
 import {
   ELASTICSEARCH_CLIENT,
@@ -43,6 +45,7 @@ import { DocumentProgressService } from './document-progress.service';
       DocumentEntity,
       DocumentIngestionJobEntity,
       DocumentGraphTaskEntity,
+      DocumentChunkEntity,
       DatasetDocumentEntity,
     ]),
     MongooseModule.forFeature([
@@ -66,6 +69,7 @@ import { DocumentProgressService } from './document-progress.service';
     DocumentGraphWorker,
     DocumentProgressService,
     DocumentChunkingService,
+    DocumentChunkCheckpointService,
     EmbeddingService,
     ElasticsearchIndexService,
     {

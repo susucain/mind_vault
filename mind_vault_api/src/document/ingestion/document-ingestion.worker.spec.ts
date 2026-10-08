@@ -698,4 +698,97 @@ describe('DocumentIngestionWorker', () => {
       expect.objectContaining({ stage: 'graph_skipped' }),
     );
   });
+
+  it('resumes from the chunk checkpoint without re-parsing or re-embedding', async () => {
+    const job = {
+      id: 'job_1',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      status: IngestionJobStatus.Failed,
+      currentStage: 'indexing',
+      retryCount: 1,
+    };
+    const jobs = {
+      findOne: jest.fn().mockResolvedValue(job),
+      save: jest.fn(async (entity) => entity),
+    };
+    const parser = { parseStructured: jest.fn() };
+    const embedding = { embedDocuments: jest.fn() };
+    const index = {
+      indexChunks: jest.fn().mockResolvedValue(undefined),
+      deleteByDocument: jest.fn(),
+    };
+    const checkpoints = {
+      loadComplete: jest.fn().mockResolvedValue([
+        {
+          chunkId: 'chunk_1',
+          parentId: 'section_0001',
+          ownerId: 'user_1',
+          documentId: 'doc_1',
+          documentVersion: 1,
+          sectionId: 'section_0001',
+          chunkOrder: 0,
+          titlePath: [],
+          text: '标题正文',
+          parentContext: '标题正文',
+          locator: {},
+          embedding: [0.1, 0.2],
+        },
+      ]),
+      save: jest.fn(),
+    };
+    const worker = new DocumentIngestionWorker(
+      jobs as never,
+      {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'doc_1',
+          ownerId: 'user_1',
+          contentId: 'content_1',
+          graphEnabled: false,
+        }),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      } as never,
+      { findOne: jest.fn() } as never,
+      parser as never,
+      { downloadBytes: jest.fn() } as never,
+      { get: jest.fn().mockReturnValue(false) } as never,
+      { chunk: jest.fn() } as never,
+      embedding as never,
+      index as never,
+      { extract: jest.fn() } as never,
+      { indexChunk: jest.fn() } as never,
+      {
+        find: jest.fn().mockResolvedValue([{ datasetId: 'dataset_1' }]),
+      } as never,
+      undefined,
+      undefined,
+      checkpoints as never,
+    );
+
+    await expect(
+      worker.process({
+        jobId: 'job_1',
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        documentVersion: 1,
+        operation: 'index',
+      }),
+    ).resolves.toMatchObject({
+      status: IngestionJobStatus.Ready,
+      sectionCount: 1,
+      chunkCount: 1,
+    });
+
+    // 三个高成本阶段全部跳过
+    expect(parser.parseStructured).not.toHaveBeenCalled();
+    expect(embedding.embedDocuments).not.toHaveBeenCalled();
+    expect(checkpoints.save).not.toHaveBeenCalled();
+    expect(index.indexChunks).toHaveBeenCalledWith([
+      expect.objectContaining({
+        chunkId: 'chunk_1',
+        datasetIds: ['dataset_1'],
+      }),
+    ]);
+  });
 });

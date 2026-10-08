@@ -86,7 +86,6 @@ describe('DocumentGraphWorker', () => {
       documentId: 'doc_1',
       documentVersion: 2,
       chunkId: 'chunk_1',
-      text: 'Kafka handles asynchronous work.',
       datasetIds: ['dataset_1'],
       status: GraphTaskStatus.Pending,
       retryCount: 0,
@@ -121,6 +120,11 @@ describe('DocumentGraphWorker', () => {
         estimatedRemainingSeconds: null,
       }),
     };
+    const checkpoints = {
+      findTextByChunkId: jest
+        .fn()
+        .mockResolvedValue('Kafka handles asynchronous work.'),
+    };
     const worker = new DocumentGraphWorker(
       tasks as never,
       documents as never,
@@ -129,6 +133,7 @@ describe('DocumentGraphWorker', () => {
       { get: jest.fn().mockReturnValue(false) } as never,
       publisher as never,
       graphTasks as never,
+      checkpoints as never,
     );
 
     await worker.process({ taskId: 'task_1' });
@@ -200,7 +205,6 @@ describe('DocumentGraphWorker', () => {
       documentId: 'doc_1',
       documentVersion: 1,
       chunkId: 'chunk_1',
-      text: 'content',
       datasetIds: [],
       status: GraphTaskStatus.Pending,
       retryCount: 0,
@@ -227,10 +231,54 @@ describe('DocumentGraphWorker', () => {
       } as never,
       graph as never,
       { get: jest.fn().mockReturnValue(false) } as never,
+      undefined,
+      undefined,
+      { findTextByChunkId: jest.fn().mockResolvedValue('content') } as never,
     );
 
     await worker.process({ taskId: 'task_1' });
 
+    expect(graph.indexChunk).not.toHaveBeenCalled();
+  });
+
+  it('cancels a task whose chunk checkpoint is missing', async () => {
+    const task = {
+      id: 'task_1',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      chunkId: 'chunk_1',
+      datasetIds: [],
+      status: GraphTaskStatus.Pending,
+      retryCount: 0,
+    } as DocumentGraphTaskEntity;
+    const tasks = {
+      findOne: jest.fn().mockResolvedValue(task),
+      save: jest.fn(),
+    };
+    const extraction = { extract: jest.fn() };
+    const graph = { indexChunk: jest.fn() };
+    const worker = new DocumentGraphWorker(
+      tasks as never,
+      {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'doc_1',
+          ownerId: 'user_1',
+          deleted: false,
+        }),
+      } as never,
+      extraction as never,
+      graph as never,
+      { get: jest.fn().mockReturnValue(false) } as never,
+      undefined,
+      undefined,
+      { findTextByChunkId: jest.fn().mockResolvedValue(null) } as never,
+    );
+
+    await worker.process({ taskId: 'task_1' });
+
+    expect(task.status).toBe(GraphTaskStatus.Cancelled);
+    expect(extraction.extract).not.toHaveBeenCalled();
     expect(graph.indexChunk).not.toHaveBeenCalled();
   });
 });
