@@ -59,5 +59,14 @@ docker compose --project-name mind-vault \
 
 docker image prune -f
 
-curl --fail --retry 20 --retry-delay 3 \
-  http://127.0.0.1:${API_HOST_PORT:-13000}/v1/health
+health_url="http://127.0.0.1:${API_HOST_PORT:-13000}/v1/health"
+for attempt in $(seq 1 40); do
+  if curl --fail --silent --show-error --connect-timeout 5 "$health_url"; then
+    printf '\n'
+    exit 0
+  fi
+  sleep 3
+done
+
+echo "API health check timed out: ${health_url}" >&2
+exit 1
