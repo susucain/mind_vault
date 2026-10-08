@@ -76,6 +76,11 @@ export function NodeDetailCard({
                   {edge.confidence !== undefined ? (
                     <span className="graph-detail__confidence">{(edge.confidence * 100).toFixed(0)}%</span>
                   ) : null}
+                  {edge.count && edge.count > 1 ? (
+                    <span className="graph-detail__count" title="同一对实体在多个片段中出现的次数">
+                      ×{edge.count}
+                    </span>
+                  ) : null}
                 </span>
                 {evidence ? (
                   <Link className="graph-detail__evidence" to={evidence}>

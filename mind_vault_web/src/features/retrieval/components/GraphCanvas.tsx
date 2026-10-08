@@ -16,6 +16,7 @@ import '@xyflow/react/dist/style.css';
 import type { EntityType, GraphView } from '@/types/domain';
 import { cn } from '@/lib/utils';
 import { ENTITY_TYPE_COLORS } from '../graph-meta';
+import { LOW_CONFIDENCE_THRESHOLD } from '../graph-model';
 import type { LayoutPosition } from '../graph-layout';
 
 /** 超过该规模即关闭拖拽、启用可见区渲染与简化节点（见设计方案 4.3.4 性能策略）。 */
@@ -108,7 +109,9 @@ export function GraphCanvas({ view, positions, selectedNodeId, onSelectNode, onE
         style: {
           stroke: 'var(--mv-line-strong)',
           strokeWidth: 1.2,
-          ...(edge.confidence !== undefined && edge.confidence < 0.5 ? { strokeDasharray: '4 3' } : {}),
+          ...(edge.confidence !== undefined && edge.confidence < LOW_CONFIDENCE_THRESHOLD
+            ? { strokeDasharray: '4 3' }
+            : {}),
         },
         markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: 'var(--mv-line-strong)' },
       })),

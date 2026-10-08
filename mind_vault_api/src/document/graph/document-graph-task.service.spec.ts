@@ -216,6 +216,7 @@ describe('DocumentGraphTaskService', () => {
             dropped: { missingEndpoint: 1, selfLoop: 0, invalidType: 1 },
             truncatedEntities: 2,
             truncatedRelations: 0,
+            relationTypes: { USED_FOR: 1, RELATED_TO: 1 },
           },
         },
         {
@@ -226,6 +227,7 @@ describe('DocumentGraphTaskService', () => {
             dropped: { missingEndpoint: 0, selfLoop: 1, invalidType: 0 },
             truncatedEntities: 0,
             truncatedRelations: 5,
+            relationTypes: { USED_FOR: 2 },
           },
         },
         // 迁移前留下的空 quality 行按 0 计，不能让汇总变成 NaN
@@ -244,6 +246,9 @@ describe('DocumentGraphTaskService', () => {
       droppedInvalidType: 1,
       truncatedEntities: 2,
       truncatedRelations: 5,
+      // 关系类型分布按文档累加（G5）：typedTotal = 4，兜底类占比 = 1/4
+      relationTypes: { USED_FOR: 3, RELATED_TO: 1 },
+      relatedToRatio: 0.25,
     });
     expect(progress.status).toBe('PROCESSING');
   });

@@ -98,17 +98,36 @@ export function useEntitySuggestions(input: {
   });
 }
 
-/** 图谱基础邻域：过滤只在前端生效，因此查询键不含类型筛选，避免切换筛选时重发请求。 */
+/**
+ * 图谱基础邻域：类型筛选只在前端生效，因此查询键不含类型筛选，避免切换筛选时重发请求。
+ * 低置信开关是后端口径（G4），故进入查询键并透传 includeLowConfidence。
+ */
 export function useGraphNeighborhood(input: {
   entity: string;
   maxHops: number;
   datasetIds: string[];
+  includeLowConfidence: boolean;
   enabled: boolean;
 }) {
   const entity = input.entity.trim();
   return useQuery({
-    queryKey: ['retrieval', 'graph', 'neighborhood', entity, input.maxHops, input.datasetIds],
-    queryFn: () => fetchNeighborhood({ entity, maxHops: input.maxHops, datasetIds: input.datasetIds, limit: 120 }),
+    queryKey: [
+      'retrieval',
+      'graph',
+      'neighborhood',
+      entity,
+      input.maxHops,
+      input.datasetIds,
+      input.includeLowConfidence,
+    ],
+    queryFn: () =>
+      fetchNeighborhood({
+        entity,
+        maxHops: input.maxHops,
+        datasetIds: input.datasetIds,
+        includeLowConfidence: input.includeLowConfidence,
+        limit: 120,
+      }),
     enabled: input.enabled && entity.length > 0,
   });
 }

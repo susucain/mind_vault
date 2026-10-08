@@ -220,6 +220,10 @@ export interface GraphEdge {
   type: RelationType;
   confidence?: number;
   sourceChunkId?: string;
+  /** 折叠前同一对实体的同类型边条数（G5），至少为 1 */
+  count?: number;
+  /** 折叠前这些平行边的来源片段 id（G5，上限 10 条） */
+  sourceChunkIds?: string[];
 }
 
 export interface GraphView {

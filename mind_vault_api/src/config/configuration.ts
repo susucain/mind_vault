@@ -89,6 +89,11 @@ export function buildConfiguration(env: EnvironmentInput = process.env) {
       maxRelations: parseNumber(env.GRAPH_MAX_RELATIONS, 30),
       // 单次抽取的输出 token 上限（15 实体 + 30 关系足够容纳）
       extractionMaxTokens: parseNumber(env.GRAPH_EXTRACTION_MAX_TOKENS, 2000),
+      // 低置信关系默认在关系查询中隐藏（G4/D12）；低于该值仍入库，可由调用方显式开启展示
+      relationMinConfidence: parseNumber(
+        env.GRAPH_RELATION_MIN_CONFIDENCE,
+        0.5,
+      ),
     },
     langfuse: {
       enabled: parseBoolean(env.LANGFUSE_ENABLED, false),

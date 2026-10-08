@@ -22,12 +22,16 @@ export interface NeighborhoodRequest {
   relationTypes?: RelationType[];
   datasetIds?: string[];
   limit?: number;
+  /** 低置信关系默认由后端隐藏（G4）：置 true 才返回 */
+  includeLowConfidence?: boolean;
 }
 
 export interface AnswerContextRequest {
   /** 本条回答实际引用的 chunk；图谱只收敛在这批 chunk 上 */
   chunkIds: string[];
   limit?: number;
+  /** 低置信关系默认由后端隐藏（G4）：置 true 才返回 */
+  includeLowConfidence?: boolean;
 }
 
 const MOCK_NAMES = ['向量检索', '倒排索引', 'Elasticsearch', 'Kafka', '召回策略', 'RAG 检索增强'];
@@ -59,23 +63,27 @@ function mockNeighborhood(focus: string, maxHops: number): GraphView {
     })),
   ];
   const edges = MOCK_NAMES.map((name, index) => ({
-    id: `${center}|RELATED_TO|${name}|mock-chunk-${index}`,
+    id: `${center}|RELATED_TO|${name}`,
     source: center,
     target: name,
     type: 'RELATED_TO' as RelationType,
     confidence: index % 2 ? 0.42 : 0.86,
     sourceChunkId: `mock-chunk-${index + 1}`,
+    count: 1,
+    sourceChunkIds: [`mock-chunk-${index + 1}`],
   }));
 
   if (maxHops > 1) {
     nodes.push({ id: '二级邻域实体', name: '二级邻域实体', type: 'PROJECT', degree: 1 });
     edges.push({
-      id: `${MOCK_NAMES[0]}|PART_OF|二级邻域实体|mock-chunk-9`,
+      id: `${MOCK_NAMES[0]}|PART_OF|二级邻域实体`,
       source: MOCK_NAMES[0],
       target: '二级邻域实体',
       type: 'PART_OF',
       confidence: 0.7,
       sourceChunkId: 'mock-chunk-9',
+      count: 1,
+      sourceChunkIds: ['mock-chunk-9'],
     });
   }
 
@@ -104,6 +112,7 @@ export async function fetchNeighborhood(input: NeighborhoodRequest): Promise<Gra
     ...(input.relationTypes?.length ? { relationTypes: input.relationTypes } : {}),
     ...(input.datasetIds?.length ? { datasetIds: input.datasetIds } : {}),
     ...(input.limit ? { limit: input.limit } : {}),
+    ...(input.includeLowConfidence ? { includeLowConfidence: true } : {}),
   };
 
   if (appConfig.enableMockApi) return mockNeighborhood(payload.entity, payload.maxHops ?? 1);
@@ -116,5 +125,6 @@ export async function fetchAnswerContext(input: AnswerContextRequest): Promise<G
   return jsonRequest<GraphView>('/graph/answer-context', 'POST', {
     chunkIds: input.chunkIds,
     ...(input.limit ? { limit: input.limit } : {}),
+    ...(input.includeLowConfidence ? { includeLowConfidence: true } : {}),
   });
 }

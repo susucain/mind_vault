@@ -214,7 +214,9 @@ export class DocumentGraphWorker {
       task.status = GraphTaskStatus.Ready;
       task.errorMessage = null;
       task.finishedAt = new Date();
-      // 质量计数落库（G1/G3）：prompt 版本 + 丢弃分类 + 截断量，供回归与调参
+      // 质量计数落库（G1/G3/G5）：prompt 版本 + 丢弃分类 + 截断量 + 关系类型分布
+      const relationTypes = countRelationTypes(extraction.relations);
+      const relatedToRatio = ratioOf(relationTypes, 'RELATED_TO');
       task.promptVersion = GRAPH_EXTRACTION_PROMPT_VERSION;
       task.quality = {
         entities: stats.entities,
@@ -222,11 +224,12 @@ export class DocumentGraphWorker {
         dropped: stats.dropped,
         truncatedEntities: truncated.entities,
         truncatedRelations: truncated.relations,
+        relationTypes,
       };
       await this.tasks.save(task);
       await this.publishProgress(task);
       this.logger.log(
-        `图谱任务完成: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} promptVersion=${GRAPH_EXTRACTION_PROMPT_VERSION} entities=${stats.entities} relations=${stats.relations} dropped=[missing:${stats.dropped.missingEndpoint} selfLoop:${stats.dropped.selfLoop} invalidType:${stats.dropped.invalidType}] truncated=[entities:${truncated.entities} relations:${truncated.relations}] extractMs=${extractMs} graphMs=${graphMs} elapsedMs=${task.finishedAt.getTime() - startedAt.getTime()}`,
+        `图谱任务完成: taskId=${task.id} documentId=${task.documentId} chunkId=${task.chunkId} promptVersion=${GRAPH_EXTRACTION_PROMPT_VERSION} entities=${stats.entities} relations=${stats.relations} dropped=[missing:${stats.dropped.missingEndpoint} selfLoop:${stats.dropped.selfLoop} invalidType:${stats.dropped.invalidType}] truncated=[entities:${truncated.entities} relations:${truncated.relations}] relatedToRatio=${relatedToRatio ?? '-'} extractMs=${extractMs} graphMs=${graphMs} elapsedMs=${task.finishedAt.getTime() - startedAt.getTime()}`,
       );
     } catch (error) {
       task.status = GraphTaskStatus.Failed;
@@ -304,7 +307,7 @@ export class DocumentGraphWorker {
       graph.completed + graph.failed >= graph.total
     ) {
       this.logger.log(
-        `图谱文档汇总: documentId=${task.documentId} version=${task.documentVersion} chunks=${graph.total} completed=${graph.completed} failed=${graph.failed} llmCalls=${graph.total} avgMs=${graph.averageDurationMs ?? '-'} totalMs=${graph.totalDurationMs ?? '-'} entities=${graph.quality?.entities ?? 0} relations=${graph.quality?.relations ?? 0} dropped=[missing:${graph.quality?.droppedMissingEndpoint ?? 0} selfLoop:${graph.quality?.droppedSelfLoop ?? 0} invalidType:${graph.quality?.droppedInvalidType ?? 0}] truncated=[entities:${graph.quality?.truncatedEntities ?? 0} relations:${graph.quality?.truncatedRelations ?? 0}]`,
+        `图谱文档汇总: documentId=${task.documentId} version=${task.documentVersion} chunks=${graph.total} completed=${graph.completed} failed=${graph.failed} llmCalls=${graph.total} avgMs=${graph.averageDurationMs ?? '-'} totalMs=${graph.totalDurationMs ?? '-'} entities=${graph.quality?.entities ?? 0} relations=${graph.quality?.relations ?? 0} dropped=[missing:${graph.quality?.droppedMissingEndpoint ?? 0} selfLoop:${graph.quality?.droppedSelfLoop ?? 0} invalidType:${graph.quality?.droppedInvalidType ?? 0}] truncated=[entities:${graph.quality?.truncatedEntities ?? 0} relations:${graph.quality?.truncatedRelations ?? 0}] relatedToRatio=${graph.quality?.relatedToRatio ?? '-'} relationTypes=${JSON.stringify(graph.quality?.relationTypes ?? {})}`,
       );
     }
   }
@@ -326,4 +329,22 @@ function headOf(value?: string): string | undefined {
   return text.length > NEIGHBOR_CONTEXT_CHARS
     ? text.slice(0, NEIGHBOR_CONTEXT_CHARS)
     : text;
+}
+
+/** 关系类型计数（G5）：度量兜底类 RELATED_TO 的占比，先度量再决定是否细分类型 */
+function countRelationTypes(
+  relations: { type: string }[],
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const relation of relations) {
+    counts[relation.type] = (counts[relation.type] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/** 某一类型在分布中的占比，无关系时为 null（日志里显示为 -） */
+function ratioOf(counts: Record<string, number>, type: string): string | null {
+  const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  if (total === 0) return null;
+  return ((counts[type] ?? 0) / total).toFixed(2);
 }

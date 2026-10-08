@@ -102,6 +102,8 @@ export interface GraphSearchInput {
   entityNames: string[];
   maxHops?: number;
   datasetIds?: string[];
+  /** 显式开启后不过滤低置信关系（G4/D12，默认隐藏） */
+  includeLowConfidence?: boolean;
 }
 
 /** 图谱可视化视图：节点 id 用 normalizedName（稳定、可作 React key），name 为展示名 */
@@ -116,7 +118,10 @@ export interface GraphViewNode {
   aliases?: string[];
 }
 
-/** 关系没有独立 id，用 source|type|target|sourceChunkId 四元组区分 */
+/**
+ * 关系没有独立 id。视图层把「同一对实体的同类型平行边」折叠为一条（G5），
+ * 故 id 为 source|type|target 三元组，另有 count / sourceChunkIds 标注出现次数与来源片段。
+ */
 export interface GraphViewEdge {
   id: string;
   source: string;
@@ -124,6 +129,10 @@ export interface GraphViewEdge {
   type: string;
   confidence?: number;
   sourceChunkId?: string;
+  /** 折叠前同一对实体的同类型边条数（G5），至少为 1 */
+  count?: number;
+  /** 折叠前这些平行边的来源片段 id（上限见 MAX_EDGE_CHUNK_IDS） */
+  sourceChunkIds?: string[];
 }
 
 export interface GraphView {
@@ -141,6 +150,8 @@ export interface GraphNeighborhoodInput {
   relationTypes?: string[];
   datasetIds?: string[];
   limit?: number;
+  /** 显式开启后不过滤低置信关系（G4/D12，默认隐藏） */
+  includeLowConfidence?: boolean;
 }
 
 export interface GraphEntitySuggestionInput {
@@ -158,6 +169,8 @@ export interface GraphAnswerContextInput {
   ownerId: string;
   chunkIds: string[];
   limit?: number;
+  /** 显式开启后不过滤低置信关系（G4/D12，默认隐藏） */
+  includeLowConfidence?: boolean;
 }
 
 export interface GraphEntitySuggestion {

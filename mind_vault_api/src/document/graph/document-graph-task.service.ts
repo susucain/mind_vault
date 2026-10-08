@@ -23,7 +23,7 @@ export interface GraphProgress {
   quality?: GraphQualityTotals;
 }
 
-/** 文档级质量合计（G3） */
+/** 文档级质量合计（G3 + G5） */
 export interface GraphQualityTotals {
   entities: number;
   relations: number;
@@ -32,6 +32,10 @@ export interface GraphQualityTotals {
   droppedInvalidType: number;
   truncatedEntities: number;
   truncatedRelations: number;
+  /** 关系类型分布合计（G5） */
+  relationTypes: Record<string, number>;
+  /** 兜底类 RELATED_TO 在全部关系中的占比（G5），无关系时为 null */
+  relatedToRatio: number | null;
 }
 
 @Injectable()
@@ -199,7 +203,7 @@ export class DocumentGraphTaskService {
       durations.length > 0
         ? durations.reduce((sum, duration) => sum + duration, 0)
         : null;
-    // 质量计数按文档汇总（G3）：空 quality（迁移前或未跑）按 0 计
+    // 质量计数按文档汇总（G3/G5）：空 quality（迁移前或未跑）按 0 计
     const quality = tasks.reduce<GraphQualityTotals>(
       (totals, task) => {
         const row = task.quality;
@@ -211,6 +215,11 @@ export class DocumentGraphTaskService {
         totals.droppedInvalidType += row.dropped?.invalidType ?? 0;
         totals.truncatedEntities += row.truncatedEntities ?? 0;
         totals.truncatedRelations += row.truncatedRelations ?? 0;
+        // 关系类型分布（G5）：逐类累加，供判断兜底类占比
+        for (const [type, count] of Object.entries(row.relationTypes ?? {})) {
+          totals.relationTypes[type] =
+            (totals.relationTypes[type] ?? 0) + count;
+        }
         return totals;
       },
       {
@@ -221,8 +230,18 @@ export class DocumentGraphTaskService {
         droppedInvalidType: 0,
         truncatedEntities: 0,
         truncatedRelations: 0,
+        relationTypes: {},
+        relatedToRatio: null,
       },
     );
+    const typedTotal = Object.values(quality.relationTypes).reduce(
+      (sum, count) => sum + count,
+      0,
+    );
+    quality.relatedToRatio =
+      typedTotal > 0
+        ? (quality.relationTypes.RELATED_TO ?? 0) / typedTotal
+        : null;
     return {
       status,
       completed,

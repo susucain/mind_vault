@@ -4,14 +4,19 @@ import type { EntityType, GraphEdge, GraphNode, GraphView, RelationType } from '
 export const GRAPH_NODE_CAP = 300;
 export const GRAPH_EDGE_CAP = 600;
 
+/** 低置信阈值（G4/D12）：与后端 graph.relationMinConfidence 缺省一致 */
+export const LOW_CONFIDENCE_THRESHOLD = 0.5;
+
 export interface GraphFilters {
   entityTypes: EntityType[];
   relationTypes: RelationType[];
+  /** 是否展示低置信关系（G4）；缺省隐藏，需同步透传给后端 */
+  showLowConfidence: boolean;
 }
 
 /** 空过滤表示「不过滤」，与后端缺省语义一致。 */
 export function emptyGraphFilters(): GraphFilters {
-  return { entityTypes: [], relationTypes: [] };
+  return { entityTypes: [], relationTypes: [], showLowConfidence: false };
 }
 
 /** 按当前子图重算度数：过滤或折叠后 degree 必须反映可见边数。 */
@@ -77,7 +82,7 @@ export function mergeGraphViews(base: GraphView, expansions: GraphView[]): Graph
   };
 }
 
-/** 类型过滤只在前端生效，不重新请求后端。 */
+/** 类型过滤只在前端生效，不重新请求后端；低置信开关与后端口径一致（G4）。 */
 export function applyGraphFilters(view: GraphView, filters: GraphFilters): GraphView {
   const entityTypes = new Set(filters.entityTypes);
   const relationTypes = new Set(filters.relationTypes);
@@ -88,7 +93,11 @@ export function applyGraphFilters(view: GraphView, filters: GraphFilters): Graph
     (edge) =>
       nodeIds.has(edge.source) &&
       nodeIds.has(edge.target) &&
-      (relationTypes.size === 0 || relationTypes.has(edge.type)),
+      (relationTypes.size === 0 || relationTypes.has(edge.type)) &&
+      // 低置信关系默认隐藏（G4）；历史边无置信度则一律保留
+      (filters.showLowConfidence ||
+        edge.confidence === undefined ||
+        edge.confidence >= LOW_CONFIDENCE_THRESHOLD),
   );
 
   return { ...view, nodes: recomputeDegree(nodes, edges), edges };

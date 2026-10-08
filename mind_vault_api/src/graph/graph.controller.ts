@@ -19,6 +19,7 @@ export class GraphController {
       entityNames: query.entityNames,
       datasetIds: query.datasetIds,
       maxHops: query.maxHops,
+      includeLowConfidence: query.includeLowConfidence,
     });
   }
 
@@ -51,6 +52,7 @@ export class GraphController {
       relationTypes: body.relationTypes,
       datasetIds: body.datasetIds,
       limit: body.limit,
+      includeLowConfidence: body.includeLowConfidence,
     });
   }
 
@@ -64,6 +66,7 @@ export class GraphController {
       ownerId: user.id,
       chunkIds: body.chunkIds,
       limit: body.limit,
+      includeLowConfidence: body.includeLowConfidence,
     });
   }
 }

@@ -29,7 +29,8 @@ function readSession(key: string): SessionState | null {
     return {
       expansions: parsed.expansions,
       collapsedIds: Array.isArray(parsed.collapsedIds) ? parsed.collapsedIds : [],
-      filters: parsed.filters ?? emptyGraphFilters(),
+      // 用空过滤兜底新增字段，兼容旧版本持久化的 filters（缺 showLowConfidence）
+      filters: { ...emptyGraphFilters(), ...parsed.filters },
     };
   } catch {
     return null;
@@ -76,17 +77,18 @@ export function useGraphExploration(input: {
   const focus = input.focus.trim();
   const sessionKey = focus ? `${focus}::${input.maxHops}` : '';
 
-  const base = useGraphNeighborhood({
-    entity: focus,
-    maxHops: input.maxHops,
-    datasetIds: input.datasetIds,
-    enabled: input.enabled,
-  });
-
   const [session, setSession] = useState<SessionState>(freshSession);
   const [hydratedKey, setHydratedKey] = useState('');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [expandingId, setExpandingId] = useState<string | null>(null);
+
+  const base = useGraphNeighborhood({
+    entity: focus,
+    maxHops: input.maxHops,
+    datasetIds: input.datasetIds,
+    includeLowConfidence: session.filters.showLowConfidence,
+    enabled: input.enabled,
+  });
 
   // 焦点 / 跳数变化时恢复该焦点的会话内探索状态
   useEffect(() => {
@@ -144,7 +146,13 @@ export function useGraphExploration(input: {
       }
 
       setExpandingId(id);
-      void fetchNeighborhood({ entity: id, maxHops: 1, datasetIds: input.datasetIds, limit: 60 })
+      void fetchNeighborhood({
+        entity: id,
+        maxHops: 1,
+        datasetIds: input.datasetIds,
+        includeLowConfidence: session.filters.showLowConfidence,
+        limit: 60,
+      })
         .then((result) => {
           setSession((prev) => ({
             ...prev,
@@ -154,7 +162,7 @@ export function useGraphExploration(input: {
         })
         .finally(() => setExpandingId(null));
     },
-    [session.expansions, input.datasetIds],
+    [session.expansions, session.filters.showLowConfidence, input.datasetIds],
   );
 
   const setFilters = useCallback((filters: GraphFilters) => {

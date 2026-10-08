@@ -360,14 +360,17 @@ describe('KnowledgeGraphService', () => {
       },
       { id: '消息队列', name: '消息队列', type: 'CONCEPT', degree: 1 },
     ]);
+    // 平行边折叠（G5）：边 id 收敛为 source|type|target，并标注 count/sourceChunkIds
     expect(view.edges).toEqual([
       {
-        id: 'kafka|USED_FOR|消息队列|chunk_1',
+        id: 'kafka|USED_FOR|消息队列',
         source: 'kafka',
         target: '消息队列',
         type: 'USED_FOR',
         confidence: 0.9,
         sourceChunkId: 'chunk_1',
+        count: 1,
+        sourceChunkIds: ['chunk_1'],
       },
     ]);
     const calls = run.mock.calls as unknown as [
@@ -484,12 +487,14 @@ describe('KnowledgeGraphService', () => {
     ]);
     expect(view.edges).toEqual([
       {
-        id: 'kafka|USED_FOR|消息队列|chunk_1',
+        id: 'kafka|USED_FOR|消息队列',
         source: 'kafka',
         target: '消息队列',
         type: 'USED_FOR',
         sourceChunkId: 'chunk_1',
         confidence: 0.9,
+        count: 1,
+        sourceChunkIds: ['chunk_1'],
       },
     ]);
     const calls = run.mock.calls as unknown as [
@@ -557,6 +562,190 @@ describe('KnowledgeGraphService', () => {
       service.answerContext({ ownerId: 'user_1', chunkIds: [] }),
     ).resolves.toEqual({ focus: '', nodes: [], edges: [], truncated: false });
     expect(driver.session).not.toHaveBeenCalled();
+  });
+
+  it('hides relations below the confidence threshold by default and restores them on demand (G4)', async () => {
+    const buildService = () => {
+      const focusResult = {
+        records: [record({ id: 'kafka', name: 'Kafka', type: 'TECHNOLOGY' })],
+      };
+      const pathResult = {
+        records: [
+          {
+            get: (key: string) =>
+              key === 'pathNodes'
+                ? [
+                    {
+                      properties: {
+                        normalizedName: 'kafka',
+                        name: 'Kafka',
+                        type: 'TECHNOLOGY',
+                      },
+                    },
+                    {
+                      properties: {
+                        normalizedName: '消息队列',
+                        name: '消息队列',
+                        type: 'CONCEPT',
+                      },
+                    },
+                  ]
+                : [
+                    {
+                      type: 'USED_FOR',
+                      properties: { sourceChunkId: 'chunk_1', confidence: 0.3 },
+                    },
+                  ],
+          },
+        ],
+      };
+      const run = jest
+        .fn()
+        .mockResolvedValueOnce(focusResult)
+        .mockResolvedValueOnce(pathResult);
+      return new KnowledgeGraphService({
+        session: jest.fn().mockReturnValue({ run, close: jest.fn() }),
+      } as never);
+    };
+
+    const hidden = await buildService().neighborhood({
+      ownerId: 'user_1',
+      entities: ['Kafka'],
+    });
+    expect(hidden.edges).toEqual([]);
+
+    const shown = await buildService().neighborhood({
+      ownerId: 'user_1',
+      entities: ['Kafka'],
+      includeLowConfidence: true,
+    });
+    expect(shown.edges).toHaveLength(1);
+    expect(shown.edges[0]).toMatchObject({
+      id: 'kafka|USED_FOR|消息队列',
+      confidence: 0.3,
+    });
+  });
+
+  it('applies the confidence threshold to search results too (G4)', async () => {
+    const buildService = () => {
+      const result = {
+        records: [
+          {
+            get: jest.fn((key: string) => {
+              if (key === 'source') {
+                return {
+                  properties: {
+                    normalizedName: 'kafka',
+                    name: 'Kafka',
+                    type: 'TECHNOLOGY',
+                  },
+                };
+              }
+              if (key === 'target') {
+                return {
+                  properties: {
+                    normalizedName: '消息队列',
+                    name: '消息队列',
+                    type: 'CONCEPT',
+                  },
+                };
+              }
+              return [
+                {
+                  type: 'USED_FOR',
+                  properties: { sourceChunkId: 'chunk_1', confidence: 0.2 },
+                },
+              ];
+            }),
+          },
+        ],
+      };
+      return new KnowledgeGraphService({
+        session: jest.fn().mockReturnValue({
+          run: jest.fn().mockResolvedValue(result),
+          close: jest.fn(),
+        }),
+      } as never);
+    };
+
+    const hidden = await buildService().search({
+      ownerId: 'user_1',
+      entityNames: ['Kafka'],
+    });
+    expect(hidden.relations).toEqual([]);
+
+    const shown = await buildService().search({
+      ownerId: 'user_1',
+      entityNames: ['Kafka'],
+      includeLowConfidence: true,
+    });
+    expect(shown.relations).toHaveLength(1);
+  });
+
+  it('folds parallel edges from different chunks into one with count and chunk ids (G5)', async () => {
+    const focusResult = {
+      records: [record({ id: 'kafka', name: 'Kafka', type: 'TECHNOLOGY' })],
+    };
+    const pathRecord = (sourceChunkId: string, confidence: number) => ({
+      get: (key: string) =>
+        key === 'pathNodes'
+          ? [
+              {
+                properties: {
+                  normalizedName: 'kafka',
+                  name: 'Kafka',
+                  type: 'TECHNOLOGY',
+                },
+              },
+              {
+                properties: {
+                  normalizedName: '消息队列',
+                  name: '消息队列',
+                  type: 'CONCEPT',
+                },
+              },
+            ]
+          : [{ type: 'USED_FOR', properties: { sourceChunkId, confidence } }],
+    });
+    const pathResult = {
+      records: [pathRecord('chunk_1', 0.6), pathRecord('chunk_2', 0.9)],
+    };
+    const run = jest
+      .fn()
+      .mockResolvedValueOnce(focusResult)
+      .mockResolvedValueOnce(pathResult);
+    const service = new KnowledgeGraphService({
+      session: jest.fn().mockReturnValue({ run, close: jest.fn() }),
+    } as never);
+
+    const view = await service.neighborhood({
+      ownerId: 'user_1',
+      entities: ['Kafka'],
+    });
+
+    expect(view.edges).toEqual([
+      {
+        id: 'kafka|USED_FOR|消息队列',
+        source: 'kafka',
+        target: '消息队列',
+        type: 'USED_FOR',
+        confidence: 0.9,
+        sourceChunkId: 'chunk_2',
+        count: 2,
+        sourceChunkIds: ['chunk_1', 'chunk_2'],
+      },
+    ]);
+    // 折叠后按边去重计数，度数不再被平行边重复放大
+    expect(view.nodes).toEqual([
+      {
+        id: 'kafka',
+        name: 'Kafka',
+        type: 'TECHNOLOGY',
+        degree: 1,
+        isFocus: true,
+      },
+      { id: '消息队列', name: '消息队列', type: 'CONCEPT', degree: 1 },
+    ]);
   });
 
   it('deletes only the chunk nodes outside the kept set when cleaning orphans', async () => {

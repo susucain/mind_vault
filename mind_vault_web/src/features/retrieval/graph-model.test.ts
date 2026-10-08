@@ -106,18 +106,45 @@ describe('applyGraphFilters', () => {
   });
 
   it('filters nodes by entity type and drops edges touching removed nodes', () => {
-    const filtered = applyGraphFilters(graph, { entityTypes: ['TECHNOLOGY', 'CONCEPT'], relationTypes: [] });
+    const filtered = applyGraphFilters(graph, {
+      entityTypes: ['TECHNOLOGY', 'CONCEPT'],
+      relationTypes: [],
+      showLowConfidence: false,
+    });
 
     expect(filtered.nodes.map((item) => item.id).sort()).toEqual(['A', 'B']);
     expect(filtered.edges.map((item) => item.id)).toEqual(['A|USES|B']);
   });
 
   it('filters edges by relation type and recomputes degree', () => {
-    const filtered = applyGraphFilters(graph, { entityTypes: [], relationTypes: ['RELATED_TO'] });
+    const filtered = applyGraphFilters(graph, {
+      entityTypes: [],
+      relationTypes: ['RELATED_TO'],
+      showLowConfidence: false,
+    });
 
     expect(filtered.edges).toHaveLength(1);
     expect(filtered.nodes.find((item) => item.id === 'A')?.degree).toBe(0);
     expect(filtered.nodes.find((item) => item.id === 'B')?.degree).toBe(1);
+  });
+
+  it('hides low-confidence edges by default and shows them on demand (G4)', () => {
+    const withConfidence = view(
+      'A',
+      [node('A', 'TECHNOLOGY', true), node('B', 'CONCEPT'), node('C', 'PERSON')],
+      [
+        { id: 'A|USES|B', source: 'A', target: 'B', type: 'USES', confidence: 0.8 },
+        { id: 'A|CREATED_BY|C', source: 'A', target: 'C', type: 'CREATED_BY', confidence: 0.3 },
+        // 历史边没有置信度，不能被默认隐藏
+        { id: 'B|RELATED_TO|C', source: 'B', target: 'C', type: 'RELATED_TO' },
+      ],
+    );
+
+    const hidden = applyGraphFilters(withConfidence, emptyGraphFilters());
+    expect(hidden.edges.map((item) => item.id).sort()).toEqual(['A|USES|B', 'B|RELATED_TO|C']);
+
+    const shown = applyGraphFilters(withConfidence, { ...emptyGraphFilters(), showLowConfidence: true });
+    expect(shown.edges).toHaveLength(3);
   });
 });
 

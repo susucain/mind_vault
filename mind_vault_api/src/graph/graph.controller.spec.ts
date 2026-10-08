@@ -25,4 +25,29 @@ describe('GraphController', () => {
       limit: undefined,
     });
   });
+
+  it('passes the low-confidence switch through to the neighborhood query (G4)', async () => {
+    const graph = {
+      neighborhood: jest.fn().mockResolvedValue({
+        focus: '',
+        nodes: [],
+        edges: [],
+        truncated: false,
+      }),
+    };
+    const controller = new GraphController(graph as never);
+
+    await controller.neighborhood(
+      { id: 'user_1' },
+      { entity: 'Kafka', includeLowConfidence: true },
+    );
+
+    expect(graph.neighborhood).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerId: 'user_1',
+        entities: ['Kafka'],
+        includeLowConfidence: true,
+      }),
+    );
+  });
 });

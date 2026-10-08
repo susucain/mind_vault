@@ -1,6 +1,7 @@
 import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -50,4 +51,9 @@ export class NeighborhoodDto {
   @Min(10)
   @Max(200)
   limit?: number;
+
+  /** 默认隐藏低置信关系（G4/D12），开启后一并返回 */
+  @IsOptional()
+  @IsBoolean()
+  includeLowConfidence?: boolean;
 }

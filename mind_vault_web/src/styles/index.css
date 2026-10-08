@@ -1100,6 +1100,7 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .graph-detail__relation { min-width: 0; display: inline-flex; align-items: center; gap: 6px; color: var(--mv-muted-strong); }
 .graph-detail__relation strong { color: var(--mv-ink); font-weight: 600; }
 .graph-detail__confidence { color: var(--mv-muted); font-size: 0.7rem; }
+.graph-detail__count { color: var(--mv-muted-strong); font-size: 0.7rem; }
 .graph-detail__evidence { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; color: var(--mv-primary); font-size: 0.72rem; text-decoration: none; }
 .graph-detail__evidence:hover { text-decoration: underline; }
 .graph-detail__empty { margin: 0; color: var(--mv-muted); font-size: 0.78rem; }

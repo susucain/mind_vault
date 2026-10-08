@@ -14,7 +14,7 @@ import {
  * 抽取 prompt 版本号（G1）：写入任务记录与日志，使「改了 prompt 后质量变好/变坏」
  * 可归因（配合后续准确率回归）。**每次改动 prompt 必须递增。**
  */
-export const GRAPH_EXTRACTION_PROMPT_VERSION = 1;
+export const GRAPH_EXTRACTION_PROMPT_VERSION = 2;
 
 @Injectable()
 export class GraphExtractionService {
@@ -57,7 +57,7 @@ export class GraphExtractionService {
           'fast',
           [
             new SystemMessage(
-              `你是知识图谱抽取器。只从提供原文中提取实体和关系。实体最多 ${maxEntities} 个，关系最多 ${maxRelations} 条。实体类型只能是 PERSON、PROJECT、TECHNOLOGY、CONCEPT、ORGANIZATION、EVENT。关系类型只能是 USES、USED_FOR、DEPENDS_ON、CAUSES、RELATED_TO、PART_OF、CREATED_BY、MENTIONED_WITH。不得编造。实体名必须自足可辨：禁止「本文」「该项目」「它」「该方案」「如上所述」这类指代或泛化写法，遇到指代时用文档标题或章节路径里的具体名称补全（例如用「Elasticsearch 倒排索引」而非「它」）。输出 JSON：{"entities":[{"name":"","type":""}],"relations":[{"source":"","target":"","type":"","confidence":0.0}]}。`,
+              `你是知识图谱抽取器。只从提供原文中提取实体和关系。实体最多 ${maxEntities} 个，关系最多 ${maxRelations} 条。实体类型只能是 PERSON、PROJECT、TECHNOLOGY、CONCEPT、ORGANIZATION、EVENT。关系类型只能是 USES、USED_FOR、DEPENDS_ON、CAUSES、RELATED_TO、PART_OF、CREATED_BY、MENTIONED_WITH。关系类型边界：优先选具体类型（USES/USED_FOR/DEPENDS_ON/CAUSES/PART_OF/CREATED_BY）；RELATED_TO 是兜底，仅在确有关联但无法归入其他类型时使用；MENTIONED_WITH 仅用于同一片段中被同时提及、但无明确语义关系的情况。不要把所有关系都写成 RELATED_TO。不得编造。实体名必须自足可辨：禁止「本文」「该项目」「它」「该方案」「如上所述」这类指代或泛化写法，遇到指代时用文档标题或章节路径里的具体名称补全（例如用「Elasticsearch 倒排索引」而非「它」）。输出 JSON：{"entities":[{"name":"","type":""}],"relations":[{"source":"","target":"","type":"","confidence":0.0}]}。`,
             ),
             new HumanMessage(buildPrompt(input)),
           ],

@@ -19,10 +19,11 @@ function toggle<T>(values: T[], value: T): T[] {
   return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
 }
 
-/** 类型过滤只在前端生效：改变筛选不会重新请求后端。 */
+/** 类型过滤只在前端生效：改变筛选不会重新请求后端；低置信开关会触发重新请求（G4）。 */
 export function GraphFilterBar({ filters, onChange }: GraphFilterBarProps) {
   const [open, setOpen] = useState(false);
-  const activeCount = filters.entityTypes.length + filters.relationTypes.length;
+  const activeCount =
+    filters.entityTypes.length + filters.relationTypes.length + (filters.showLowConfidence ? 1 : 0);
 
   return (
     <Popover onOpenChange={setOpen} open={open}>
@@ -35,7 +36,7 @@ export function GraphFilterBar({ filters, onChange }: GraphFilterBarProps) {
       <PopoverContent align="end" className="w-72 p-0">
         <div className="graph-filter">
           <div className="graph-filter__head">
-            <span>按类型筛选</span>
+            <span>筛选</span>
             <button
               disabled={activeCount === 0}
               onClick={() => onChange(emptyGraphFilters())}
@@ -70,6 +71,17 @@ export function GraphFilterBar({ filters, onChange }: GraphFilterBarProps) {
                   <span>{RELATION_TYPE_LABELS[type]}</span>
                 </label>
               ))}
+            </div>
+            <p className="graph-filter__group">关系置信</p>
+            <div className="graph-filter__options">
+              <label className="graph-filter__option">
+                <input
+                  checked={filters.showLowConfidence}
+                  onChange={() => onChange({ ...filters, showLowConfidence: !filters.showLowConfidence })}
+                  type="checkbox"
+                />
+                <span>显示低置信关系</span>
+              </label>
             </div>
           </div>
         </div>

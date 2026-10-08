@@ -2,6 +2,7 @@ import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsInt,
   IsOptional,
   IsString,
@@ -32,4 +33,12 @@ export class GraphSearchDto {
   @Min(1)
   @Max(3)
   maxHops?: number;
+
+  /** 默认隐藏低置信关系（G4/D12）；GET 查询串需显式转布尔 */
+  @IsOptional()
+  @Transform(
+    ({ value }: { value: unknown }) => value === true || value === 'true',
+  )
+  @IsBoolean()
+  includeLowConfidence?: boolean;
 }

@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Driver } from 'neo4j-driver';
 import {
   GraphAnswerContextInput,
@@ -21,6 +22,10 @@ export const NEO4J_DRIVER = Symbol('NEO4J_DRIVER');
 
 /** 别名展示上限（G2）：避免高频实体把 aliases 数组撑爆 */
 const MAX_ALIASES = 10;
+/** 平行边折叠后保留的来源片段上限（G5）：只用于标注，无需回传全部 */
+const MAX_EDGE_CHUNK_IDS = 10;
+/** 低置信关系阈值缺省值（G4/D12），与 configuration.ts 的 graph.relationMinConfidence 一致 */
+const DEFAULT_RELATION_MIN_CONFIDENCE = 0.5;
 
 interface GraphIndexInput extends GraphExtraction {
   ownerId: string;
@@ -32,7 +37,10 @@ interface GraphIndexInput extends GraphExtraction {
 
 @Injectable()
 export class KnowledgeGraphService {
-  constructor(@Inject(NEO4J_DRIVER) private readonly driver: Driver) {}
+  constructor(
+    @Inject(NEO4J_DRIVER) private readonly driver: Driver,
+    private readonly config?: ConfigService,
+  ) {}
 
   async onModuleInit() {
     const session = this.driver.session();
@@ -207,6 +215,28 @@ export class KnowledgeGraphService {
     }
   }
 
+  /** 低置信阈值（G4）：显式开启时返回 0（不过滤），否则读 graph.relationMinConfidence */
+  private relationMinConfidence(includeLowConfidence?: boolean): number {
+    if (includeLowConfidence) return 0;
+    const configured = Number(
+      this.config?.get<string | number>(
+        'graph.relationMinConfidence',
+        DEFAULT_RELATION_MIN_CONFIDENCE,
+      ) ?? DEFAULT_RELATION_MIN_CONFIDENCE,
+    );
+    return Number.isFinite(configured) && configured >= 0
+      ? configured
+      : DEFAULT_RELATION_MIN_CONFIDENCE;
+  }
+
+  /** 缺置信度的历史边一律保留，避免被默认过滤误藏 */
+  private keepConfidence(
+    confidence: number | undefined,
+    minConfidence: number,
+  ): boolean {
+    return confidence === undefined || confidence >= minConfidence;
+  }
+
   /** 按归一名批量回查同 owner 下已存在的实体（G3 端点闭合阶段②） */
   private async findExistingNames(
     ownerId: string,
@@ -258,6 +288,9 @@ export class KnowledgeGraphService {
         },
       );
       const entities = new Map<string, { name: string; type: string }>();
+      const minConfidence = this.relationMinConfidence(
+        input.includeLowConfidence,
+      );
       const relations = new Map<
         string,
         {
@@ -304,6 +337,10 @@ export class KnowledgeGraphService {
             graphRelation.type,
             graphRelation.sourceChunkId ?? '',
           ].join(':');
+          // 低置信关系默认不返回（G4/D12），仍保留在库中供显式开启
+          if (!this.keepConfidence(graphRelation.confidence, minConfidence)) {
+            continue;
+          }
           relations.set(relationKey, graphRelation);
         }
       }
@@ -448,8 +485,14 @@ export class KnowledgeGraphService {
       const typeFilter = input.entityTypes?.length
         ? new Set(input.entityTypes)
         : null;
+      const minConfidence = this.relationMinConfidence(
+        input.includeLowConfidence,
+      );
       let nodes = [...nodeMap.values()];
-      let edges = [...edgeMap.values()];
+      // 平行边折叠（G5）+ 低置信过滤（G4）：后端保留多边，视图层聚合为一条
+      let edges = foldEdges([...edgeMap.values()]).filter((edge) =>
+        this.keepConfidence(edge.confidence, minConfidence),
+      );
       if (typeFilter) {
         nodes = nodes.filter(
           (node) => node.isFocus || typeFilter.has(node.type),
@@ -556,7 +599,13 @@ export class KnowledgeGraphService {
         });
       }
 
-      const edges = [...edgeMap.values()];
+      // 平行边折叠（G5）+ 低置信过滤（G4），与 neighborhood 口径一致
+      const minConfidence = this.relationMinConfidence(
+        input.includeLowConfidence,
+      );
+      const edges = foldEdges([...edgeMap.values()]).filter((edge) =>
+        this.keepConfidence(edge.confidence, minConfidence),
+      );
       const degree = new Map<string, number>();
       for (const edge of edges) {
         degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
@@ -635,6 +684,41 @@ export class KnowledgeGraphService {
 }
 
 const RELATION_TYPE_SET = new Set<string>(RELATION_TYPES);
+
+/**
+ * 平行边折叠（G5）：同一对实体的同类型边在**视图层**聚合为一条，
+ * 只保留最大置信度与来源片段集合；后端仍保留多边（sourceChunkId 是关系归属文档的依据）。
+ */
+function foldEdges(edges: GraphViewEdge[]): GraphViewEdge[] {
+  const grouped = new Map<string, GraphViewEdge & { chunkIds: string[] }>();
+  for (const edge of edges) {
+    const key = [edge.source, edge.type, edge.target].join('|');
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, {
+        ...edge,
+        id: key,
+        chunkIds: edge.sourceChunkId ? [edge.sourceChunkId] : [],
+      });
+      continue;
+    }
+    existing.count = (existing.count ?? 1) + 1;
+    if (edge.sourceChunkId && !existing.chunkIds.includes(edge.sourceChunkId)) {
+      existing.chunkIds.push(edge.sourceChunkId);
+    }
+    // 折叠后置信度取最大，代表最强的证据；sourceChunkId 随之指向该边
+    if ((edge.confidence ?? 0) > (existing.confidence ?? 0)) {
+      existing.confidence = edge.confidence;
+      existing.sourceChunkId = edge.sourceChunkId;
+    }
+  }
+  return [...grouped.values()].map(({ chunkIds, ...edge }) => ({
+    ...edge,
+    count: edge.count ?? 1,
+    sourceChunkIds:
+      chunkIds.length > 0 ? chunkIds.slice(0, MAX_EDGE_CHUNK_IDS) : undefined,
+  }));
+}
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : '';

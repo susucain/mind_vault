@@ -26,6 +26,8 @@ export interface GraphTaskQuality {
   };
   truncatedEntities: number;
   truncatedRelations: number;
+  /** 关系类型分布（G5）：用于判断兜底类 RELATED_TO 占比是否过高 */
+  relationTypes?: Record<string, number>;
 }
 
 @Entity('kh_document_graph_task')
