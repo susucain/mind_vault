@@ -5,9 +5,6 @@ import { useUploadStore, type QueuedUpload } from '../stores/upload.store';
 
 const MAX_CONCURRENT_UPLOADS = 3;
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
-const ALLOWED_EXTENSIONS = new Set([
-  'pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'txt', 'md', 'csv', 'json',
-]);
 
 function extension(file: File): string {
   return file.name.split('.').pop()?.toLowerCase() ?? '';
@@ -103,7 +100,7 @@ export function useUploadQueue() {
       const response = await uploadDocument(
         item.file,
         { datasetId: item.datasetId, graphEnabled: item.graphEnabled },
-        { signal: controller.signal },
+        { signal: controller.signal, idempotencyKey: item.localId },
       );
       if (controller.signal.aborted) return;
       update(item.localId, {
@@ -131,12 +128,16 @@ export function useUploadQueue() {
       .forEach((item) => void startUpload(item));
   }, [items, startUpload]);
 
-  const enqueue = useCallback((files: File[], datasetId: string, options: { graphEnabled?: boolean } = {}) => {
+  const enqueue = useCallback((files: File[], datasetId: string, options: { graphEnabled?: boolean; extensions?: string[] } = {}) => {
     const graphEnabled = options.graphEnabled ?? false;
+    // 白名单由服务端下发（老格式取决于 soffice 是否可用）；未取到时不拦截，交由服务端校验
+    const allowed = options.extensions?.length
+      ? new Set(options.extensions.map((item) => item.toLowerCase()))
+      : undefined;
     const queued: QueuedUpload[] = files.map((file) => {
       let errorMessage: string | undefined;
-      if (!ALLOWED_EXTENSIONS.has(extension(file))) errorMessage = `Unsupported file type: .${extension(file) || 'none'}`;
-      if (file.size > MAX_FILE_SIZE) errorMessage = 'File exceeds the 100MB limit';
+      if (allowed && !allowed.has(extension(file))) errorMessage = `不支持的文件格式：.${extension(file) || '未知'}`;
+      if (file.size > MAX_FILE_SIZE) errorMessage = '文件超过 100MB 上限';
       return {
         localId: id(),
         file,

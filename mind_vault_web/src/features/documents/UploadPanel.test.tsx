@@ -6,6 +6,10 @@ import { UploadPanel } from './UploadPanel';
 
 const { enqueue } = vi.hoisted(() => ({ enqueue: vi.fn() }));
 
+const { supportedExtensions } = vi.hoisted(() => ({
+  supportedExtensions: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'txt', 'md', 'csv', 'json'],
+}));
+
 vi.mock('../../hooks/use-upload-queue', () => ({
   useUploadQueue: () => ({
     cancel: vi.fn(),
@@ -14,6 +18,10 @@ vi.mock('../../hooks/use-upload-queue', () => ({
     retry: vi.fn(),
     stopTracking: vi.fn(),
   }),
+}));
+
+vi.mock('./queries', () => ({
+  useSupportedFormats: () => ({ data: { extensions: supportedExtensions } }),
 }));
 
 const dataset = {
@@ -67,7 +75,7 @@ describe('UploadPanel', () => {
 
     await user.upload(screen.getByLabelText('选择文件'), file);
 
-    expect(enqueue).toHaveBeenCalledWith([file], 'dataset-1', { graphEnabled: false });
+    expect(enqueue).toHaveBeenCalledWith([file], 'dataset-1', { graphEnabled: false, extensions: supportedExtensions });
     expect(onEnqueued).toHaveBeenCalledWith('dataset-1');
   });
 
@@ -80,7 +88,7 @@ describe('UploadPanel', () => {
     await user.click(await screen.findByRole('option', { name: /算法笔记/ }));
     await user.upload(screen.getByLabelText('选择文件'), file);
 
-    expect(enqueue).toHaveBeenCalledWith([file], 'dataset-2', { graphEnabled: false });
+    expect(enqueue).toHaveBeenCalledWith([file], 'dataset-2', { graphEnabled: false, extensions: supportedExtensions });
     expect(onEnqueued).toHaveBeenCalledWith('dataset-2');
   });
 
@@ -92,6 +100,6 @@ describe('UploadPanel', () => {
     await user.click(screen.getByLabelText(/构建知识图谱/));
     await user.upload(screen.getByLabelText('选择文件'), file);
 
-    expect(enqueue).toHaveBeenCalledWith([file], 'dataset-1', { graphEnabled: true });
+    expect(enqueue).toHaveBeenCalledWith([file], 'dataset-1', { graphEnabled: true, extensions: supportedExtensions });
   });
 });

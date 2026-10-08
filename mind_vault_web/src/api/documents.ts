@@ -29,6 +29,11 @@ export interface UploadDocumentResult {
   status: string;
 }
 
+/** 服务端当前可上传的扩展名（老格式取决于服务端 soffice 是否可用） */
+export interface SupportedFormats {
+  extensions: string[];
+}
+
 export interface DocumentProcessingStatus {
   documentId: string;
   jobId: string;
@@ -141,6 +146,9 @@ export async function fetchDocumentAsset(key: string): Promise<Blob> {
 
 export const getDocumentStatus = (id: string) =>
   request<DocumentProcessingStatus>(`/documents/${id}/status`);
+/** 可上传格式清单：前端不再硬编码白名单，统一由服务端下发 */
+export const getSupportedFormats = () =>
+  request<SupportedFormats>('/documents/supported-formats');
 export const retryDocument = (id: string) =>
   jsonRequest<RetryDocumentResult>(`/documents/${id}/retry`, 'POST');
 export const reindexDocument = (id: string) => jsonRequest<Document>(`/documents/${id}/reindex`, 'POST');
@@ -152,7 +160,7 @@ export const deleteDocument = (id: string) => request<void>(`/documents/${id}`, 
 export async function uploadDocument(
   file: File,
   input: UploadDocumentInput,
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; idempotencyKey?: string } = {},
 ): Promise<UploadDocumentResult> {
   const body = new FormData();
   body.append('file', file);
@@ -161,7 +169,12 @@ export async function uploadDocument(
   if (input.remark) body.append('remark', input.remark);
   body.append('sourceFileName', file.name);
   body.append('graphEnabled', String(input.graphEnabled ?? false));
-  return request<UploadDocumentResult>('/documents/upload', { method: 'POST', body, signal: options.signal });
+  return request<UploadDocumentResult>('/documents/upload', {
+    method: 'POST',
+    body,
+    signal: options.signal,
+    headers: options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : undefined,
+  });
 }
 
 export interface Folder {

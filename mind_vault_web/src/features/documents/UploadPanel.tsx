@@ -5,7 +5,7 @@ import type { Dataset } from '../../types/domain';
 import { useUploadQueue } from '../../hooks/use-upload-queue';
 import { Button } from '../../components/ui';
 import { DatasetSelect } from '@/components/shadcn/DatasetSelect';
-import { P0_EXTENSIONS } from './document-utils';
+import { useSupportedFormats } from './queries';
 
 export function UploadPanel({
   datasets,
@@ -17,6 +17,8 @@ export function UploadPanel({
   onEnqueued: (datasetId: string) => void;
 }) {
   const { enqueue } = useUploadQueue();
+  const { data: supportedFormats } = useSupportedFormats();
+  const extensions = supportedFormats?.extensions ?? [];
   const inputRef = useRef<HTMLInputElement>(null);
   const [datasetId, setDatasetId] = useState('');
   const [dragging, setDragging] = useState(false);
@@ -27,7 +29,7 @@ export function UploadPanel({
     if (!selectedDatasetId) return;
     const nextFiles = Array.from(files);
     if (!nextFiles.length) return;
-    enqueue(nextFiles, selectedDatasetId, { graphEnabled });
+    enqueue(nextFiles, selectedDatasetId, { graphEnabled, extensions });
     onEnqueued(selectedDatasetId);
   }
 
@@ -91,10 +93,15 @@ export function UploadPanel({
         onDrop={drop}
       >
         <FileUp aria-hidden="true" size={24} />
-        <div><strong>拖放文件到这里</strong><span>支持 {P0_EXTENSIONS.join('、')}，单文件不超过 100MB</span></div>
+        <div>
+          <strong>拖放文件到这里</strong>
+          <span>
+            {extensions.length ? `支持 ${extensions.join('、')}，单文件不超过 100MB` : '单文件不超过 100MB'}
+          </span>
+        </div>
         <input
           aria-label="选择文件"
-          accept={P0_EXTENSIONS.map((extension) => `.${extension}`).join(',')}
+          accept={extensions.map((extension) => `.${extension}`).join(',')}
           hidden
           multiple
           onChange={select}

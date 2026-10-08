@@ -8,7 +8,10 @@ import { listDatasets } from '../../api/datasets';
 import { useUploadStore } from '../../stores/upload.store';
 import { LibraryPage } from './LibraryPage';
 
-vi.mock('../../api/documents', () => ({ listDocuments: vi.fn() }));
+vi.mock('../../api/documents', () => ({
+  listDocuments: vi.fn(),
+  getSupportedFormats: vi.fn().mockResolvedValue({ extensions: [] }),
+}));
 vi.mock('../../api/datasets', () => ({ listDatasets: vi.fn() }));
 vi.mock('../../hooks/use-upload-queue', () => ({
   useUploadQueue: () => ({

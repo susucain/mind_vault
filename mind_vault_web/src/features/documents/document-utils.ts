@@ -17,8 +17,6 @@ export function sectionDomId(order: number): string {
   return `section-${order}`;
 }
 
-export const P0_EXTENSIONS = ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'txt', 'md', 'csv', 'json'] as const;
-
 export const documentStatusPresentation: Record<DocumentStatus, {
   label: string;
   tone: 'pending' | 'uploading' | 'processing' | 'success' | 'danger' | 'archived';

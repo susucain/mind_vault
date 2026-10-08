@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { listDatasets } from '../../api/datasets';
-import { listDocuments } from '../../api/documents';
+import { getSupportedFormats, listDocuments } from '../../api/documents';
 import { appConfig } from '../../lib/config';
 import { mockDocuments } from '../overview/mock-data';
 
@@ -34,5 +34,14 @@ export function useDatasets() {
   return useQuery({
     queryKey: ['datasets'],
     queryFn: () => listDatasets({ page: 1, pageSize: 100 }),
+  });
+}
+
+/** 可上传格式清单，缓存较久（服务端只在 soffice 可用性变化时改变） */
+export function useSupportedFormats() {
+  return useQuery({
+    queryKey: ['documents', 'supported-formats'],
+    queryFn: getSupportedFormats,
+    staleTime: 30 * 60 * 1000,
   });
 }
