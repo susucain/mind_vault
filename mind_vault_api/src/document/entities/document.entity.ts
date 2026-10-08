@@ -121,6 +121,10 @@ export class DocumentEntity {
   @Column({ name: 'upload_key', type: 'varchar', nullable: true })
   uploadKey?: string | null;
 
+  /** 内容指纹（U3）：服务端对上传字节计算的 sha256，用于同资料集内的重复文件拦截 */
+  @Column({ name: 'content_hash', type: 'varchar', nullable: true })
+  contentHash?: string | null;
+
   /** 创建时间 */
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

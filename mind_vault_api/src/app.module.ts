@@ -44,6 +44,7 @@ import { AddMessageSuggestions1791244800000 } from './migrations/1791244800000-a
 import { AddGraphEnabled1791331200000 } from './migrations/1791331200000-add-graph-enabled';
 import { AddDocumentChunkCheckpoint1791417600000 } from './migrations/1791417600000-add-document-chunk-checkpoint';
 import { DropGraphTaskText1791504000000 } from './migrations/1791504000000-drop-graph-task-text';
+import { AddDocumentContentHash1791590400000 } from './migrations/1791590400000-add-document-content-hash';
 import { AddDocumentUploadKey1791676800000 } from './migrations/1791676800000-add-document-upload-key';
 
 const standalone = buildConfiguration(process.env).runtime.standalone;
@@ -111,6 +112,7 @@ const standalone = buildConfiguration(process.env).runtime.standalone;
                 AddGraphEnabled1791331200000,
                 AddDocumentChunkCheckpoint1791417600000,
                 DropGraphTaskText1791504000000,
+                AddDocumentContentHash1791590400000,
                 AddDocumentUploadKey1791676800000,
               ],
               migrationsRun: true,

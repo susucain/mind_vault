@@ -1,4 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await */
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { DocumentUploadService } from './document-upload.service';
 
 /** 上传可用格式清单桩；pdf 魔数匹配由各用例自行构造文件头 */
@@ -22,12 +25,36 @@ const parser = {
 
 const pdfBytes = Buffer.from('%PDF-1.4\nmind vault');
 
+const tempRoot = mkdtempSync(join(tmpdir(), 'upload-spec-'));
+let tempCounter = 0;
+
+/** 流式落盘后 upload() 接收的是临时文件路径，这里为每个用例写一份真实文件 */
+function tempFile(
+  name: string,
+  bytes: Buffer,
+  mimetype = 'application/pdf',
+): {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  path: string;
+} {
+  const path = join(tempRoot, `${tempCounter++}-${name}`);
+  writeFileSync(path, bytes);
+  return { originalname: name, mimetype, size: bytes.length, path };
+}
+
+afterAll(() => {
+  rmSync(tempRoot, { recursive: true, force: true });
+});
+
 describe('DocumentUploadService', () => {
   it('stores file metadata and queues an indexing job without parsing synchronously', async () => {
     const contentModel = {
       create: jest.fn().mockResolvedValue({ _id: 'mongo_content_1' }),
     };
     const manager = {
+      find: jest.fn().mockResolvedValue([]),
       create: jest.fn((_, input) => input),
       save: jest.fn(async (input) => ({ id: 'doc_1', ...input })),
     };
@@ -37,7 +64,7 @@ describe('DocumentUploadService', () => {
     };
     const storage = {
       isEnabled: jest.fn().mockReturnValue(false),
-      uploadBytes: jest
+      uploadFile: jest
         .fn()
         .mockResolvedValue('users/user_1/documents/doc_1/a.pdf'),
     };
@@ -58,16 +85,7 @@ describe('DocumentUploadService', () => {
     );
 
     await expect(
-      service.upload(
-        'user_1',
-        {
-          originalname: 'a.pdf',
-          mimetype: 'application/pdf',
-          size: 1024,
-          buffer: pdfBytes,
-        },
-        'dataset_1',
-      ),
+      service.upload('user_1', tempFile('a.pdf', pdfBytes), 'dataset_1'),
     ).resolves.toMatchObject({
       documentId: expect.any(String),
       jobId: expect.any(String),
@@ -77,6 +95,10 @@ describe('DocumentUploadService', () => {
 
     expect(contentModel.create).toHaveBeenCalledWith(
       expect.objectContaining({ sourceBytes: pdfBytes }),
+    );
+    expect(manager.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ contentHash: expect.any(String) }),
     );
     expect(publisher.publishIndex).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -91,6 +113,7 @@ describe('DocumentUploadService', () => {
       create: jest.fn().mockResolvedValue({ _id: 'mongo_content_1' }),
     };
     const manager = {
+      find: jest.fn().mockResolvedValue([]),
       create: jest.fn((_, input) => input),
       save: jest.fn(async (input) => ({ id: 'doc_1', ...input })),
     };
@@ -111,12 +134,7 @@ describe('DocumentUploadService', () => {
     await expect(
       service.upload(
         'user_1',
-        {
-          originalname: 'nVoiZShG09cGa2be9d37b42111390.pdf',
-          mimetype: 'application/pdf',
-          size: 1024,
-          buffer: pdfBytes,
-        },
+        tempFile('nVoiZShG09cGa2be9d37b42111390.pdf', pdfBytes),
         'dataset_1',
         { sourceFileName: '中文资料.pdf' },
       ),
@@ -140,8 +158,13 @@ describe('DocumentUploadService', () => {
     const contentModel = {
       create: jest.fn().mockResolvedValue({ _id: 'mongo_content_1' }),
     };
+    const storage = {
+      isEnabled: jest.fn().mockReturnValue(true),
+      uploadFile: jest.fn().mockResolvedValue('users/user_1/documents/a.pdf'),
+    };
     const service = new DocumentUploadService(
       {
+        find: jest.fn().mockResolvedValue([]),
         create: jest.fn((_, input) => input),
         save: jest.fn(async (input) => ({ id: 'doc_1', ...input })),
       } as never,
@@ -150,12 +173,7 @@ describe('DocumentUploadService', () => {
         create: jest.fn((input) => input),
         save: jest.fn(async (input) => ({ id: 'job_1', ...input })),
       } as never,
-      {
-        isEnabled: jest.fn().mockReturnValue(true),
-        uploadBytes: jest
-          .fn()
-          .mockResolvedValue('users/user_1/documents/a.pdf'),
-      } as never,
+      storage as never,
       { publishIndex: jest.fn().mockResolvedValue(undefined) } as never,
       { findOne: jest.fn().mockResolvedValue({ id: 'dataset_1' }) } as never,
       parser,
@@ -164,24 +182,69 @@ describe('DocumentUploadService', () => {
     try {
       await service.upload(
         'user_1',
-        {
-          originalname: 'large.pdf',
-          mimetype: 'application/pdf',
-          size: 16 * 1024 * 1024,
-          buffer: Buffer.concat([
-            Buffer.from('%PDF-'),
-            Buffer.alloc(16 * 1024 * 1024),
-          ]),
-        },
+        tempFile(
+          'large.pdf',
+          Buffer.concat([Buffer.from('%PDF-'), Buffer.alloc(16 * 1024 * 1024)]),
+        ),
         'dataset_1',
       );
     } finally {
       process.env.STORAGE_MIRROR_SOURCE_BYTES = previousMirrorSetting;
     }
 
+    expect(storage.uploadFile).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ size: expect.any(Number) }),
+    );
     expect(contentModel.create).toHaveBeenCalledWith(
       expect.objectContaining({ sourceBytes: undefined }),
     );
+  });
+
+  it('rejects a file that duplicates an existing document in the same dataset', async () => {
+    const contentModel = { create: jest.fn() };
+    const manager = {
+      find: jest.fn().mockResolvedValue([
+        {
+          ownerId: 'user_1',
+          datasetId: 'dataset_1',
+          documentId: 'doc_existing',
+        },
+      ]),
+      findOne: jest.fn().mockResolvedValue({
+        id: 'doc_existing',
+        title: '资料',
+        sourceFileName: '资料.pdf',
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+      }),
+      create: jest.fn(),
+      save: jest.fn(),
+    };
+    const service = new DocumentUploadService(
+      manager as never,
+      contentModel as never,
+      { create: jest.fn(), save: jest.fn() } as never,
+      { isEnabled: () => false } as never,
+      { publishIndex: jest.fn() } as never,
+      { findOne: jest.fn().mockResolvedValue({ id: 'dataset_1' }) } as never,
+      parser,
+    );
+
+    await expect(
+      service.upload('user_1', tempFile('资料.pdf', pdfBytes), 'dataset_1'),
+    ).rejects.toMatchObject({
+      response: {
+        error: 'DUPLICATE_DOCUMENT',
+        details: {
+          duplicateOf: expect.objectContaining({
+            id: 'doc_existing',
+            name: '资料.pdf',
+          }),
+        },
+      },
+    });
+    expect(contentModel.create).not.toHaveBeenCalled();
+    expect(manager.create).not.toHaveBeenCalled();
   });
 
   it('resets a failed job and republishes the same document version', async () => {
@@ -440,17 +503,9 @@ describe('DocumentUploadService', () => {
     );
 
     await expect(
-      service.upload(
-        'user_1',
-        {
-          originalname: '资料.pdf',
-          mimetype: 'application/pdf',
-          size: 1024,
-          buffer: pdfBytes,
-        },
-        'dataset_1',
-        { idempotencyKey: 'local-1' },
-      ),
+      service.upload('user_1', tempFile('资料.pdf', pdfBytes), 'dataset_1', {
+        idempotencyKey: 'local-1',
+      }),
     ).resolves.toMatchObject({
       documentId: 'doc_existing',
       jobId: 'job_existing',
@@ -476,12 +531,7 @@ describe('DocumentUploadService', () => {
     await expect(
       service.upload(
         'user_1',
-        {
-          originalname: 'fake.pdf',
-          mimetype: 'application/pdf',
-          size: 12,
-          buffer: Buffer.from('PK\x03\x04 not a pdf'),
-        },
+        tempFile('fake.pdf', Buffer.from('PK\x03\x04 not a pdf')),
         'dataset_1',
       ),
     ).rejects.toMatchObject({

@@ -1,8 +1,15 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectEntityManager } from '@nestjs/typeorm';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
+import { readFile } from 'node:fs/promises';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DatasetService } from '../dataset/dataset.service';
 import {
@@ -23,7 +30,17 @@ import {
   getExtension,
   titleFromFilename,
 } from './parser/utils/markdown.util';
-import { matchesFileSignature } from './parser/utils/file-signature';
+import {
+  matchesFileSignature,
+  SIGNATURE_SAMPLE_BYTES,
+} from './parser/utils/file-signature';
+import {
+  cleanupUploadTempDir,
+  ensureUploadTempDir,
+  hashFileSha256,
+  readFileHead,
+  removeFileQuietly,
+} from './parser/utils/upload-temp.util';
 import { FileParserService } from './parser/file-parser.service';
 import { nextSnowflakeId } from '../common/snowflake-id';
 import { DocumentGraphTaskService } from './graph/document-graph-task.service';
@@ -32,7 +49,7 @@ import { DocumentStatus } from './document-status';
 const MAX_SOURCE_BYTES_MIRROR = 8 * 1024 * 1024;
 
 @Injectable()
-export class DocumentUploadService {
+export class DocumentUploadService implements OnModuleInit {
   private readonly logger = new Logger(DocumentUploadService.name);
 
   constructor(
@@ -49,6 +66,15 @@ export class DocumentUploadService {
     private readonly graphTasks?: DocumentGraphTaskService,
   ) {}
 
+  /** 上传临时目录就绪 + 清理上次异常退出残留的临时文件 */
+  async onModuleInit(): Promise<void> {
+    await ensureUploadTempDir();
+    const removed = await cleanupUploadTempDir();
+    if (removed > 0) {
+      this.logger.warn(`清理了 ${removed} 个残留的上传临时文件`);
+    }
+  }
+
   /** 当前可上传的扩展名清单（soffice 不可用时不含老格式），供三端共用 */
   supportedFormats(): { extensions: string[] } {
     return { extensions: this.parser.availableExtensions() };
@@ -60,7 +86,8 @@ export class DocumentUploadService {
       originalname: string;
       mimetype?: string;
       size: number;
-      buffer: Buffer;
+      /** 流式落盘的临时文件路径（multer diskStorage），请求结束前由本方法负责删除 */
+      path: string;
     },
     datasetId: string,
     metadata: {
@@ -72,139 +99,191 @@ export class DocumentUploadService {
       idempotencyKey?: string;
     } = {},
   ) {
-    if (!file?.buffer?.length) {
+    if (!file?.path) {
       throw new BadRequestException('文件不能为空');
     }
-    const idempotencyKey = metadata.idempotencyKey?.trim() || undefined;
-    if (idempotencyKey) {
-      const existing = await this.findByUploadKey(ownerId, idempotencyKey);
-      if (existing) {
-        this.logger.log(
-          `命中上传幂等键，返回既有文档：ownerId=${ownerId}, documentId=${existing.documentId}`,
-        );
-        return existing;
-      }
-    }
-
-    const originalname =
-      metadata.sourceFileName?.trim() ||
-      decodeUploadFilename(file.originalname);
-    const extension = getExtension(originalname);
-    if (!this.parser.availableExtensions().includes(extension)) {
-      throw new BadRequestException(
-        `不支持的文件格式: ${extension || '(无扩展名)'}，当前支持 ${this.parser.supportedList()}`,
-      );
-    }
-    if (!matchesFileSignature(extension, file.buffer)) {
-      throw new BadRequestException({
-        message: `文件内容与扩展名 .${extension} 不匹配，请确认文件未被改名`,
-        error: 'FILE_TYPE_MISMATCH',
-      });
-    }
-    await this.datasets.findOne(ownerId, datasetId);
-
-    const documentId = nextSnowflakeId();
-    const fileKey = this.storage.isEnabled()
-      ? await this.storage.uploadBytes(file.buffer, {
-          fileName: `${documentId}-${originalname}`,
-          contentType: file.mimetype,
-          prefix: `users/${ownerId}/documents`,
-        })
-      : null;
-    const shouldMirrorSourceBytes =
-      file.buffer.length <= MAX_SOURCE_BYTES_MIRROR &&
-      (!fileKey || process.env.STORAGE_MIRROR_SOURCE_BYTES === 'true');
-    if (!fileKey && !shouldMirrorSourceBytes) {
-      throw new BadRequestException('超过 8 MiB 的文件需要启用对象存储');
-    }
-
-    const content = await this.contentModel.create({
-      documentId,
-      content: '',
-      contentLength: 0,
-      contentSummary: '',
-      version: 1,
-      deleted: false,
-      sourceBytes: shouldMirrorSourceBytes ? file.buffer : undefined,
-      sourceMimeType: file.mimetype ?? 'application/octet-stream',
-    });
-    const document = this.em.create(DocumentEntity, {
-      id: documentId,
-      ownerId,
-      title: titleFromFilename(originalname),
-      contentId: String(content._id),
-      tags: metadata.tags,
-      remark: metadata.remark,
-      sourceFileName: originalname,
-      sourceFileKey: fileKey,
-      sourceFileSize: String(file.size),
-      sourceFileExtension: extension,
-      status: DocumentStatus.Processing,
-      wordCount: 0,
-      isPublic: false,
-      graphEnabled: metadata.graphEnabled ?? false,
-      uploadKey: idempotencyKey ?? null,
-      deleted: false,
-    });
-    let savedDocument: DocumentEntity;
     try {
-      savedDocument = await this.em.save(document);
-    } catch (error) {
-      // 并发重传：两个请求都通过了前置查询，唯一索引 (owner_id, upload_key) 兜底
-      if (idempotencyKey && isUniqueViolation(error)) {
+      if (file.size <= 0) {
+        throw new BadRequestException('文件不能为空');
+      }
+      const idempotencyKey = metadata.idempotencyKey?.trim() || undefined;
+      if (idempotencyKey) {
         const existing = await this.findByUploadKey(ownerId, idempotencyKey);
-        if (existing) return existing;
+        if (existing) {
+          this.logger.log(
+            `命中上传幂等键，返回既有文档：ownerId=${ownerId}, documentId=${existing.documentId}`,
+          );
+          return existing;
+        }
       }
-      throw error;
-    }
 
-    const relation = this.em.create(DatasetDocumentEntity, {
-      datasetId,
-      documentId,
-      ownerId,
-    });
-    await this.em.save(relation);
+      const originalname =
+        metadata.sourceFileName?.trim() ||
+        decodeUploadFilename(file.originalname);
+      const extension = getExtension(originalname);
+      if (!this.parser.availableExtensions().includes(extension)) {
+        throw new BadRequestException(
+          `不支持的文件格式: ${extension || '(无扩展名)'}，当前支持 ${this.parser.supportedList()}`,
+        );
+      }
+      const head = await readFileHead(file.path, SIGNATURE_SAMPLE_BYTES);
+      if (!matchesFileSignature(extension, head)) {
+        throw new BadRequestException({
+          message: `文件内容与扩展名 .${extension} 不匹配，请确认文件未被改名`,
+          error: 'FILE_TYPE_MISMATCH',
+        });
+      }
+      await this.datasets.findOne(ownerId, datasetId);
 
-    const job = this.jobRepository.create({
-      id: nextSnowflakeId(),
-      ownerId,
-      documentId,
-      documentVersion: 1,
-      operation: IngestionJobOperation.Index,
-      status: IngestionJobStatus.Uploaded,
-      currentStage: 'uploaded',
-      retryCount: 0,
-    });
-    const savedJob = await this.jobRepository.save(job);
-    try {
-      await this.publisher.publishIndex({
-        jobId: savedJob.id,
+      const contentHash = await hashFileSha256(file.path);
+      const duplicate = await this.findDuplicate(
+        ownerId,
+        datasetId,
+        contentHash,
+      );
+      if (duplicate) {
+        this.logger.warn(
+          `上传命中重复文件：ownerId=${ownerId}, datasetId=${datasetId}, documentId=${duplicate.id}`,
+        );
+        throw new ConflictException({
+          message: `该文件已存在：${duplicate.sourceFileName ?? duplicate.title}`,
+          error: 'DUPLICATE_DOCUMENT',
+          details: {
+            duplicateOf: {
+              id: duplicate.id,
+              name: duplicate.sourceFileName ?? duplicate.title,
+              createdAt: duplicate.createdAt,
+            },
+          },
+        });
+      }
+
+      const documentId = nextSnowflakeId();
+      const fileKey = this.storage.isEnabled()
+        ? await this.storage.uploadFile(file.path, {
+            fileName: `${documentId}-${originalname}`,
+            contentType: file.mimetype,
+            prefix: `users/${ownerId}/documents`,
+            size: file.size,
+          })
+        : null;
+      const shouldMirrorSourceBytes =
+        file.size <= MAX_SOURCE_BYTES_MIRROR &&
+        (!fileKey || process.env.STORAGE_MIRROR_SOURCE_BYTES === 'true');
+      if (!fileKey && !shouldMirrorSourceBytes) {
+        throw new BadRequestException('超过 8 MiB 的文件需要启用对象存储');
+      }
+
+      const content = await this.contentModel.create({
+        documentId,
+        content: '',
+        contentLength: 0,
+        contentSummary: '',
+        version: 1,
+        deleted: false,
+        sourceBytes: shouldMirrorSourceBytes
+          ? await readFile(file.path)
+          : undefined,
+        sourceMimeType: file.mimetype ?? 'application/octet-stream',
+      });
+      const document = this.em.create(DocumentEntity, {
+        id: documentId,
+        ownerId,
+        title: titleFromFilename(originalname),
+        contentId: String(content._id),
+        tags: metadata.tags,
+        remark: metadata.remark,
+        sourceFileName: originalname,
+        sourceFileKey: fileKey,
+        sourceFileSize: String(file.size),
+        sourceFileExtension: extension,
+        status: DocumentStatus.Processing,
+        wordCount: 0,
+        isPublic: false,
+        graphEnabled: metadata.graphEnabled ?? false,
+        uploadKey: idempotencyKey ?? null,
+        contentHash,
+        deleted: false,
+      });
+      let savedDocument: DocumentEntity;
+      try {
+        savedDocument = await this.em.save(document);
+      } catch (error) {
+        // 并发重传：两个请求都通过了前置查询，唯一索引 (owner_id, upload_key) 兜底
+        if (idempotencyKey && isUniqueViolation(error)) {
+          const existing = await this.findByUploadKey(ownerId, idempotencyKey);
+          if (existing) return existing;
+        }
+        throw error;
+      }
+
+      const relation = this.em.create(DatasetDocumentEntity, {
+        datasetId,
+        documentId,
+        ownerId,
+      });
+      await this.em.save(relation);
+
+      const job = this.jobRepository.create({
+        id: nextSnowflakeId(),
         ownerId,
         documentId,
         documentVersion: 1,
-        operation: 'index',
+        operation: IngestionJobOperation.Index,
+        status: IngestionJobStatus.Uploaded,
+        currentStage: 'uploaded',
+        retryCount: 0,
       });
-    } catch (error) {
-      // 投递失败不阻断请求：文档与 job 已落库，交由 stale 扫描重投或用户手动重试
-      this.logger.error(
-        `文档索引投递失败，保留任务等待重投：documentId=${documentId}, jobId=${savedJob.id}, error=${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+      const savedJob = await this.jobRepository.save(job);
+      try {
+        await this.publisher.publishIndex({
+          jobId: savedJob.id,
+          ownerId,
+          documentId,
+          documentVersion: 1,
+          operation: 'index',
+        });
+      } catch (error) {
+        // 投递失败不阻断请求：文档与 job 已落库，交由 stale 扫描重投或用户手动重试
+        this.logger.error(
+          `文档索引投递失败，保留任务等待重投：documentId=${documentId}, jobId=${savedJob.id}, error=${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
 
-    this.logger.log(
-      `文档上传成功，等待索引：ownerId=${ownerId}, documentId=${documentId}, jobId=${savedJob.id}`,
-    );
-    return {
-      documentId: savedDocument.id,
-      jobId: savedJob.id,
-      title: savedDocument.title,
-      fileName: originalname,
-      fileExtension: extension,
-      fileSize: file.size,
-      fileKey,
-      graphEnabled: savedDocument.graphEnabled,
-      status: IngestionJobStatus.Uploaded,
-    };
+      this.logger.log(
+        `文档上传成功，等待索引：ownerId=${ownerId}, documentId=${documentId}, jobId=${savedJob.id}`,
+      );
+      return {
+        documentId: savedDocument.id,
+        jobId: savedJob.id,
+        title: savedDocument.title,
+        fileName: originalname,
+        fileExtension: extension,
+        fileSize: file.size,
+        fileKey,
+        graphEnabled: savedDocument.graphEnabled,
+        status: IngestionJobStatus.Uploaded,
+      };
+    } finally {
+      await removeFileQuietly(file.path);
+    }
+  }
+
+  /** 同 ownerId + datasetId 下是否已存在同内容指纹且未删除的文档（U3） */
+  private async findDuplicate(
+    ownerId: string,
+    datasetId: string,
+    contentHash: string,
+  ): Promise<DocumentEntity | null> {
+    const relations = await this.em.find(DatasetDocumentEntity, {
+      where: { ownerId, datasetId },
+    });
+    const documentIds = relations.map((relation) => relation.documentId);
+    if (!documentIds.length) return null;
+    return this.em.findOne(DocumentEntity, {
+      where: { ownerId, contentHash, deleted: false, id: In(documentIds) },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async status(ownerId: string, documentId: string) {

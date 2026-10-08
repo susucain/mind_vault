@@ -1,3 +1,4 @@
+import { createReadStream } from 'node:fs';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -130,6 +131,36 @@ export class RustfsService {
     );
     this.logger.debug(
       `RustFS upload completed: bucket=${this.bucket}, key=${key}, bytes=${bytes.length}`,
+    );
+    return key;
+  }
+
+  /**
+   * 从本地文件流式上传，避免把整份文件读进内存（U4 流式落盘的配套）。
+   * `size` 用于设置 ContentLength，部分 S3 兼容实现不接受未知长度的分块上传。
+   */
+  async uploadFile(
+    filePath: string,
+    options: {
+      fileName: string;
+      contentType?: string;
+      prefix?: string;
+      size?: number;
+    },
+  ): Promise<string> {
+    await this.ensureBucket();
+    const key = `${options.prefix ?? 'documents'}/${Date.now()}-${options.fileName}`;
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: createReadStream(filePath),
+        ContentType: options.contentType,
+        ContentLength: options.size,
+      }),
+    );
+    this.logger.debug(
+      `RustFS streaming upload completed: bucket=${this.bucket}, key=${key}, bytes=${options.size ?? 'unknown'}`,
     );
     return key;
   }

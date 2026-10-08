@@ -18,6 +18,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { DocumentUploadService } from './document-upload.service';
+import { UPLOAD_TEMP_DIR } from './parser/utils/upload-temp.util';
 import { RateLimitGuard } from '../common/guards/rate-limit.guard';
 import {
   DocumentProgressEvent,
@@ -34,7 +35,9 @@ export class DocumentUploadController {
 
   @Post('upload')
   @UseInterceptors(
+    // 流式落盘（U4）：请求体直接写临时文件，避免 100MB × 并发数 的内存峰值
     FileInterceptor('file', {
+      dest: UPLOAD_TEMP_DIR,
       limits: { fileSize: 100 * 1024 * 1024 },
     }),
   )

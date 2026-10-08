@@ -21,7 +21,8 @@ const ZIP_EXTENSIONS = new Set(['docx', 'xlsx', 'pptx']);
 const OLE_EXTENSIONS = new Set(['doc', 'xls', 'ppt']);
 const TEXT_EXTENSIONS = new Set(['txt', 'md', 'csv', 'json']);
 
-const TEXT_SAMPLE_BYTES = 64 * 1024;
+/** 校对所需的最大文件头字节数（文本类判定需要足够采样）；流式落盘时按此长度读取文件头 */
+export const SIGNATURE_SAMPLE_BYTES = 64 * 1024;
 
 function startsWith(buffer: Buffer, magic: Buffer): boolean {
   return (
@@ -35,7 +36,10 @@ function startsWith(buffer: Buffer, magic: Buffer): boolean {
  * 采样末尾可能被截断在多字节字符中间，去掉尾部 1–3 字节再试，避免把正常文件误判为二进制。
  */
 function looksLikeText(buffer: Buffer): boolean {
-  const sample = buffer.subarray(0, Math.min(buffer.length, TEXT_SAMPLE_BYTES));
+  const sample = buffer.subarray(
+    0,
+    Math.min(buffer.length, SIGNATURE_SAMPLE_BYTES),
+  );
   if (sample.includes(0)) return false;
   for (let trim = 0; trim <= 3 && trim < sample.length; trim += 1) {
     const candidate =
