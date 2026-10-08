@@ -137,7 +137,7 @@ export function LoginPage() {
           {submitting ? '正在登录' : '进入工作台'}
         </Button>
 
-        <p className="auth-tip">开发环境提示：登录后会保留你的会话、资料与训练进度。</p>
+        {/* <p className="auth-tip">开发环境提示：登录后会保留你的会话、资料与训练进度。</p> */}
       </form>
 
       <p className="auth-footer-link">
