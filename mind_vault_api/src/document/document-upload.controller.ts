@@ -61,7 +61,7 @@ export class DocumentUploadController {
     });
   }
 
-  /** 当前可上传的格式清单（老格式取决于服务端 soffice 是否可用），供 Web 与小程序共用 */
+  /** 当前可上传的格式清单，供 Web 与小程序共用 */
   @Get('supported-formats')
   supportedFormats() {
     return this.service.supportedFormats();

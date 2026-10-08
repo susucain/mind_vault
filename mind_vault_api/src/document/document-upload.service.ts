@@ -79,7 +79,7 @@ export class DocumentUploadService implements OnModuleInit {
     }
   }
 
-  /** 当前可上传的扩展名清单（soffice 不可用时不含老格式），供三端共用 */
+  /** 当前可上传的扩展名清单，供三端共用 */
   supportedFormats(): { extensions: string[] } {
     return { extensions: this.parser.availableExtensions() };
   }

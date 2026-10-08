@@ -109,4 +109,6 @@ export const router = createBrowserRouter([
     path: '*',
     element: <Navigate replace to={APP_PATHS.overview} />,
   },
-]);
+], {
+  basename: import.meta.env.BASE_URL.replace(/\/$/, '') || undefined,
+});

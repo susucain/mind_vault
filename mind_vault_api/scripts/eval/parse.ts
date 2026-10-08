@@ -43,7 +43,7 @@ interface ParsingFixture {
   documents: Record<string, ParsingAnnotation>;
 }
 
-/** 复用 FileParserService 的纯函数分支（txt/md/csv/json），不含图片与老格式转换 */
+/** 复用 FileParserService 的纯函数分支（txt/md/csv/json），不含图片处理 */
 function parseFixture(name: string, buffer: Buffer): ParsedDocument {
   const extension = getExtension(name);
   if (extension === 'csv') return finalize(parseCsv(buffer, name));

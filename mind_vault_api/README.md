@@ -54,7 +54,7 @@ $ curl -X POST http://localhost:3000/v1/auth/dev-login \
 $ pnpm run start:worker
 ```
 
-Worker 消费 RabbitMQ 的 `mind-vault.ingestion.worker` 队列，处理 `document.index` 任务。DOC、XLS、PPT 等旧版 Office 文件需要系统中存在 `soffice`，可通过 `SOFFICE_BIN` 指定路径。
+Worker 消费 RabbitMQ 的 `mind-vault.ingestion.worker` 队列，处理 `document.index` 任务。文档上传支持 PDF、DOCX、XLSX、PPTX、TXT、MD、CSV 和 JSON；DOC、XLS、PPT 等旧版 Office 文件需要先转换为现代格式。
 
 ## Compile and run the project
 

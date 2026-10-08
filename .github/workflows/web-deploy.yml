@@ -1,0 +1,59 @@
+name: Deploy web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mind_vault_web/**"
+      - ".github/workflows/web-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: mind_vault_web/pnpm-lock.yaml
+
+      - name: Build web
+        working-directory: mind_vault_web
+        env:
+          VITE_BASE_PATH: /mind-vault/
+          VITE_API_BASE_URL: /mind-vault/v1
+          VITE_ENABLE_MOCK_API: "false"
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.ECS_DEPLOY_SSH_KEY }}
+
+      - name: Install known hosts
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' '${{ secrets.ECS_KNOWN_HOSTS }}' > ~/.ssh/known_hosts
+
+      - name: Publish web files
+        run: |
+          ssh -p "${{ secrets.ECS_PORT || 22 }}" \
+            "${{ secrets.ECS_DEPLOY_USER }}@${{ secrets.ECS_HOST }}" \
+            'mkdir -p /opt/mind-vault/web.next /var/www/mind-vault'
+          scp -P "${{ secrets.ECS_PORT || 22 }}" -r \
+            mind_vault_web/dist/. \
+            "${{ secrets.ECS_DEPLOY_USER }}@${{ secrets.ECS_HOST }}:/opt/mind-vault/web.next/"
+          ssh -p "${{ secrets.ECS_PORT || 22 }}" \
+            "${{ secrets.ECS_DEPLOY_USER }}@${{ secrets.ECS_HOST }}" \
+            'rm -rf /var/www/mind-vault/* && cp -a /opt/mind-vault/web.next/. /var/www/mind-vault/'

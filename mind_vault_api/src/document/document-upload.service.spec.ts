@@ -9,18 +9,15 @@ const parser = {
   availableExtensions: () => [
     'pdf',
     'docx',
-    'doc',
     'xlsx',
-    'xls',
     'pptx',
-    'ppt',
     'txt',
     'md',
     'csv',
     'json',
   ],
   supportedList: () =>
-    'pdf, docx, doc, xlsx, xls, pptx, ppt, txt, md, csv, json',
+    'pdf, docx, xlsx, pptx, txt, md, csv, json',
 } as never;
 
 const pdfBytes = Buffer.from('%PDF-1.4\nmind vault');

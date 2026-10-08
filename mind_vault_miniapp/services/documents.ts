@@ -45,7 +45,7 @@ export interface SupportedFormats {
 
 let supportedFormatsCache: string[] | null = null;
 
-/** 可上传格式清单：小程序不再硬编码白名单，统一由服务端下发（老格式取决于 soffice） */
+/** 可上传格式清单：小程序不再硬编码白名单，统一由服务端下发 */
 export async function getSupportedFormats(): Promise<SupportedFormats> {
   if (supportedFormatsCache) return { extensions: supportedFormatsCache };
   const result = await request<SupportedFormats>({

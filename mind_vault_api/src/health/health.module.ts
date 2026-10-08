@@ -41,12 +41,42 @@ import { createConnection } from 'node:net';
                     config.get<number>('MONGO_PORT', 27017),
                   ),
               },
-              { name: 'rabbitmq', check: () => probe('localhost', 5672) },
+              {
+                name: 'rabbitmq',
+                check: () =>
+                  probe(
+                    config.get<string>(
+                      'infrastructure.rabbitmq.host',
+                      'localhost',
+                    ),
+                    config.get<number>('infrastructure.rabbitmq.port', 5672),
+                  ),
+              },
               {
                 name: 'elasticsearch',
-                check: () => probe('localhost', 9200),
+                check: () =>
+                  probe(
+                    config.get<string>(
+                      'infrastructure.elasticsearch.host',
+                      'localhost',
+                    ),
+                    config.get<number>(
+                      'infrastructure.elasticsearch.port',
+                      9200,
+                    ),
+                  ),
               },
-              { name: 'neo4j', check: () => probe('localhost', 7687) },
+              {
+                name: 'neo4j',
+                check: () =>
+                  probe(
+                    config.get<string>(
+                      'infrastructure.neo4j.host',
+                      'localhost',
+                    ),
+                    config.get<number>('infrastructure.neo4j.port', 7687),
+                  ),
+              },
               ...(config.get<string>('OSS_BUCKET_NAME')
                 ? []
                 : [{ name: 'rustfs', check: () => probe('localhost', 9000) }]),

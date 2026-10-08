@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Injectable,
   Logger,
-  OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RustfsService } from '../../storage/rustfs.service';
@@ -25,17 +24,10 @@ import {
 import { sectionsFromMarkdown } from './parsers/structured.util';
 import { parseCsv } from './parsers/csv.parser';
 import { parseJson } from './parsers/json.parser';
-import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { promisify } from 'node:util';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
-
-const execFileAsync = promisify(execFile);
 
 /** 不依赖本机外部程序的格式 */
-const MODERN_EXTENSIONS = [
+const SUPPORTED_EXTENSIONS = [
   'pdf',
   'docx',
   'xlsx',
@@ -45,11 +37,7 @@ const MODERN_EXTENSIONS = [
   'csv',
   'json',
 ];
-/** 老版 Office 格式，需本机 `soffice`（LibreOffice）转换后才能解析 */
-const LEGACY_EXTENSIONS = ['doc', 'xls', 'ppt'];
-/** 已知的全部扩展名（用于解析分发，不等同于「当前可用」） */
-const KNOWN_EXTENSIONS = new Set([...MODERN_EXTENSIONS, ...LEGACY_EXTENSIONS]);
-const SOFFICE_PROBE_TIMEOUT_MS = 5_000;
+const KNOWN_EXTENSIONS = new Set(SUPPORTED_EXTENSIONS);
 /** 扫件判定默认阈值：PDF 平均每页字符低于该值即视为疑似扫描件 */
 const DEFAULT_MIN_CHARS_PER_PAGE = 100;
 
@@ -78,10 +66,8 @@ export interface ParseInput {
  * 解析结果为空或格式不支持时抛 BadRequestException。
  */
 @Injectable()
-export class FileParserService implements OnModuleInit {
+export class FileParserService {
   private readonly logger = new Logger(FileParserService.name);
-  /** 本机是否存在可用的 soffice；不能在启动时确认则视为不可用（宁可早拒，不可排队后失败） */
-  private sofficeAvailable = false;
   /** 扫件判定阈值（A2）：PDF 平均每页字符低于该值即视为疑似扫描件 */
   private readonly minCharsPerPage: number;
 
@@ -94,26 +80,9 @@ export class FileParserService implements OnModuleInit {
       DEFAULT_MIN_CHARS_PER_PAGE;
   }
 
-  async onModuleInit(): Promise<void> {
-    const bin = process.env.SOFFICE_BIN ?? 'soffice';
-    try {
-      await execFileAsync(bin, ['--version'], {
-        timeout: SOFFICE_PROBE_TIMEOUT_MS,
-      });
-      this.sofficeAvailable = true;
-    } catch {
-      this.sofficeAvailable = false;
-      this.logger.warn(
-        `未检测到 LibreOffice（${bin}），.doc/.xls/.ppt 将不可用`,
-      );
-    }
-  }
-
-  /** 当前实际可解析的扩展名（老格式取决于 soffice 是否可用），三端格式清单的唯一来源 */
+  /** 当前可解析的扩展名，三端格式清单的唯一来源 */
   availableExtensions(): string[] {
-    return this.sofficeAvailable
-      ? [...MODERN_EXTENSIONS, ...LEGACY_EXTENSIONS]
-      : [...MODERN_EXTENSIONS];
+    return [...SUPPORTED_EXTENSIONS];
   }
 
   /** 是否为已支持的扩展名（大小写不敏感） */
@@ -160,14 +129,6 @@ export class FileParserService implements OnModuleInit {
     if (!file.buffer?.length) {
       throw new BadRequestException('文件内容为空，无法解析');
     }
-    // A8：老格式依赖本机 soffice，不可用时给出可分类的失败原因，而不是排队后报「转换失败」
-    if (LEGACY_EXTENSIONS.includes(extension) && !this.sofficeAvailable) {
-      throw new ParseError(
-        'PARSE_LEGACY_UNAVAILABLE',
-        `旧版 Office 格式（.${extension}）需服务端安装 LibreOffice，当前不可用`,
-      );
-    }
-
     let parsed: ParsedDocument;
     switch (extension) {
       case 'pdf':
@@ -194,37 +155,14 @@ export class FileParserService implements OnModuleInit {
       case 'docx':
         parsed = await this.docxDocument(file, extension, file.buffer);
         break;
-      case 'doc':
-        parsed = await this.docxDocument(
-          file,
-          extension,
-          await this.convertLegacyOffice(file, 'docx'),
-        );
-        break;
       case 'pptx':
         parsed = await this.pptxDocument(file, extension, file.buffer);
-        break;
-      case 'ppt':
-        parsed = await this.pptxDocument(
-          file,
-          extension,
-          await this.convertLegacyOffice(file, 'pptx'),
-        );
         break;
       case 'xlsx':
         parsed = this.markdownDocument(
           file.originalname,
           extension,
           await this.parseXlsxWithFallback(file.buffer),
-        );
-        break;
-      case 'xls':
-        parsed = this.markdownDocument(
-          file.originalname,
-          extension,
-          await this.parseXlsxWithFallback(
-            await this.convertLegacyOffice(file, 'xlsx'),
-          ),
         );
         break;
       default:
@@ -263,7 +201,7 @@ export class FileParserService implements OnModuleInit {
   }
 
   /**
-   * DOCX（含 soffice 转换后的 .doc）→ ParsedDocument（A5）：
+   * DOCX → ParsedDocument（A5）：
    * 内嵌图片走 A1 资产通道，mammoth messages 计入 quality.warnings。
    */
   private async docxDocument(
@@ -281,7 +219,7 @@ export class FileParserService implements OnModuleInit {
   }
 
   /**
-   * PPTX（含 soffice 转换后的 .ppt）→ ParsedDocument（A6）：
+   * PPTX → ParsedDocument（A6）：
    * 讲者备注作为独立 section，以 `> 备注：` 引用块挂在对应幻灯片之后。
    */
   private async pptxDocument(
@@ -390,40 +328,6 @@ export class FileParserService implements OnModuleInit {
     }
   }
 
-  /**
-   * 老格式（.doc/.xls/.ppt）先用 soffice 转成现代格式，再交给对应 parser。
-   * 只负责转换，解析仍走 docx/pptx/xlsx 各自入口，避免绕开 A5/A6 的资产与备注处理。
-   */
-  private async convertLegacyOffice(
-    file: ParseInput,
-    targetExtension: 'docx' | 'xlsx' | 'pptx',
-  ): Promise<Buffer> {
-    const directory = await mkdtemp(join(tmpdir(), 'mind-vault-office-'));
-    const sourceName = basename(file.originalname);
-    const sourcePath = join(directory, sourceName);
-    const targetName = `${sourceName.replace(/\.[^.]+$/, '')}.${targetExtension}`;
-    const targetPath = join(directory, targetName);
-
-    try {
-      await writeFile(sourcePath, file.buffer);
-      await execFileAsync(process.env.SOFFICE_BIN ?? 'soffice', [
-        '--headless',
-        '--convert-to',
-        targetExtension,
-        '--outdir',
-        directory,
-        sourcePath,
-      ]);
-      return await readFile(targetPath);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new BadRequestException(
-        `旧版 Office 文件转换失败，请确认已安装 LibreOffice: ${message}`,
-      );
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
-  }
 }
 
 /**

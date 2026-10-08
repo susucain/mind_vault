@@ -10,7 +10,9 @@ type AuthExpiredRedirectHandler = (path: string) => void;
 
 function defaultRedirect(_path: string): void {
   void _path;
-  if (typeof window !== 'undefined') window.location.assign('/login');
+  if (typeof window !== 'undefined') {
+    window.location.assign(`${import.meta.env.BASE_URL}login`);
+  }
 }
 
 let authExpiredRedirectHandler: AuthExpiredRedirectHandler = defaultRedirect;

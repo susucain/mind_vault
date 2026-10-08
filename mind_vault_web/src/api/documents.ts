@@ -29,7 +29,7 @@ export interface UploadDocumentResult {
   status: string;
 }
 
-/** 服务端当前可上传的扩展名（老格式取决于服务端 soffice 是否可用） */
+/** 服务端当前可上传的扩展名 */
 export interface SupportedFormats {
   extensions: string[];
 }

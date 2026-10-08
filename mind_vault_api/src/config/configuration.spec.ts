@@ -60,4 +60,28 @@ describe('configuration', () => {
     expect(config.graph.extractionMaxTokens).toBe(1200);
     expect(config.graph.workerEnabled).toBe(false);
   });
+
+  it('supports container service names for dependency health checks', () => {
+    const config = buildConfiguration({
+      RABBITMQ_HOST: 'rabbitmq',
+      RABBITMQ_PORT: '5672',
+      ELASTICSEARCH_HOST: 'es',
+      ELASTICSEARCH_PORT: '9200',
+      NEO4J_HOST: 'neo4j',
+      NEO4J_PORT: '7687',
+    });
+
+    expect(config.infrastructure.rabbitmq).toMatchObject({
+      host: 'rabbitmq',
+      port: 5672,
+    });
+    expect(config.infrastructure.elasticsearch).toMatchObject({
+      host: 'es',
+      port: 9200,
+    });
+    expect(config.infrastructure.neo4j).toMatchObject({
+      host: 'neo4j',
+      port: 7687,
+    });
+  });
 });

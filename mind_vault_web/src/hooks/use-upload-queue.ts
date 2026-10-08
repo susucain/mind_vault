@@ -293,7 +293,7 @@ export function useUploadQueue() {
 
   const enqueue = useCallback((files: File[], datasetId: string, options: { graphEnabled?: boolean; extensions?: string[] } = {}) => {
     const graphEnabled = options.graphEnabled ?? false;
-    // 白名单由服务端下发（老格式取决于 soffice 是否可用）；未取到时不拦截，交由服务端校验
+    // 白名单由服务端下发；未取到时不拦截，交由服务端校验
     const allowed = options.extensions?.length
       ? new Set(options.extensions.map((item) => item.toLowerCase()))
       : undefined;

@@ -6,7 +6,7 @@ export interface SelectedFile {
 
 /**
  * 选择知识文件。允许的扩展名由服务端 `/documents/supported-formats` 下发，
- * 不再在小程序侧硬编码（老格式是否可用取决于服务端 soffice）。
+ * 不再在小程序侧硬编码，具体格式由服务端下发。
  */
 export function chooseKnowledgeFile(
   extensions: string[]

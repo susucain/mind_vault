@@ -68,7 +68,6 @@ export interface ParsedDocument {
 export type ParseErrorCode =
   | 'PARSE_EMPTY'
   | 'PARSE_SUSPECTED_SCANNED'
-  | 'PARSE_LEGACY_UNAVAILABLE'
   | 'PARSE_FAILED';
 
 /**

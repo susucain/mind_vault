@@ -26,11 +26,8 @@ describe('FileParserService', () => {
     for (const extension of [
       'pdf',
       'docx',
-      'doc',
       'xlsx',
-      'xls',
       'pptx',
-      'ppt',
       'txt',
       'md',
       'csv',
@@ -40,8 +37,7 @@ describe('FileParserService', () => {
     }
   });
 
-  it('excludes legacy Office formats from the available list when soffice is unavailable', () => {
-    // A8：未探测到 soffice 时，上传清单不含 .doc/.xls/.ppt，避免排队后才报转换失败
+  it('exposes only modern Office formats', () => {
     expect(service.availableExtensions()).not.toEqual(
       expect.arrayContaining(['doc', 'xls', 'ppt']),
     );
@@ -201,13 +197,13 @@ describe('FileParserService', () => {
     ).rejects.toMatchObject({ code: 'PARSE_SUSPECTED_SCANNED' });
   });
 
-  it('rejects legacy Office formats when soffice is unavailable', async () => {
+  it('rejects legacy Office formats', async () => {
     await expect(
       service.parseStructured({
         originalname: 'old.doc',
         buffer: Buffer.from('doc'),
       }),
-    ).rejects.toMatchObject({ code: 'PARSE_LEGACY_UNAVAILABLE' });
+    ).rejects.toThrow('不支持的文件格式');
   });
 
   it('registers DOCX images and warnings on the parsed document (A5)', async () => {

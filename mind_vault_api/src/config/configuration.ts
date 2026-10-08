@@ -118,13 +118,19 @@ export function buildConfiguration(env: EnvironmentInput = process.env) {
       },
       rabbitmq: {
         url: env.RABBITMQ_URL ?? 'amqp://guest:guest@localhost:5672',
+        host: env.RABBITMQ_HOST ?? 'localhost',
+        port: parseNumber(env.RABBITMQ_PORT, 5672),
       },
       elasticsearch: {
         node: env.ELASTICSEARCH_NODE ?? 'http://localhost:9200',
+        host: env.ELASTICSEARCH_HOST ?? 'localhost',
+        port: parseNumber(env.ELASTICSEARCH_PORT, 9200),
       },
       neo4j: {
         uri: env.NEO4J_URI ?? 'bolt://localhost:7687',
         user: env.NEO4J_USER ?? 'neo4j',
+        host: env.NEO4J_HOST ?? 'localhost',
+        port: parseNumber(env.NEO4J_PORT, 7687),
       },
       rustfs: {
         endpoint:

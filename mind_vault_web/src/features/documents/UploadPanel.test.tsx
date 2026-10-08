@@ -7,7 +7,7 @@ import { UploadPanel } from './UploadPanel';
 const { enqueue } = vi.hoisted(() => ({ enqueue: vi.fn() }));
 
 const { supportedExtensions } = vi.hoisted(() => ({
-  supportedExtensions: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'txt', 'md', 'csv', 'json'],
+  supportedExtensions: ['pdf', 'docx', 'xlsx', 'pptx', 'txt', 'md', 'csv', 'json'],
 }));
 
 vi.mock('../../hooks/use-upload-queue', () => ({

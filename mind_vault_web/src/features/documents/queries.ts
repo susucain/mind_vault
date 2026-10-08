@@ -37,7 +37,7 @@ export function useDatasets() {
   });
 }
 
-/** 可上传格式清单，缓存较久（服务端只在 soffice 可用性变化时改变） */
+/** 可上传格式清单，缓存较久 */
 export function useSupportedFormats() {
   return useQuery({
     queryKey: ['documents', 'supported-formats'],

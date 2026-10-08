@@ -8,7 +8,7 @@ import { canCancelUpload, type QueuedUpload } from '../../stores/upload.store';
 const FAILURE_LABELS: Record<string, string> = {
   PARSE_EMPTY: '文件解析结果为空，请确认包含可提取的文本',
   PARSE_SUSPECTED_SCANNED: '疑似扫描件，暂不支持文字提取',
-  PARSE_LEGACY_UNAVAILABLE: '旧版 Office 格式需服务端安装 LibreOffice',
+  PARSE_LEGACY_UNAVAILABLE: '仅支持现代 Office 格式（DOCX、XLSX、PPTX）',
   PARSE_FAILED: '解析失败，可稍后重试',
 };
 

@@ -9,7 +9,8 @@
 - 将 API/Worker 镜像和带 IK 插件的 Elasticsearch 镜像推送到阿里云容器镜像服务 ACR。
 - 通过 SSH 使用 `deploy` 账号触发 ECS 部署。
 - 使用阿里云 OSS 替代 RustFS，保存原始文档、PDF 图片和附件。
-- 构建 `mind_vault_web` React/Vite 前端，并由 ECS 上的 Nginx 提供静态文件。
+- 构建 `mind_vault_web` React/Vite 前端，并复用现有 Nginx 的
+  `/mind-vault/` 子路径提供静态文件。
 - PostgreSQL、MongoDB、RabbitMQ、Elasticsearch、Neo4j 先部署在 ECS 内部。
 
 目标链路：
@@ -37,6 +38,12 @@ GitHub Actions
 
 阿里云 OSS
     `-- 原始文档、PDF 图片、附件
+```
+
+访问地址：
+
+```text
+https://现有域名/mind-vault/
 ```
 
 ## 2. 当前项目边界
@@ -68,15 +75,34 @@ mind_vault_web/
 
 当前 `docker-compose.yml` 更偏向开发环境，不应直接作为生产编排文件。生产环境需要移除管理界面、关闭不必要的公网端口，并替换默认密码。
 
-当前仓库还没有生产 Dockerfile、生产 Compose 文件或 GitHub Actions Workflow；原方案中的这些文件仍需要真正创建后才能部署。
+生产 Dockerfile、生产 Compose 文件和 GitHub Actions Workflow 已放在仓库中，首次部署前仍需按本文完成 ACR、ECS 环境变量和 GitHub Secrets 配置。
+
+### 2.1 文档格式与 LibreOffice 说明
+
+为控制 ECS 镜像体积和运行时资源，生产 API 镜像不再安装 LibreOffice，也不再调用
+`soffice` 做格式转换。服务端当前支持：
+
+```text
+PDF、DOCX、XLSX、PPTX、TXT、MD、CSV、JSON
+```
+
+旧版 Office 格式 `.doc`、`.xls`、`.ppt` 不再接受上传。需要导入这类文件时，
+请先在本地转换为 `.docx`、`.xlsx` 或 `.pptx` 后再上传。`/mind-vault/v1/documents/supported-formats`
+接口会返回生产环境实际支持的扩展名，Web 和小程序会据此显示上传限制。
+
+移除 LibreOffice 的影响：
+
+- Docker 镜像不再包含 LibreOffice，镜像体积和构建/拉取时间会下降。
+- API/Worker 常驻内存不会再承担 LibreOffice 进程的额外开销。
+- 旧版 Office 转换能力被移除；现代 Office 格式仍由 Node.js 解析器处理。
 
 ## 3. 资源建议
 
-当前 ECS 为 2 核、约 2 GB 内存，并且已经运行其他项目。完整运行 Mind Vault 时，建议：
+当前 ECS 已升级为 4 核、8 GB 内存、80 GB 系统盘，并且继续运行其他项目。
+对于 1 到 2 个低并发用户，这个配置可以先承载完整 Mind Vault：
 
-- 最低：4 核 8 GB。
-- 如果继续和当前其他业务共用：建议 8 核 16 GB。
-- 系统盘建议至少 80 GB。
+- 当前可用起步配置：4 核 8 GB、80 GB 系统盘。
+- 如果文档、索引或并发明显增长，再升级到 8 核 16 GB。
 - PostgreSQL、MongoDB、RabbitMQ、Elasticsearch、Neo4j 使用独立 Docker Volume。
 - 对 Elasticsearch、Neo4j、MySQL 和应用容器设置内存限制。
 
@@ -129,18 +155,31 @@ API 和 Worker 使用同一个镜像，通过不同的启动命令运行。
 
 API/Worker 镜像和 Elasticsearch 镜像都应使用提交 SHA 标签。不能只发布 API 镜像后让生产 Compose 继续使用 `build: ./elasticsearch`，否则 ECS 部署时仍然依赖本地源码和构建环境。
 
-### 4.3 创建 ACR 凭据
+### 4.3 配置 ACR 登录状态
 
 不要使用阿里云主账号 AccessKey。
 
-建议创建两个独立的 RAM/ACR 凭据：
+GitHub Actions 使用仓库 Secrets 中的 ACR 推送凭据。ECS 不需要保存第二份
+凭据；当前部署直接复用 `deploy` 用户已有的 Docker 登录状态。
 
-| 用途 | 权限 |
-|---|---|
-| GitHub Actions | 登录 ACR、推送后端镜像 |
-| ECS | 登录 ACR、拉取后端镜像 |
+首次配置或凭证变更时，以 `deploy` 用户在 ECS 上执行：
 
-ECS 凭据只需要拉取权限。仓库正式使用后，应将权限限制到 `mind-vault/mind-vault-api`。
+```bash
+docker login crpi-xxxxx.cn-hangzhou.personal.cr.aliyuncs.com
+```
+
+Docker 凭证保存在：
+
+```text
+/home/deploy/.docker/config.json
+```
+
+GitHub Actions 通过 SSH 使用同一个 `deploy` 用户执行
+`docker compose pull` 时，Docker 会自动读取该登录状态。部署脚本不会读取或写入
+`ACR_USERNAME`、`ACR_PASSWORD`，也不需要在 `/opt/mind-vault` 保存 `acr.env`。
+
+建议该登录凭证仅有两个生产镜像仓库的拉取权限。凭证失效、密码重置或更换
+部署用户后，需要重新以 `deploy` 用户执行 `docker login`。
 
 ### 4.4 创建 OSS Bucket
 
@@ -190,12 +229,11 @@ api.example.com
 
 ## 5. GitHub 仓库配置
 
-当前仓库没有 `.github/workflows` 目录，需要新增：
+仓库中的部署文件位于：
 
 ```text
 .github/workflows/backend-deploy.yml
-mind_vault_web/Dockerfile 或静态文件发布脚本
-mind_vault_web/nginx.conf
+mind_vault_web/ 由 Workflow 构建 dist/ 后发布到 ECS Nginx 静态目录
 mind_vault_api/Dockerfile
 mind_vault_api/deploy/compose.prod.yml
 mind_vault_api/deploy/deploy.sh
@@ -226,7 +264,8 @@ mind-vault/
 ```text
 ACR_REGISTRY
 ACR_NAMESPACE
-ACR_REPOSITORY
+ACR_API_REPOSITORY
+ACR_ES_REPOSITORY
 ACR_USERNAME
 ACR_PASSWORD
 
@@ -242,7 +281,8 @@ ECS_KNOWN_HOSTS
 ```text
 ACR_REGISTRY=crpi-xxxxx.cn-hangzhou.personal.cr.aliyuncs.com
 ACR_NAMESPACE=mind-vault
-ACR_REPOSITORY=mind-vault-api
+ACR_API_REPOSITORY=mind-vault-api
+ACR_ES_REPOSITORY=mind-vault-elasticsearch
 ECS_HOST=47.99.244.154
 ECS_PORT=22
 ECS_DEPLOY_USER=deploy
@@ -343,7 +383,14 @@ miniapp-build.yml
 13. 执行 `docker compose up -d`。
 14. 检查 `/v1/health`。
 
-`mind_vault_web` 应由单独的 Web Workflow 构建。它是 Vite 静态应用，不需要进入 ACR，也不应该作为 Node 服务长期运行；应将 `dist/` 发布到 Nginx 静态目录并原子替换。
+`mind_vault_web` 应由单独的 Web Workflow 构建。它是 Vite 静态应用，不需要进入 ACR，也不应该作为 Node 服务长期运行；应将 `dist/` 发布到
+`/var/www/mind-vault`，由现有 Nginx 的 `/mind-vault/` location 提供服务。
+构建时必须设置：
+
+```text
+VITE_BASE_PATH=/mind-vault/
+VITE_API_BASE_URL=/mind-vault/v1
+```
 
 镜像必须使用不可变 SHA 标签，例如：
 
@@ -368,6 +415,14 @@ systemctl enable --now nginx
 
 docker --version
 docker compose version
+```
+
+Elasticsearch 启动前需要提高宿主机虚拟内存映射上限：
+
+```bash
+sysctl -w vm.max_map_count=262144
+printf 'vm.max_map_count=262144\n' > /etc/sysctl.d/99-mind-vault.conf
+sysctl --system
 ```
 
 如果系统已经安装这些软件，只需要检查版本，不要重复安装。
@@ -422,7 +477,8 @@ IMAGE_TAG=sha-xxxxxxxx
 
 ACR_REGISTRY=crpi-xxxxx.cn-hangzhou.personal.cr.aliyuncs.com
 ACR_NAMESPACE=mind-vault
-ACR_REPOSITORY=mind-vault-api
+API_REPOSITORY=mind-vault-api
+ES_REPOSITORY=mind-vault-elasticsearch
 
 POSTGRES_USER=mind_vault
 POSTGRES_PASSWORD=随机强密码
@@ -440,6 +496,7 @@ JWT_SECRET=随机长字符串
 
 NODE_ENV=production
 PORT=3000
+API_HOST_PORT=13000
 
 STORAGE_ENABLED=true
 OSS_ACCESS_KEY_ID=OSS专用RAM密钥
@@ -507,7 +564,7 @@ node dist/worker
 - 不映射数据库、中间件端口到公网。
 - 使用独立 Volume 保存数据。
 - Web 由 Nginx 提供静态文件。
-- API 通过 Nginx 的 `/v1/` 反向代理对外暴露。
+- API 通过 Nginx 的 `/mind-vault/v1/` 反向代理对外暴露。
 - 聊天和文档进度 SSE location 必须关闭代理缓冲。
 - 上传接口至少允许 100 MB 请求体。
 - 为关键容器配置健康检查。
@@ -529,16 +586,17 @@ ELASTICSEARCH_NODE=http://es:9200
 NEO4J_URI=bolt://neo4j:7687
 ```
 
-当前 [health.module.ts](../mind_vault_api/src/health/health.module.ts) 对 RabbitMQ、Elasticsearch 和 Neo4j 的探测地址仍硬编码为 `localhost`。生产部署前必须改为读取可配置地址，否则启用 `HEALTH_CHECK_DEPENDENCIES=true` 时会在 API 容器内误报依赖故障。
+当前 [health.module.ts](../mind_vault_api/src/health/health.module.ts) 已支持从生产环境变量读取 RabbitMQ、Elasticsearch 和 Neo4j 的容器服务地址。
 
 ### 10.2 Nginx 必须代理的请求
 
-当前项目不只有聊天 SSE，还包括文档进度 SSE：
+当前项目不只有聊天 SSE，还包括文档进度 SSE。由于项目挂载在
+`/mind-vault/` 下，Nginx 对外路径为：
 
 ```text
-/v1/conversations/:id/messages/stream
-/v1/documents/events
-/v1/documents/:id/events
+/mind-vault/v1/conversations/:id/messages/stream
+/mind-vault/v1/documents/events
+/mind-vault/v1/documents/:id/events
 ```
 
 这些 location 都需要关闭缓冲：
@@ -560,7 +618,28 @@ proxy_request_buffering off;
 proxy_read_timeout 310s;
 ```
 
-现有 [nginx.sse.conf](../mind_vault_api/deploy/nginx.sse.conf) 只覆盖聊天流，不能直接作为完整生产 Nginx 配置。
+`mind_vault_api/deploy/nginx.prod.conf` 是 Mind Vault 的 location 配置片段，
+不是独立的 `server` 配置。由于 ECS 已存在其他项目，应将它 include 到现有
+HTTPS server（例如 `www.storysell.cn`）中，不能再启用一个独立的默认 server。
+
+root 一次性配置：
+
+```bash
+cp /opt/mind-vault/nginx.prod.conf /etc/nginx/snippets/mind-vault.conf
+```
+
+然后在现有 HTTPS `server { ... }` 内加入：
+
+```nginx
+include /etc/nginx/snippets/mind-vault.conf;
+```
+
+配置完成后验证并重载：
+
+```bash
+nginx -t
+systemctl reload nginx
+```
 
 ## 11. ECS 部署脚本
 
@@ -568,7 +647,7 @@ proxy_read_timeout 310s;
 
 1. 接收镜像 SHA。
 2. 更新 `.env` 中的 `IMAGE_TAG`。
-3. 登录 ACR。
+3. 复用 `deploy` 用户现有的 Docker ACR 登录状态。
 4. 拉取 API 和 Worker 镜像。
 5. 启动或更新 Compose 服务。
 6. 检查健康接口。
@@ -580,7 +659,9 @@ proxy_read_timeout 310s;
 /opt/mind-vault/deploy.sh sha-<commit-sha>
 ```
 
-部署脚本不要将生产密码打印到标准输出。ACR 登录凭据应保存在服务器受保护的环境变量或 root-only 文件中，GitHub Actions 只传递镜像标签。
+部署脚本不要将生产密码打印到标准输出。GitHub Actions 只传递镜像标签；
+如果 `deploy` 用户的 Docker 登录状态失效，`docker compose pull` 会失败，
+需要以 `deploy` 用户重新执行 `docker login`。
 
 ## 12. 数据库迁移和备份
 
@@ -623,7 +704,7 @@ cd /opt/mind-vault
 docker compose ps
 docker compose logs --tail=200 api
 docker compose logs --tail=200 worker
-curl http://127.0.0.1:3000/v1/health
+curl http://127.0.0.1:13000/v1/health
 ```
 
 需要注意：应用镜像可以回滚，但数据库迁移不一定能自动回滚。因此包含数据库结构变化的发布必须先备份，并单独设计迁移回退策略。
@@ -632,7 +713,7 @@ curl http://127.0.0.1:3000/v1/health
 
 第一次正式部署至少验证：
 
-- `GET /v1/health`
+- `GET /mind-vault/v1/health`
 - 开发登录或正式认证流程
 - 创建数据集
 - 上传文档
@@ -648,19 +729,18 @@ curl http://127.0.0.1:3000/v1/health
 
 ## 15. 实施顺序
 
-1. 升级 ECS。
+1. 升级 ECS（当前为 4 核 8 GB、80 GB 系统盘）。
 2. 创建 ACR 实例、命名空间和私有镜像仓库。
-3. 创建 ACR 推送和拉取凭据。
+3. 为 GitHub Actions 配置 ACR 推送凭据；ECS 复用 `deploy` 用户已有的 Docker 登录状态。
 4. 创建 OSS Bucket 和专用 RAM 凭据。
 5. 配置域名、DNS、HTTPS 和安全组。
 6. 在 ECS 安装 Docker、Compose、Nginx。
 7. 配置 `deploy` 用户的 Docker 权限。
 8. 创建 `/opt/mind-vault` 目录和生产 `.env`。
-9. 增加后端 Dockerfile。
-10. 增加生产 Compose 文件。
-11. 增加 GitHub Actions Workflow。
-12. 手动运行一次 Workflow。
-13. 验证 API、Worker、数据库、搜索、图谱和 OSS。
-14. 再开启 `push main` 自动部署。
+9. 配置 `vm.max_map_count=262144` 和现有 Nginx 的 `/mind-vault/` location。
+10. 提交并推送部署文件。
+11. 手动运行一次 Workflow。
+12. 验证 API、Worker、数据库、搜索、图谱和 OSS。
+13. 再开启 `push main` 自动部署。
 
 第一阶段不建议同时引入 RDS、云 MongoDB、云 Elasticsearch 和云消息队列。先使用 ECS + OSS 的组合，可以控制成本并减少迁移变量；等运行数据明确后，再针对单个瓶颈迁移到托管服务。
