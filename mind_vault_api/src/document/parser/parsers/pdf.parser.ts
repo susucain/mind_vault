@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { PDFParse } from 'pdf-parse';
-import { ParsedDocument } from '../parsed-document';
+import { buildQuality, ParsedDocument } from '../parsed-document';
 import { cleanMarkdown, toMarkdownTable } from '../utils/markdown.util';
 
 const logger = new Logger('PdfParser');
@@ -47,6 +47,8 @@ export async function parsePdfDocument(
 ): Promise<ParsedDocument> {
   const parser = new PDFParse({ data: buffer });
   const threshold = options.imageThreshold ?? 50;
+  const warnings: string[] = [];
+  let tableCount = 0;
 
   try {
     // ---------- 1. 文本：按页取出 ----------
@@ -91,6 +93,7 @@ export async function parsePdfDocument(
               urls.push(url);
             } catch (err) {
               // 单张失败不影响同页其他图片与整份文档
+              warnings.push(`第 ${page.pageNumber} 页有图片上传失败`);
               logger.warn(
                 `PDF 图片上传失败: page=${page.pageNumber}, name=${image.name}, err=${err instanceof Error ? err.message : err}`,
               );
@@ -108,6 +111,7 @@ export async function parsePdfDocument(
         }
       } catch (err) {
         // 整批图片提取失败：降级为纯文本，不抛错
+        warnings.push('图片提取失败，已降级为纯文本');
         logger.warn(
           `PDF 图片提取失败，继续仅文本: ${err instanceof Error ? err.message : err}`,
         );
@@ -155,6 +159,7 @@ export async function parsePdfDocument(
             const rows = normalizePdfTable(table);
             if (rows.length > 0) {
               tableIdx += 1;
+              tableCount += 1;
               tableParts.push(
                 `### 表格 ${tableIdx}\n\n${toMarkdownTable(rows)}`,
               );
@@ -169,6 +174,7 @@ export async function parsePdfDocument(
       }
     } catch {
       // 表格提取失败不影响主结果
+      warnings.push('表格提取失败');
     }
 
     const sections =
@@ -201,15 +207,23 @@ export async function parsePdfDocument(
             ]
           : [];
 
+    const assets = [...pageImageUrls.entries()].flatMap(([page, urls]) =>
+      urls.map((url) => ({ url, locator: { page } })),
+    );
+
     return {
       title,
       format: 'pdf',
       pageCount: pageTexts.length,
       sections,
-      assets: [...pageImageUrls.entries()].flatMap(([page, urls]) =>
-        urls.map((url) => ({ url, locator: { page } })),
-      ),
+      assets,
       rawText: markdown,
+      quality: buildQuality({
+        pages: pageTexts.length,
+        tables: tableCount,
+        images: assets.length,
+        warnings,
+      }),
     };
   } finally {
     // 释放 pdf-parse / wasm 等底层资源，避免泄漏

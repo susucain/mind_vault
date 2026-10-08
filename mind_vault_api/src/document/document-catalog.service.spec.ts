@@ -289,7 +289,47 @@ describe('DocumentCatalogService', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('serves an allowlisted asset key with the inferred content type', async () => {
+  it('serves an owner-scoped asset key with the inferred content type', async () => {
+    const storage = {
+      isEnabled: jest.fn().mockReturnValue(true),
+      downloadBytes: jest.fn().mockResolvedValue(Buffer.from('png-bytes')),
+    };
+    const service = new DocumentCatalogService(
+      {} as never,
+      {} as never,
+      {} as never,
+      undefined,
+      storage as never,
+    );
+    const key = 'documents/user_1/doc_1/abc123.png';
+
+    const asset = await service.readAsset('user_1', key);
+
+    expect(storage.downloadBytes).toHaveBeenCalledWith(key);
+    expect(asset.contentType).toBe('image/png');
+    expect(asset.body.toString()).toBe('png-bytes');
+  });
+
+  it('hides assets owned by another user behind 404', async () => {
+    const storage = {
+      isEnabled: jest.fn().mockReturnValue(true),
+      downloadBytes: jest.fn(),
+    };
+    const service = new DocumentCatalogService(
+      {} as never,
+      {} as never,
+      {} as never,
+      undefined,
+      storage as never,
+    );
+
+    await expect(
+      service.readAsset('user_2', 'documents/user_1/doc_1/abc123.png'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(storage.downloadBytes).not.toHaveBeenCalled();
+  });
+
+  it('serves legacy assets without an owner segment while transitioning', async () => {
     const storage = {
       isEnabled: jest.fn().mockReturnValue(true),
       downloadBytes: jest.fn().mockResolvedValue(Buffer.from('png-bytes')),
@@ -302,15 +342,9 @@ describe('DocumentCatalogService', () => {
       storage as never,
     );
 
-    const asset = await service.readAsset(
-      'pdf-images/1790182552129-pdf_img_p1_0.png',
-    );
-
-    expect(storage.downloadBytes).toHaveBeenCalledWith(
-      'pdf-images/1790182552129-pdf_img_p1_0.png',
-    );
-    expect(asset.contentType).toBe('image/png');
-    expect(asset.body.toString()).toBe('png-bytes');
+    await expect(
+      service.readAsset('user_1', 'pdf-images/1790182552129-pdf_img_p1_0.png'),
+    ).resolves.toMatchObject({ contentType: 'image/png' });
   });
 
   it('rejects asset keys outside the allowlist or containing traversal', async () => {
@@ -327,10 +361,10 @@ describe('DocumentCatalogService', () => {
     );
 
     await expect(
-      service.readAsset('documents/secret.pdf'),
+      service.readAsset('user_1', 'other-bucket/secret.png'),
     ).rejects.toBeInstanceOf(NotFoundException);
     await expect(
-      service.readAsset('pdf-images/../secret.png'),
+      service.readAsset('user_1', 'pdf-images/../secret.png'),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(storage.downloadBytes).not.toHaveBeenCalled();
   });
@@ -348,9 +382,9 @@ describe('DocumentCatalogService', () => {
       storage as never,
     );
 
-    await expect(service.readAsset('pdf-images/a.png')).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      service.readAsset('user_1', 'documents/user_1/doc_1/a.png'),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('maps a missing storage object to not found', async () => {
@@ -367,7 +401,7 @@ describe('DocumentCatalogService', () => {
     );
 
     await expect(
-      service.readAsset('pdf-images/missing.png'),
+      service.readAsset('user_1', 'documents/user_1/doc_1/missing.png'),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

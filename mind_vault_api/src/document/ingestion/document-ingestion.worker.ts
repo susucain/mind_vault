@@ -15,6 +15,7 @@ import {
   DocumentContentDocument,
 } from '../schemas/document-content.schema';
 import { FileParserService } from '../parser/file-parser.service';
+import { ParseError } from '../parser/parsed-document';
 import { RustfsService } from '../../storage/rustfs.service';
 import { DocumentChunkingService } from '../chunking/document-chunking.service';
 import { DocumentChunkCheckpointService } from '../chunking/document-chunk-checkpoint.service';
@@ -347,6 +348,8 @@ export class DocumentIngestionWorker {
           originalname: document.sourceFileName ?? document.title,
           buffer,
           size: buffer.length,
+          ownerId: message.ownerId,
+          documentId: document.id,
         });
         await this.contents.updateOne(
           { _id: document.contentId, deleted: false },
@@ -357,6 +360,7 @@ export class DocumentIngestionWorker {
               contentSummary: parsed.rawText.slice(0, 200),
               sections: parsed.sections,
               pageCount: parsed.pageCount ?? 0,
+              quality: parsed.quality,
             },
             $inc: { version: 1 },
           },
@@ -471,7 +475,8 @@ export class DocumentIngestionWorker {
       job.status = IngestionJobStatus.Failed;
       job.currentStage = stage;
       job.retryCount += 1;
-      job.errorCode = failureCodeForStage(stage);
+      job.errorCode =
+        error instanceof ParseError ? error.code : failureCodeForStage(stage);
       job.errorMessage = error instanceof Error ? error.message : String(error);
       job.finishedAt = new Date();
       job.lastHeartbeatAt = job.finishedAt;
@@ -552,8 +557,21 @@ export class DocumentIngestionWorker {
     const document = await this.documents.findOne({
       where: { id: message.documentId, ownerId: message.ownerId },
     });
-    if (document?.sourceFileKey && this.storage.isEnabled()) {
-      await this.storage.deleteObject(document.sourceFileKey);
+    if (this.storage.isEnabled()) {
+      if (document?.sourceFileKey) {
+        await this.storage.deleteObject(document.sourceFileKey);
+      }
+      // A1：图片资产按 `documents/{ownerId}/{documentId}/` 前缀整批回收，
+      // 失败不阻断删除主流程（对象清理可由生命周期规则兜底）。
+      try {
+        await this.storage.deleteByPrefix(
+          `documents/${message.ownerId}/${message.documentId}/`,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `文档资产清理失败: documentId=${message.documentId}, error=${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
     await this.index.deleteByDocument(message.ownerId, message.documentId);
     await this.graph.deleteDocument(message.ownerId, message.documentId);
@@ -581,7 +599,8 @@ function failureCodeForStage(stage: string) {
     case 'indexing':
       return 'INDEXING_FAILED';
     case 'parsing':
-      return 'PARSING_FAILED';
+      // 可分类的解析失败（A2）由 ParseError 携带具体 code，这里是兜底
+      return 'PARSE_FAILED';
     default:
       return 'INGESTION_FAILED';
   }

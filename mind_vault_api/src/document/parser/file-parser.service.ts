@@ -4,6 +4,7 @@ import {
   Logger,
   OnModuleInit,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { RustfsService } from '../../storage/rustfs.service';
 import { parseDocx } from './parsers/docx.parser';
 import { ParsePdfOptions, parsePdfDocument } from './parsers/pdf.parser';
@@ -11,11 +12,17 @@ import { parsePlainText } from './parsers/plain-text.parser';
 import { parsePptx } from './parsers/pptx.parser';
 import { parseXlsx } from './parsers/xlsx.parser';
 import { getExtension } from './utils/markdown.util';
-import { ParsedDocument } from './parsed-document';
+import {
+  buildQuality,
+  ParsedDocument,
+  ParseQuality,
+  ParseError,
+} from './parsed-document';
 import { sectionsFromMarkdown } from './parsers/structured.util';
 import { parseCsv } from './parsers/csv.parser';
 import { parseJson } from './parsers/json.parser';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -39,11 +46,25 @@ const LEGACY_EXTENSIONS = ['doc', 'xls', 'ppt'];
 /** 已知的全部扩展名（用于解析分发，不等同于「当前可用」） */
 const KNOWN_EXTENSIONS = new Set([...MODERN_EXTENSIONS, ...LEGACY_EXTENSIONS]);
 const SOFFICE_PROBE_TIMEOUT_MS = 5_000;
+/** 扫件判定默认阈值：PDF 平均每页字符低于该值即视为疑似扫描件 */
+const DEFAULT_MIN_CHARS_PER_PAGE = 100;
+
+/** 资产 MIME → 扩展名（key 以内容哈希命名，扩展名仅按真实类型决定） */
+const ASSET_EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+};
 
 export interface ParseInput {
   originalname: string;
   buffer: Buffer;
   size?: number;
+  /** 资产隔离（A1）所需的归属信息：图片资产 key 以 owner/document 前缀写入 */
+  ownerId?: string;
+  documentId?: string;
 }
 
 /**
@@ -57,8 +78,17 @@ export class FileParserService implements OnModuleInit {
   private readonly logger = new Logger(FileParserService.name);
   /** 本机是否存在可用的 soffice；不能在启动时确认则视为不可用（宁可早拒，不可排队后失败） */
   private sofficeAvailable = false;
+  /** 扫件判定阈值（A2）：PDF 平均每页字符低于该值即视为疑似扫描件 */
+  private readonly minCharsPerPage: number;
 
-  constructor(private readonly rustfs: RustfsService) {}
+  constructor(
+    private readonly rustfs: RustfsService,
+    config: ConfigService,
+  ) {
+    this.minCharsPerPage =
+      config.get<number>('parsing.minCharsPerPage') ??
+      DEFAULT_MIN_CHARS_PER_PAGE;
+  }
 
   async onModuleInit(): Promise<void> {
     const bin = process.env.SOFFICE_BIN ?? 'soffice';
@@ -126,6 +156,13 @@ export class FileParserService implements OnModuleInit {
     if (!file.buffer?.length) {
       throw new BadRequestException('文件内容为空，无法解析');
     }
+    // A8：老格式依赖本机 soffice，不可用时给出可分类的失败原因，而不是排队后报「转换失败」
+    if (LEGACY_EXTENSIONS.includes(extension) && !this.sofficeAvailable) {
+      throw new ParseError(
+        'PARSE_LEGACY_UNAVAILABLE',
+        `旧版 Office 格式（.${extension}）需服务端安装 LibreOffice，当前不可用`,
+      );
+    }
 
     let parsed: ParsedDocument;
     switch (extension) {
@@ -133,7 +170,7 @@ export class FileParserService implements OnModuleInit {
         parsed = await parsePdfDocument(
           file.buffer,
           file.originalname,
-          this.pdfOptions(),
+          this.pdfOptions(file.ownerId, file.documentId),
         );
         break;
       case 'csv':
@@ -195,10 +232,36 @@ export class FileParserService implements OnModuleInit {
       default:
         throw new BadRequestException(`不支持的文件格式: ${extension}`);
     }
+    parsed.quality = this.finalizeQuality(parsed);
     if (!parsed.rawText.trim()) {
-      throw new BadRequestException('文件解析结果为空');
+      if (parsed.quality.suspectedScanned) {
+        throw new ParseError(
+          'PARSE_SUSPECTED_SCANNED',
+          '疑似扫描件，暂不支持文字提取',
+        );
+      }
+      throw new ParseError(
+        'PARSE_EMPTY',
+        '文件解析结果为空，请确认文件包含可提取的文本内容',
+      );
     }
     return parsed;
+  }
+
+  /**
+   * 回填解析质量（A2）：字符数、页数由这里统一计算，避免各 parser 口径不一；
+   * 扫件判定依赖 `minCharsPerPage` 阈值，故也集中在此。
+   */
+  private finalizeQuality(parsed: ParsedDocument): ParseQuality {
+    const chars = parsed.rawText.trim().length;
+    const pages = parsed.pageCount;
+    const suspectedScanned =
+      parsed.format === 'pdf' &&
+      pages !== undefined &&
+      pages > 0 &&
+      chars / pages < this.minCharsPerPage &&
+      (parsed.quality.images > 0 || pages >= 2);
+    return { ...parsed.quality, chars, pages, suspectedScanned };
   }
 
   private markdownDocument(
@@ -218,17 +281,24 @@ export class FileParserService implements OnModuleInit {
       ),
       assets: [],
       rawText,
+      quality: buildQuality({ chars: rawText.length }),
     };
   }
 
-  private pdfOptions(): ParsePdfOptions {
+  /**
+   * 图片资产通道（A1）：key 规则 `documents/{ownerId}/{documentId}/{sha256前16位}.{ext}`。
+   * 内容哈希命名使同图天然幂等，且规避了 OSS 对中文/空格/非法字符的限制。
+   * 缺少归属信息时禁用图片上传，绝不退回到无 owner 段的全局 key。
+   */
+  private pdfOptions(ownerId?: string, documentId?: string): ParsePdfOptions {
+    const enabled =
+      this.rustfs.isEnabled() && Boolean(ownerId) && Boolean(documentId);
     return {
-      uploadImage: this.rustfs.isEnabled()
-        ? (bytes, fileName, contentType) =>
+      uploadImage: enabled
+        ? (bytes, _fileName, contentType) =>
             this.rustfs.uploadBytes(bytes, {
-              fileName,
+              key: assetObjectKey(ownerId!, documentId!, bytes, contentType),
               contentType,
-              prefix: 'pdf-images',
             })
         : undefined,
     };
@@ -290,4 +360,22 @@ export class FileParserService implements OnModuleInit {
       await rm(directory, { recursive: true, force: true });
     }
   }
+}
+
+/**
+ * 资产对象 key（A1）：`documents/{ownerId}/{documentId}/{sha256前16位}.{ext}`。
+ * 用内容指纹而非时间戳/页码，保证同图同 key（幂等）且不产生垃圾对象。
+ */
+function assetObjectKey(
+  ownerId: string,
+  documentId: string,
+  bytes: Buffer,
+  contentType: string,
+): string {
+  const ext = ASSET_EXTENSIONS[contentType] ?? 'png';
+  const fingerprint = createHash('sha256')
+    .update(bytes)
+    .digest('hex')
+    .slice(0, 16);
+  return `documents/${ownerId}/${documentId}/${fingerprint}.${ext}`;
 }

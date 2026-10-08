@@ -17,6 +17,13 @@ describe('DocumentChunkingService', () => {
           locator: { lineStart: 1, lineEnd: 3 },
         },
       ],
+      quality: {
+        chars: 0,
+        tables: 0,
+        images: 0,
+        warnings: [],
+        suspectedScanned: false,
+      },
     };
 
     const first = service.chunk('user_1', 'doc_1', 1, parsed, {

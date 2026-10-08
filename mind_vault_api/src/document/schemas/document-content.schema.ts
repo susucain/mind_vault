@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import { ParsedSection } from '../parser/parsed-document';
+import { ParsedSection, ParseQuality } from '../parser/parsed-document';
 
 export type DocumentContentDocument = HydratedDocument<DocumentContent>;
 
@@ -44,6 +44,10 @@ export class DocumentContent {
   /** 正文摘要 / 预览 */
   @Prop({ type: String, default: '' })
   contentSummary: string;
+
+  /** 解析质量信号（A2）：失败归因、降级提示与指标的数据源 */
+  @Prop({ type: Object, default: null })
+  quality?: ParseQuality | null;
 
   /** 版本号 */
   @Prop({ type: Number, default: 1 })

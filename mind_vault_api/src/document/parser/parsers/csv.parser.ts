@@ -1,5 +1,5 @@
 import { parse } from 'csv-parse/sync';
-import { ParsedDocument } from '../parsed-document';
+import { buildQuality, ParsedDocument } from '../parsed-document';
 
 export function parseCsv(buffer: Buffer, title: string): ParsedDocument {
   const rawRecords: unknown = parse(buffer.toString('utf8'), {
@@ -34,5 +34,6 @@ export function parseCsv(buffer: Buffer, title: string): ParsedDocument {
     ],
     assets: [],
     rawText,
+    quality: buildQuality({ chars: rawText.length, tables: rawText ? 1 : 0 }),
   };
 }

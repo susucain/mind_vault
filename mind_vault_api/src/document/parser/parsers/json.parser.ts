@@ -1,4 +1,4 @@
-import { ParsedDocument } from '../parsed-document';
+import { buildQuality, ParsedDocument } from '../parsed-document';
 
 function flatten(value: unknown, path = '$'): string[] {
   if (value === null || typeof value !== 'object') {
@@ -29,5 +29,6 @@ export function parseJson(buffer: Buffer, title: string): ParsedDocument {
     ],
     assets: [],
     rawText,
+    quality: buildQuality({ chars: rawText.length }),
   };
 }

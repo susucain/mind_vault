@@ -3,12 +3,14 @@ jest.mock('./parsers/pdf.parser', () => ({
 }));
 
 import { FileParserService } from './file-parser.service';
+import { ParseError } from './parsed-document';
 import { parsePdfDocument } from './parsers/pdf.parser';
 
 describe('FileParserService', () => {
-  const service = new FileParserService({
-    isEnabled: () => false,
-  } as never);
+  const service = new FileParserService(
+    { isEnabled: () => false } as never,
+    { get: () => undefined } as never,
+  );
 
   it('supports all MVP file extensions case-insensitively', () => {
     for (const extension of [
@@ -26,6 +28,15 @@ describe('FileParserService', () => {
     ]) {
       expect(service.isSupported(extension.toUpperCase())).toBe(true);
     }
+  });
+
+  it('excludes legacy Office formats from the available list when soffice is unavailable', () => {
+    // A8：未探测到 soffice 时，上传清单不含 .doc/.xls/.ppt，避免排队后才报转换失败
+    expect(service.availableExtensions()).not.toEqual(
+      expect.arrayContaining(['doc', 'xls', 'ppt']),
+    );
+    expect(service.supportedList().split(', ')).not.toContain('doc');
+    expect(service.supportedList().split(', ')).toContain('docx');
   });
 
   it('parses markdown into structured sections with line locators', async () => {
@@ -82,6 +93,14 @@ describe('FileParserService', () => {
       ],
       assets: [],
       rawText: 'PDF content',
+      quality: {
+        chars: 'PDF content'.length,
+        pages: 1,
+        tables: 0,
+        images: 0,
+        warnings: [],
+        suspectedScanned: false,
+      },
     };
     const parsePdfDocumentMock = parsePdfDocument as jest.MockedFunction<
       typeof parsePdfDocument
@@ -110,5 +129,70 @@ describe('FileParserService', () => {
         buffer: Buffer.from('name,score\nMind Vault,100\n'),
       }),
     ).resolves.toContain('Mind Vault | 100');
+  });
+
+  it('reports parse quality with chars and table count', async () => {
+    const result = await service.parseStructured({
+      originalname: 'data.csv',
+      buffer: Buffer.from('name,score\nMind Vault,100\n'),
+    });
+
+    expect(result.quality).toMatchObject({
+      tables: 1,
+      suspectedScanned: false,
+    });
+    expect(result.quality.chars).toBe(result.rawText.trim().length);
+  });
+
+  it('classifies empty extraction as PARSE_EMPTY', async () => {
+    await expect(
+      service.parseStructured({
+        originalname: 'empty.json',
+        buffer: Buffer.from('{}'),
+      }),
+    ).rejects.toMatchObject({ name: 'ParseError', code: 'PARSE_EMPTY' });
+  });
+
+  it('classifies suspected scanned PDFs as PARSE_SUSPECTED_SCANNED', async () => {
+    (
+      parsePdfDocument as jest.MockedFunction<typeof parsePdfDocument>
+    ).mockResolvedValue({
+      title: 'scan.pdf',
+      format: 'pdf',
+      pageCount: 3,
+      sections: [],
+      assets: [],
+      rawText: '',
+      quality: {
+        chars: 0,
+        pages: 3,
+        tables: 0,
+        images: 5,
+        warnings: [],
+        suspectedScanned: false,
+      },
+    });
+
+    await expect(
+      service.parseStructured({
+        originalname: 'scan.pdf',
+        buffer: Buffer.from('pdf'),
+      }),
+    ).rejects.toBeInstanceOf(ParseError);
+    await expect(
+      service.parseStructured({
+        originalname: 'scan.pdf',
+        buffer: Buffer.from('pdf'),
+      }),
+    ).rejects.toMatchObject({ code: 'PARSE_SUSPECTED_SCANNED' });
+  });
+
+  it('rejects legacy Office formats when soffice is unavailable', async () => {
+    await expect(
+      service.parseStructured({
+        originalname: 'old.doc',
+        buffer: Buffer.from('doc'),
+      }),
+    ).rejects.toMatchObject({ code: 'PARSE_LEGACY_UNAVAILABLE' });
   });
 });

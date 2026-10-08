@@ -4,8 +4,10 @@ import { ConfigService } from '@nestjs/config';
 import {
   CreateBucketCommand,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -115,12 +117,21 @@ export class RustfsService {
     );
   }
 
+  /**
+   * 上传字节。`key` 为显式对象 key（如内容哈希命名的资产，A1），
+   * 优先级高于 `prefix` + `fileName` 的自动拼接。
+   */
   async uploadBytes(
     bytes: Buffer,
-    options: { fileName: string; contentType?: string; prefix?: string },
+    options: {
+      fileName?: string;
+      contentType?: string;
+      prefix?: string;
+      key?: string;
+    },
   ): Promise<string> {
     await this.ensureBucket();
-    const key = `${options.prefix ?? 'documents'}/${Date.now()}-${options.fileName}`;
+    const key = options.key ?? this.autoKey(options);
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
@@ -149,7 +160,7 @@ export class RustfsService {
     },
   ): Promise<string> {
     await this.ensureBucket();
-    const key = `${options.prefix ?? 'documents'}/${Date.now()}-${options.fileName}`;
+    const key = this.autoKey(options);
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
@@ -181,6 +192,48 @@ export class RustfsService {
     await this.client.send(
       new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
     );
+  }
+
+  /**
+   * 按前缀批量删除（资产回收，A1）：`documents/{ownerId}/{documentId}/` 下所有对象。
+   * 返回实际删除的对象数。
+   */
+  async deleteByPrefix(prefix: string): Promise<number> {
+    let deleted = 0;
+    let continuationToken: string | undefined;
+    do {
+      const listed = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+        }),
+      );
+      const keys = (listed.Contents ?? [])
+        .map((object) => object.Key)
+        .filter((key): key is string => Boolean(key));
+      if (keys.length > 0) {
+        await this.client.send(
+          new DeleteObjectsCommand({
+            Bucket: this.bucket,
+            Delete: { Objects: keys.map((Key) => ({ Key })) },
+          }),
+        );
+        deleted += keys.length;
+      }
+      continuationToken = listed.IsTruncated
+        ? listed.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
+    return deleted;
+  }
+
+  /** `prefix/日期-文件名` 的默认 key 拼接（显式 key 未提供时使用） */
+  private autoKey(options: { prefix?: string; fileName?: string }): string {
+    if (!options.fileName) {
+      throw new Error('上传对象缺少 fileName 或显式 key');
+    }
+    return `${options.prefix ?? 'documents'}/${Date.now()}-${options.fileName}`;
   }
 
   private async ensureBucket() {

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await */
 import { DocumentIngestionWorker } from './document-ingestion.worker';
 import { IngestionJobStatus } from '../entities/document-ingestion-job.entity';
+import { ParseError } from '../parser/parsed-document';
 import { connect } from 'amqplib';
 
 jest.mock('amqplib', () => ({
@@ -509,6 +510,84 @@ describe('DocumentIngestionWorker', () => {
     );
   });
 
+  it('records the classified parse error code when parsing fails', async () => {
+    const job = {
+      id: 'job_1',
+      ownerId: 'user_1',
+      documentId: 'doc_1',
+      documentVersion: 1,
+      status: IngestionJobStatus.Uploaded,
+      currentStage: 'uploaded',
+      retryCount: 0,
+      stageCompleted: 0,
+      stageTotal: 0,
+    };
+    const publisher = {
+      publishProgress: jest.fn().mockResolvedValue(undefined),
+    };
+    const worker = new DocumentIngestionWorker(
+      {
+        findOne: jest.fn().mockResolvedValue(job),
+        save: jest.fn(async (entity) => entity),
+      } as never,
+      {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'doc_1',
+          ownerId: 'user_1',
+          sourceFileName: 'scan.pdf',
+          sourceFileKey: null,
+          contentId: 'content_1',
+        }),
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
+      } as never,
+      {
+        findOne: jest.fn().mockReturnValue({
+          lean: jest
+            .fn()
+            .mockResolvedValue({ sourceBytes: Buffer.from('pdf') }),
+        }),
+        updateOne: jest.fn().mockResolvedValue({ matchedCount: 1 }),
+      } as never,
+      {
+        parseStructured: jest
+          .fn()
+          .mockRejectedValue(
+            new ParseError(
+              'PARSE_SUSPECTED_SCANNED',
+              '疑似扫描件，暂不支持文字提取',
+            ),
+          ),
+      } as never,
+      { downloadBytes: jest.fn() } as never,
+      { get: jest.fn().mockReturnValue(false) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      undefined,
+      publisher as never,
+    );
+
+    await expect(
+      worker.process({
+        jobId: 'job_1',
+        ownerId: 'user_1',
+        documentId: 'doc_1',
+        documentVersion: 1,
+        operation: 'index',
+      }),
+    ).rejects.toThrow('疑似扫描件，暂不支持文字提取');
+
+    expect(job).toMatchObject({
+      status: IngestionJobStatus.Failed,
+      currentStage: 'parsing',
+      errorCode: 'PARSE_SUSPECTED_SCANNED',
+      errorMessage: '疑似扫描件，暂不支持文字提取',
+    });
+  });
+
   it('deletes source storage and external indexes for a deletion job', async () => {
     const job = {
       id: 'job_delete',
@@ -527,6 +606,7 @@ describe('DocumentIngestionWorker', () => {
     const storage = {
       isEnabled: jest.fn().mockReturnValue(true),
       deleteObject: jest.fn(),
+      deleteByPrefix: jest.fn().mockResolvedValue(1),
     };
     const index = { deleteByDocument: jest.fn().mockResolvedValue(undefined) };
     const graph = { deleteDocument: jest.fn().mockResolvedValue(undefined) };
@@ -561,6 +641,9 @@ describe('DocumentIngestionWorker', () => {
       }),
     ).resolves.toMatchObject({ status: 'DELETED' });
     expect(storage.deleteObject).toHaveBeenCalledWith('users/user_1/doc_1.pdf');
+    expect(storage.deleteByPrefix).toHaveBeenCalledWith(
+      'documents/user_1/doc_1/',
+    );
     expect(index.deleteByDocument).toHaveBeenCalledWith('user_1', 'doc_1');
     expect(graph.deleteDocument).toHaveBeenCalledWith('user_1', 'doc_1');
   });

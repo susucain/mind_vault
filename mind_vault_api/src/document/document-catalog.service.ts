@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Model } from 'mongoose';
@@ -20,9 +20,16 @@ const SECTION_CHAR_BUDGET = 2000;
 
 /**
  * 只读资产白名单：仅允许正文中引用的对象前缀。
- * 资产 key 由解析阶段写入正文（如 `pdf-images/…`），不接受任意对象读取。
+ * 资产 key 由解析阶段写入正文，形如 `documents/{ownerId}/{documentId}/…`（A1），
+ * 不接受任意对象读取。
  */
-const ASSET_KEY_PREFIXES = ['pdf-images/'];
+const ASSET_KEY_PREFIX = 'documents/';
+
+/**
+ * 过渡期兼容：A1 之前的存量资产无 owner 段（`pdf-images/…`），
+ * 切生产 OSS 前由 M7 一次性搬迁，搬迁完成后删除本兼容分支。
+ */
+const LEGACY_ASSET_KEY_PREFIXES = ['pdf-images/'];
 
 const ASSET_CONTENT_TYPES: Record<string, string> = {
   png: 'image/png',
@@ -34,6 +41,8 @@ const ASSET_CONTENT_TYPES: Record<string, string> = {
 
 @Injectable()
 export class DocumentCatalogService {
+  private readonly logger = new Logger(DocumentCatalogService.name);
+
   constructor(
     @InjectRepository(DocumentEntity)
     private readonly documents: Repository<DocumentEntity>,
@@ -199,11 +208,27 @@ export class DocumentCatalogService {
     return { items, nextCursor, total: blocks.length };
   }
 
-  /** 读取正文引用的只读资产（如 PDF 抽出的插图），key 即正文 `![](...)` 中的路径。 */
-  async readAsset(key: string) {
+  /**
+   * 读取正文引用的只读资产（如 PDF 抽出的插图），key 即正文 `![](...)` 中的路径。
+   *
+   * A1 隔离：新 key 形如 `documents/{ownerId}/{documentId}/…`，解析 owner 段与
+   * 当前用户比对，不匹配返回 404（不泄露对象是否存在）。存量无 owner 段的旧 key
+   * 在过渡期仅要求登录并记 warn，待 M7 搬迁后删除该分支。
+   */
+  async readAsset(ownerId: string, key: string) {
     const normalized = key?.replace(/^\/+/, '') ?? '';
     if (!isAllowedAssetKey(normalized) || !this.storage?.isEnabled()) {
       throw new NotFoundException(`Asset ${key} not found`);
+    }
+    const assetOwner = assetOwnerSegment(normalized);
+    if (assetOwner) {
+      if (assetOwner !== ownerId) {
+        throw new NotFoundException(`Asset ${key} not found`);
+      }
+    } else {
+      this.logger.warn(
+        `读取无 owner 段的存量资产（待 M7 搬迁后移除兼容分支）：key=${normalized}`,
+      );
     }
     let body: Buffer;
     try {
@@ -255,7 +280,19 @@ function isAllowedAssetKey(key: string): boolean {
   if (!key || key.includes('..') || key.includes('\\') || key.includes('//')) {
     return false;
   }
-  return ASSET_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
+  return (
+    key.startsWith(ASSET_KEY_PREFIX) ||
+    LEGACY_ASSET_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))
+  );
+}
+
+/**
+ * 取 `documents/{ownerId}/…` 中的 owner 段；
+ * 非该前缀（含过渡期的旧 key）返回 undefined，由调用方走「仅要求登录」分支。
+ */
+function assetOwnerSegment(key: string): string | undefined {
+  if (!key.startsWith(ASSET_KEY_PREFIX)) return undefined;
+  return key.slice(ASSET_KEY_PREFIX.length).split('/')[0] || undefined;
 }
 
 function assetContentType(key: string): string {

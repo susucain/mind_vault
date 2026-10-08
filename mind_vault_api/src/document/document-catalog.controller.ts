@@ -51,8 +51,8 @@ export class DocumentCatalogController {
   /** 正文引用的只读资产（PDF 插图等）：key 为正文 `![](...)` 中的路径。 */
   @Get('assets')
   @Header('Cache-Control', 'private, max-age=86400')
-  async asset(@Query('key') key: string) {
-    const { body, contentType } = await this.service.readAsset(key);
+  async asset(@CurrentUser() user: { id: string }, @Query('key') key: string) {
+    const { body, contentType } = await this.service.readAsset(user.id, key);
     return new StreamableFile(body, { type: contentType });
   }
 

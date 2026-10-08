@@ -67,6 +67,10 @@ export function buildConfiguration(env: EnvironmentInput = process.env) {
       // 摄取 worker 是否消费队列（start:worker 脚本会置为 true）
       workerEnabled: parseBoolean(env.INGESTION_WORKER_ENABLED, false),
     },
+    parsing: {
+      // 扫件判定阈值（A2）：PDF 平均每页字符低于该值即疑似扫描件
+      minCharsPerPage: parseNumber(env.PARSE_MIN_CHARS_PER_PAGE, 100),
+    },
     graph: {
       // 图谱 worker 是否消费队列；默认跟随摄取 worker，避免多一个必须同步的开关
       workerEnabled: parseBoolean(env.INGESTION_WORKER_ENABLED, false),
