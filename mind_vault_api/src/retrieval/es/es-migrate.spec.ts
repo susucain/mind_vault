@@ -43,13 +43,28 @@ describe('migrateChunkIndex', () => {
       }),
     });
     expect(client.reindex).not.toHaveBeenCalled();
+    // 别名不存在（首次引导）时只发 add：发 remove 会让整条请求 404，add 也落不下去
+    expect(client.indices.updateAliases).toHaveBeenCalledWith({
+      actions: [{ add: { index: target, alias: 'mind_vault_chunks' } }],
+    });
+    expect(result).toMatchObject({ to: target, switched: true, reindexed: 0 });
+  });
+
+  it('removes the old target before pointing the alias at the new version', async () => {
+    const client = buildClient({
+      aliasIndex: 'mind_vault_chunks_v0',
+      exists: false,
+      reindex: { created: 42 },
+    });
+
+    await migrateChunkIndex(client, {});
+
     expect(client.indices.updateAliases).toHaveBeenCalledWith({
       actions: [
         { remove: { index: '*', alias: 'mind_vault_chunks' } },
         { add: { index: target, alias: 'mind_vault_chunks' } },
       ],
     });
-    expect(result).toMatchObject({ to: target, switched: true, reindexed: 0 });
   });
 
   it('reindexes from the current index before switching the alias', async () => {

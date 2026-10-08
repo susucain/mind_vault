@@ -46,6 +46,7 @@ interface ElasticsearchLike {
     exists(input: { index: string }): Promise<boolean>;
     create(input: unknown): Promise<unknown>;
     delete(input: { index: string }): Promise<unknown>;
+    getAlias(input: { name: string }): Promise<Record<string, unknown>>;
     getMapping(input: { index: string }): Promise<Record<string, unknown>>;
     updateAliases(input: { actions: unknown[] }): Promise<unknown>;
     refresh(input: { index: string }): Promise<unknown>;
@@ -135,12 +136,27 @@ export class ElasticsearchIndexService {
 
   /** 把读写别名整体指向目标版本（先摘后挂，避免写入别名同时指向多个索引） */
   async pointAliasTo(version: number): Promise<void> {
-    await this.client.indices.updateAliases({
-      actions: [
-        { remove: { index: '*', alias: this.indexName } },
-        { add: { index: chunkIndexName(version), alias: this.indexName } },
-      ],
+    // 首次引导时别名并不存在，此时发 remove 会让整条 updateAliases 以
+    // `aliases_not_found_exception` 失败（`must_exist:false` 也无效），add 永远落不下去，
+    // 所以只在别名确实存在时才「先摘」。
+    const actions: unknown[] = [];
+    if (await this.aliasExists()) {
+      actions.push({ remove: { index: '*', alias: this.indexName } });
+    }
+    actions.push({
+      add: { index: chunkIndexName(version), alias: this.indexName },
     });
+    await this.client.indices.updateAliases({ actions });
+  }
+
+  /** 别名是否存在（getAlias 在缺失时抛 404，按「不存在」处理） */
+  private async aliasExists(): Promise<boolean> {
+    try {
+      await this.client.indices.getAlias({ name: this.indexName });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** 删除某个物理版本索引（保留/回收旧版本时使用） */

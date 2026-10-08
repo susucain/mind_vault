@@ -96,7 +96,9 @@ export async function migrateChunkIndex(
 
   await client.indices.updateAliases({
     actions: [
-      { remove: { index: '*', alias } },
+      // 别名不存在时（首次引导）不能发 remove，否则整条请求以
+      // `aliases_not_found_exception` 失败，add 也落不下去。
+      ...(from ? [{ remove: { index: '*', alias } }] : []),
       { add: { index: target, alias } },
     ],
   });

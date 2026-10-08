@@ -17,6 +17,7 @@ describe('ElasticsearchIndexService', () => {
       indices: {
         exists: jest.fn().mockResolvedValue(false),
         create: jest.fn().mockResolvedValue({}),
+        getAlias: jest.fn().mockRejectedValue(new Error('alias_not_found')),
         updateAliases: jest.fn().mockResolvedValue({}),
       },
       bulk: jest.fn().mockResolvedValue({ errors: false }),
@@ -42,10 +43,9 @@ describe('ElasticsearchIndexService', () => {
     expect(client.indices.create).toHaveBeenCalledWith(
       expect.objectContaining({ index: 'mind_vault_chunks_v1' }),
     );
-    // 读写走别名：别名先摘后挂，指向新版本物理索引
+    // 首次引导时别名不存在，此时只发 add（发 remove 会让整条请求 404，别名建不起来）
     expect(client.indices.updateAliases).toHaveBeenCalledWith({
       actions: [
-        { remove: { index: '*', alias: 'mind_vault_chunks' } },
         { add: { index: 'mind_vault_chunks_v1', alias: 'mind_vault_chunks' } },
       ],
     });
@@ -59,6 +59,30 @@ describe('ElasticsearchIndexService', () => {
         ]),
       }),
     );
+  });
+
+  it('先摘后挂地在已存在的别名上切换版本（I1）', async () => {
+    const client = {
+      indices: {
+        exists: jest.fn().mockResolvedValue(true),
+        create: jest.fn().mockResolvedValue({}),
+        getAlias: jest
+          .fn()
+          .mockResolvedValue({ mind_vault_chunks_v0: { aliases: {} } }),
+        updateAliases: jest.fn().mockResolvedValue({}),
+      },
+      bulk: jest.fn().mockResolvedValue({ errors: false }),
+    };
+    const service = new ElasticsearchIndexService(client as never, config());
+
+    await service.pointAliasTo(1);
+
+    expect(client.indices.updateAliases).toHaveBeenCalledWith({
+      actions: [
+        { remove: { index: '*', alias: 'mind_vault_chunks' } },
+        { add: { index: 'mind_vault_chunks_v1', alias: 'mind_vault_chunks' } },
+      ],
+    });
   });
 
   it('throws BulkIndexError with per-item reasons when a bulk partially fails', async () => {
@@ -140,6 +164,7 @@ describe('ElasticsearchIndexService', () => {
       indices: {
         exists: jest.fn().mockResolvedValue(false),
         create: jest.fn().mockResolvedValue({}),
+        getAlias: jest.fn().mockRejectedValue(new Error('alias_not_found')),
         updateAliases: jest.fn().mockResolvedValue({}),
       },
     };
