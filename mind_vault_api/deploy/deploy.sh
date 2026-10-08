@@ -37,9 +37,21 @@ set_env_value ES_REPOSITORY "$ES_REPOSITORY"
 sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${API_TAG}/" .env
 sed -i "s/^ES_IMAGE_TAG=.*/ES_IMAGE_TAG=${ES_TAG}/" .env
 
+DATA_ROOT="$(sed -n 's/^DATA_DIR=//p' .env | tail -1)"
+DATA_ROOT="${DATA_ROOT:-/opt/mind-vault/volumes}"
+ES_IMAGE="${ACR_REGISTRY}/${ACR_NAMESPACE}/${ES_REPOSITORY}:${ES_TAG}"
+
 docker compose --project-name mind-vault \
   --env-file .env \
   -f compose.prod.yml pull api worker es
+
+mkdir -p "${DATA_ROOT}/elasticsearch"
+docker run --rm \
+  --user 0 \
+  --entrypoint chown \
+  --volume "${DATA_ROOT}/elasticsearch:/usr/share/elasticsearch/data" \
+  "${ES_IMAGE}" \
+  -R 1000:0 /usr/share/elasticsearch/data
 
 docker compose --project-name mind-vault \
   --env-file .env \
