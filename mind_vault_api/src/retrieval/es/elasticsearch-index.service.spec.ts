@@ -3,6 +3,10 @@ import {
   ElasticsearchIndexService,
   VECTOR_K_CAP,
 } from './elasticsearch-index.service';
+import { CHUNK_INDEX_VERSION, chunkIndexName } from './chunk-index-mapping';
+
+/** 读写的物理索引名由代码里的版本号决定，避免版本递增后逐处改测试 */
+const versionIndex = chunkIndexName(CHUNK_INDEX_VERSION);
 
 const config = () =>
   ({
@@ -41,13 +45,11 @@ describe('ElasticsearchIndexService', () => {
     ]);
 
     expect(client.indices.create).toHaveBeenCalledWith(
-      expect.objectContaining({ index: 'mind_vault_chunks_v1' }),
+      expect.objectContaining({ index: versionIndex }),
     );
     // 首次引导时别名不存在，此时只发 add（发 remove 会让整条请求 404，别名建不起来）
     expect(client.indices.updateAliases).toHaveBeenCalledWith({
-      actions: [
-        { add: { index: 'mind_vault_chunks_v1', alias: 'mind_vault_chunks' } },
-      ],
+      actions: [{ add: { index: versionIndex, alias: 'mind_vault_chunks' } }],
     });
     expect(client.bulk).toHaveBeenCalledWith(
       expect.objectContaining({

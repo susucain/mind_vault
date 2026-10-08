@@ -6,8 +6,13 @@ import { createHash } from 'node:crypto';
  */
 export const CHUNK_INDEX_ALIAS = 'mind_vault_chunks';
 
-/** 当前物理索引版本；结构性变更时递增 */
-export const CHUNK_INDEX_VERSION = 1;
+/**
+ * 当前物理索引版本；结构性变更时递增。
+ *
+ * v2：v1 是被动态 mapping 建出来的（keyword 字段退化成 text、没有 `_meta.mappingVersion`、
+ * `titlePath` 也没走 ik），与代码里声明的 mapping 不一致；这里显式重建为声明式 mapping。
+ */
+export const CHUNK_INDEX_VERSION = 2;
 
 /** 物理索引名：`mind_vault_chunks_v{n}` */
 export function chunkIndexName(version: number): string {
