@@ -30,6 +30,15 @@ describe('configuration', () => {
     expect(config.models.reasoning).toBeUndefined();
     expect(config.models.embedding).toBeUndefined();
     expect(config.retrieval.vectorMinScore).toBe(0.7);
+    expect(config.chat.followupTimeoutMs).toBe(20_000);
+  });
+
+  it('allows the follow-up timeout to be tuned from the environment', () => {
+    const config = buildConfiguration({
+      CHAT_FOLLOWUP_TIMEOUT_MS: '12000',
+    });
+
+    expect(config.chat.followupTimeoutMs).toBe(12_000);
   });
 
   it('collects the worker switches and graph tuning into configuration', () => {

@@ -67,7 +67,7 @@ export function buildConfiguration(env: EnvironmentInput = process.env) {
       ),
       // 追问推荐的等待上限（毫秒）：超时即放弃并回落，
       // 不让用户为「回答之外的东西」多等。
-      followupTimeoutMs: parseNumber(env.CHAT_FOLLOWUP_TIMEOUT_MS, 3000),
+      followupTimeoutMs: parseNumber(env.CHAT_FOLLOWUP_TIMEOUT_MS, 20_000),
     },
     ingestion: {
       // 摄取 worker 是否消费队列（start:worker 脚本会置为 true）

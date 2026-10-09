@@ -392,7 +392,8 @@ export class ChatService {
     options: { signal?: AbortSignal; emitStage?: (stage: string) => void },
   ): Promise<string[]> {
     if (!this.config.get<boolean>('chat.followupSuggestionsEnabled')) return [];
-    const timeoutMs = this.config.get<number>('chat.followupTimeoutMs') ?? 3000;
+    const timeoutMs =
+      this.config.get<number>('chat.followupTimeoutMs') ?? 20_000;
     const controller = new AbortController();
     const timer = setTimeout(
       () => controller.abort(new Error('追问推荐超时')),
@@ -418,8 +419,13 @@ export class ChatService {
       }
       return items;
     } catch (error) {
+      const abortReason = controller.signal.reason as unknown;
+      const reason: unknown =
+        controller.signal.aborted && abortReason instanceof Error
+          ? abortReason
+          : (error as unknown);
       this.logger.warn(
-        `追问推荐失败，回落静态引导: ${error instanceof Error ? error.message : String(error)}`,
+        `追问推荐失败，回落静态引导: ${reason instanceof Error ? reason.message : String(reason)}`,
       );
       return [];
     } finally {

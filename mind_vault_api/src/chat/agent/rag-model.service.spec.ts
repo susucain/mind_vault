@@ -95,10 +95,19 @@ describe('RagModelService', () => {
     });
 
     expect(items).toEqual(['那它的缺点呢', '还有别的方案吗', '怎么落地']);
-    const [kind, messages] = (
-      invokeJson.mock.calls as Array<[string, Array<{ content: string }>]>
+    const [kind, messages, , , options] = (
+      invokeJson.mock.calls as Array<
+        [
+          string,
+          Array<{ content: string }>,
+          boolean,
+          unknown,
+          { maxTokens?: number },
+        ]
+      >
     )[0];
     expect(kind).toBe('fast');
+    expect(options).toMatchObject({ maxTokens: 256 });
     const payload = JSON.parse(messages[1].content) as {
       question: string;
       answer: string;

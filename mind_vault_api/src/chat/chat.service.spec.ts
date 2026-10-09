@@ -87,7 +87,7 @@ function buildService(input: {
   const config = {
     get: jest.fn((key: string) => {
       if (key === 'chat.followupSuggestionsEnabled') return true;
-      if (key === 'chat.followupTimeoutMs') return 3000;
+      if (key === 'chat.followupTimeoutMs') return 20_000;
       return undefined;
     }),
   };
@@ -726,7 +726,7 @@ describe('ChatService', () => {
   it('skips the follow-up call entirely when the switch is off', async () => {
     const { service, agent, config } = buildService({ messageCount: 0 });
     config.get.mockImplementation((key: string) =>
-      key === 'chat.followupSuggestionsEnabled' ? false : 3000,
+      key === 'chat.followupSuggestionsEnabled' ? false : 20_000,
     );
 
     const result = await service.ask('user_1', 'conversation_1', '问题');

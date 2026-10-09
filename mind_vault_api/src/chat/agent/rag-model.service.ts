@@ -183,7 +183,7 @@ export class RagModelService {
       ],
       false,
       (raw) => suggestionsSchema.parse(raw),
-      options,
+      { ...options, maxTokens: 256 },
     );
     return data.items.map((item) => item.trim()).filter(Boolean);
   }
