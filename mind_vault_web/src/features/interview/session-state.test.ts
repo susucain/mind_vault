@@ -12,12 +12,16 @@ describe('interview session state', () => {
   });
 
   it('advances the question only after a result event', () => {
-    const state = createSessionState({ question: '第一题', totalQuestions: 3 });
+    const state = {
+      ...createSessionState({ question: '第一题', totalQuestions: 3 }),
+      draft: '第一题的回答',
+    };
     const next = applyInterviewEvent(state, {
       type: 'result',
       result: { nextQuestion: '第二题', status: 'IN_PROGRESS', turn: { id: 'turn-1' } },
     });
     expect(next.question).toBe('第二题');
+    expect(next.draft).toBe('');
     expect(next.answered).toBe(1);
     expect(next.interrupted).toBe(false);
   });

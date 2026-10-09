@@ -54,7 +54,11 @@ export function InterviewSessionPage() {
     const timer = window.setInterval(() => setQuestionSeconds((value) => value + 1), 1000);
     return () => window.clearInterval(timer);
   }, [stream.status]);
-  useEffect(() => { if (sessionId && state.draft) localStorage.setItem(draftKey(sessionId), state.draft); }, [sessionId, state.draft]);
+  useEffect(() => {
+    if (!sessionId || !query.data) return;
+    if (state.draft) localStorage.setItem(draftKey(sessionId), state.draft);
+    else localStorage.removeItem(draftKey(sessionId));
+  }, [query.data, sessionId, state.draft]);
   const progress = useMemo(() => Math.min(100, Math.round((state.answered / Math.max(state.totalQuestions, 1)) * 100)), [state]);
   const answeredTurns = query.data?.turns ?? [];
 
@@ -64,7 +68,10 @@ export function InterviewSessionPage() {
     await stream.start(request.path, { init: { method: 'POST', body: request.body }, onEvent: (next) => {
       setState((current) => applyInterviewEvent(current, next));
       if (next.type === 'error') setError(next.message);
-      if (next.type === 'result') { setState((current) => ({ ...applyInterviewEvent(current, next), draft: '' })); query.refetch(); }
+      if (next.type === 'result') {
+        localStorage.removeItem(draftKey(sessionId));
+        void query.refetch();
+      }
     }}).catch((caught) => setError(caught instanceof Error ? caught.message : '提交失败'));
   }
 

@@ -56,6 +56,7 @@ export function applyInterviewEvent(state: InterviewSessionState, event: StreamE
   return {
     ...state,
     question: typeof result.nextQuestion === 'string' ? result.nextQuestion : '',
+    draft: '',
     answered: state.answered + 1,
     stage: 'ready',
     interrupted: false,
