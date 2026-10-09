@@ -939,7 +939,7 @@ select:focus, textarea:focus { border-color: var(--mv-primary); box-shadow: 0 0 
 .question-panel { min-width: 0; border: 1px solid var(--mv-line); padding: clamp(18px, 4vw, 38px); background: var(--mv-surface); }
 .question-meta { justify-content: space-between; color: var(--mv-muted); font-size: .78rem; }
 .question-meta span:last-child { display: inline-flex; align-items: center; gap: 5px; }
-.question-panel h2 { margin: 30px 0 22px; font-size: clamp(1.2rem, 2.4vw, 1.5rem); line-height: 1.45; }
+.question-panel h2 { margin: 30px 0 22px; font-size: clamp(0.9rem, 2vw, 1.1rem); line-height: 1.45; }
 .question-panel textarea { min-height: 210px; resize: vertical; }
 .answer-actions { justify-content: flex-end; margin-top: 12px; }
 .session-side { display: grid; gap: 12px; }
