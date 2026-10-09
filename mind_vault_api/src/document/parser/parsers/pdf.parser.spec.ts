@@ -136,4 +136,43 @@ describe('parsePdfDocument', () => {
     expect(result.rawText).toContain('## 检测到的表格');
     expect(result.rawText).toContain('| A | B |');
   });
+
+  it('discards empty layout grids misdetected as tables', async () => {
+    mockPdfState.text = {
+      pages: [
+        { num: 1, text: '简历正文' },
+        { num: 2, text: '项目经历' },
+      ],
+    };
+    mockPdfState.table = {
+      pages: [
+        {
+          num: 1,
+          tables: [
+            [[''], ['']],
+            [
+              ['', '', ''],
+              ['', '', ''],
+            ],
+          ],
+        },
+        {
+          num: 2,
+          tables: [
+            [
+              [' ', '\n'],
+              ['\t', ''],
+            ],
+          ],
+        },
+      ],
+    };
+
+    const result = await parsePdfDocument(Buffer.from('pdf'), 'resume.pdf');
+
+    expect(result.quality.tables).toBe(0);
+    expect(result.rawText).toContain('简历正文');
+    expect(result.rawText).toContain('项目经历');
+    expect(result.rawText).not.toContain('### 表格');
+  });
 });

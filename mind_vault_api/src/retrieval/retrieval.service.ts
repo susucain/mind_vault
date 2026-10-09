@@ -138,7 +138,7 @@ export class RetrievalService {
   ): Promise<{ hits: RetrievalHit[]; hasEvidence: boolean }> {
     const hits = await this.vector({ ...input, topK: this.evidenceTopK() });
     const top = hits[0];
-    const minScore = this.config.get<number>('retrieval.vectorMinScore', 0.75);
+    const minScore = this.config.get<number>('retrieval.vectorMinScore', 0.7);
     return { hits, hasEvidence: Boolean(top && top.score >= minScore) };
   }
 

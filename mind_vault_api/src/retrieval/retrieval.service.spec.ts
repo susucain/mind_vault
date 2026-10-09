@@ -144,6 +144,30 @@ describe('RetrievalService', () => {
     ).resolves.toMatchObject({ hasEvidence: true });
   });
 
+  it('accepts a production-calibrated resume match above the default threshold', async () => {
+    const es = {
+      vectorSearch: jest
+        .fn()
+        .mockResolvedValue(page([hit('resume_chunk', 0.7171922, 'vector')])),
+    };
+    const service = new RetrievalService(
+      es as never,
+      { embedQuery: jest.fn().mockResolvedValue([0.1]) } as never,
+      {} as never,
+      {} as never,
+      {
+        get: jest.fn((_key: string, fallback?: number) => fallback),
+      } as never,
+    );
+
+    await expect(
+      service.assessEvidence({
+        ownerId: 'user_1',
+        query: '如果要考察这位面试者，应该重点考察哪方面？',
+      }),
+    ).resolves.toMatchObject({ hasEvidence: true });
+  });
+
   it('reports no evidence when even the top vector score stays below the threshold', async () => {
     const es = {
       vectorSearch: jest

@@ -29,6 +29,7 @@ describe('configuration', () => {
     expect(config.models.fast).toBeUndefined();
     expect(config.models.reasoning).toBeUndefined();
     expect(config.models.embedding).toBeUndefined();
+    expect(config.retrieval.vectorMinScore).toBe(0.7);
   });
 
   it('collects the worker switches and graph tuning into configuration', () => {

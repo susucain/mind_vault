@@ -130,7 +130,9 @@ export async function parsePdfDocument(
         for (const table of page.tables ?? []) {
           // pdf-parse 返回结构不固定，先归一成 string[][]
           const rows = normalizePdfTable(table);
-          if (rows.length === 0) continue;
+          // PDF 中的装饰线框、分栏边界也可能被识别成表格。没有任何文本的
+          // 空网格不承载内容，不能写入预览、分块或质量统计。
+          if (!hasPdfTableContent(rows)) continue;
           tableIdx += 1;
           tableCount += 1;
           const block = `### 表格 ${tableIdx}\n\n${toMarkdownTable(rows)}`;
@@ -314,4 +316,8 @@ function stringifyCell(cell: unknown): string {
   }
   if (typeof cell === 'boolean') return cell ? 'true' : 'false';
   return '';
+}
+
+function hasPdfTableContent(rows: string[][]): boolean {
+  return rows.some((row) => row.some((cell) => cell.trim().length > 0));
 }
